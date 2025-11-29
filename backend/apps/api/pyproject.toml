@@ -1,0 +1,32 @@
+[project]
+name = "glean-api"
+version = "0.1.0"
+description = "Glean API Server"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic[email]>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "python-multipart>=0.0.9",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "httpx>=0.27.0",
+    "structlog>=24.1.0",
+    "glean-database",
+    "glean-core",
+    "glean-rss",
+]
+
+[tool.uv.sources]
+glean-database = { workspace = true }
+glean-core = { workspace = true }
+glean-rss = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["glean_api"]

@@ -1,0 +1,30 @@
+{
+  "name": "@glean/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./utils": "./src/utils/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint src --ext ts,tsx",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf node_modules .turbo"
+  },
+  "dependencies": {
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.3.0"
+  }
+}

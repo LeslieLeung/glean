@@ -1,0 +1,19 @@
+[project]
+name = "glean-rss"
+version = "0.1.0"
+description = "Glean RSS Processing"
+requires-python = ">=3.11"
+
+dependencies = [
+    "feedparser>=6.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["glean_rss"]

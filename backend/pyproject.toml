@@ -1,0 +1,57 @@
+[project]
+name = "glean-backend"
+version = "0.1.0"
+description = "Glean Backend - Personal Knowledge Management Tool"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "AGPL-3.0" }
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.0",
+    "pyright>=1.1.350",
+]
+
+[tool.uv.workspace]
+members = [
+    "apps/api",
+    "apps/worker",
+    "packages/database",
+    "packages/core",
+    "packages/rss",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["glean_api", "glean_worker", "glean_database", "glean_core", "glean_rss"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["apps/*/tests", "packages/*/tests"]
+addopts = "-v --cov --cov-report=term-missing"

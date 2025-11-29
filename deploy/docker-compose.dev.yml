@@ -1,0 +1,46 @@
+# Development environment configuration
+# Usage: docker compose -f deploy/docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: glean-dev-postgres
+    environment:
+      POSTGRES_DB: glean
+      POSTGRES_USER: glean
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glean"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-dev-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: glean-dev-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-dev-network
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  glean-dev-network:
+    driver: bridge
