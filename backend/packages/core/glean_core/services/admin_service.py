@@ -147,7 +147,7 @@ class AdminService:
         await self.session.refresh(user)
         return user
 
-    async def get_dashboard_stats(self) -> dict:
+    async def get_dashboard_stats(self) -> dict[str, int]:
         """
         Get dashboard statistics.
 

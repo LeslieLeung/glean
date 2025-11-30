@@ -43,7 +43,7 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
         if "xml" in content_type or "rss" in content_type or "atom" in content_type:
             try:
                 feed = await parse_feed(response.text, url)
-                return url, feed.title
+                return url, str(feed.title)
             except ValueError:
                 pass
 
@@ -58,20 +58,22 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
             )
 
             for link in feed_links:
-                feed_url = link.get("href")
-                if feed_url:
+                href = link.get("href")
+                if href:
+                    # Convert to string in case BeautifulSoup returns a list
+                    feed_url_str = str(href) if not isinstance(href, str) else href
                     # Make absolute URL
-                    if not feed_url.startswith("http"):
+                    if not feed_url_str.startswith("http"):
                         from urllib.parse import urljoin
 
-                        feed_url = urljoin(url, feed_url)
+                        feed_url_str = urljoin(url, feed_url_str)
 
                     # Try to parse this feed
                     try:
-                        feed_response = await client.get(feed_url)
+                        feed_response = await client.get(feed_url_str)
                         feed_response.raise_for_status()
-                        feed = await parse_feed(feed_response.text, feed_url)
-                        return feed_url, feed.title
+                        feed = await parse_feed(feed_response.text, feed_url_str)
+                        return feed_url_str, str(feed.title)
                     except (httpx.HTTPError, ValueError):
                         continue
 

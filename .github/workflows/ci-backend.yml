@@ -32,7 +32,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --all-packages
 
       - name: Run Ruff check
         run: uv run ruff check .
@@ -70,7 +70,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --all-packages
 
       - name: Run tests
         env:

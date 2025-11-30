@@ -51,6 +51,22 @@ pythonVersion = "3.11"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+# Include workspace packages
+extraPaths = [
+    "apps/api",
+    "apps/worker",
+    "packages/database",
+    "packages/core",
+    "packages/rss",
+]
+# Disable missing type stubs for local workspace packages
+reportMissingTypeStubs = false
+# Relax strict rules for third-party libraries with incomplete stubs
+reportUnknownMemberType = "warning"
+reportUnknownVariableType = "warning"
+reportUnknownArgumentType = "warning"
+# Exclude test files and virtual environment from strict checks
+exclude = ["**/tests/**", ".venv", "**/__pycache__"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

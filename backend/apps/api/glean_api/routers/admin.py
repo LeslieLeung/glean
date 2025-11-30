@@ -58,7 +58,8 @@ async def admin_login(
     now = datetime.now(UTC)
     expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
 
-    role_value = admin.role if isinstance(admin.role, str) else admin.role.value
+    # AdminRole is a str Enum, so .value gives us the string representation
+    role_value = admin.role.value
 
     payload = {
         "sub": admin.id,

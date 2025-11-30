@@ -5,6 +5,7 @@ Background tasks for fetching and parsing RSS feeds.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from arq import Retry
 from sqlalchemy import select
@@ -14,7 +15,7 @@ from glean_database.session import get_session
 from glean_rss import fetch_feed, parse_feed
 
 
-async def fetch_feed_task(ctx: dict, feed_id: str) -> dict[str, str | int]:
+async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | int]:
     """
     Fetch and parse a single RSS feed.
 
@@ -76,9 +77,9 @@ async def fetch_feed_task(ctx: dict, feed_id: str) -> dict[str, str | int]:
             feed.last_fetched_at = datetime.now(UTC)
 
             # Update cache headers
-            if "etag" in cache_headers:
+            if cache_headers and "etag" in cache_headers:
                 feed.etag = cache_headers["etag"]
-            if "last-modified" in cache_headers:
+            if cache_headers and "last-modified" in cache_headers:
                 feed.last_modified = cache_headers["last-modified"]
 
             # Process entries
@@ -167,8 +168,11 @@ async def fetch_feed_task(ctx: dict, feed_id: str) -> dict[str, str | int]:
             print("[fetch_feed_task] Retrying task in 5 minutes...")
             raise Retry(defer=timedelta(minutes=5)) from None
 
+    # This should never be reached since get_session() always yields
+    return {"status": "error", "message": "No database session"}
 
-async def fetch_all_feeds(ctx: dict) -> dict[str, int]:
+
+async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
     """
     Fetch all active feeds.
 
@@ -199,8 +203,11 @@ async def fetch_all_feeds(ctx: dict) -> dict[str, int]:
         print(f"[fetch_all_feeds] Queued {len(feeds)} feeds for fetching")
         return {"feeds_queued": len(feeds)}
 
+    # This should never be reached since get_session() always yields
+    return {"feeds_queued": 0}
 
-async def scheduled_fetch(ctx: dict) -> dict[str, int]:
+
+async def scheduled_fetch(ctx: dict[str, Any]) -> dict[str, int]:
     """
     Scheduled task to fetch all feeds (runs every 15 minutes).
 

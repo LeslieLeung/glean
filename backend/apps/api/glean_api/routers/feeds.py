@@ -193,7 +193,8 @@ async def refresh_feed(
         subscription = await feed_service.get_subscription(subscription_id, current_user.id)
         # Enqueue feed fetch task
         job = await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
-        return {"status": "queued", "job_id": job.job_id, "feed_id": subscription.feed.id}
+        job_id = job.job_id if job else "unknown"
+        return {"status": "queued", "job_id": job_id, "feed_id": subscription.feed.id}
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 

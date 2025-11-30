@@ -5,6 +5,8 @@ This module configures the arq worker with task functions,
 cron jobs, and Redis connection settings.
 """
 
+from typing import Any
+
 from arq import cron
 from arq.connections import RedisSettings
 
@@ -14,7 +16,7 @@ from .config import settings
 from .tasks import feed_fetcher
 
 
-async def startup(ctx: dict) -> None:
+async def startup(ctx: dict[str, Any]) -> None:
     """
     Worker startup handler.
 
@@ -39,7 +41,7 @@ async def startup(ctx: dict) -> None:
     print("=" * 60)
 
 
-async def shutdown(ctx: dict) -> None:
+async def shutdown(ctx: dict[str, Any]) -> None:
     """
     Worker shutdown handler.
 

@@ -95,24 +95,25 @@ class EntryService:
         rows = result.all()
 
         # Build response items
-        items = []
+        items: list[EntryResponse] = []
         for entry, user_entry in rows:
-            entry_dict = {
-                "id": entry.id,
-                "feed_id": entry.feed_id,
-                "url": entry.url,
-                "title": entry.title,
-                "author": entry.author,
-                "content": entry.content,
-                "summary": entry.summary,
-                "published_at": entry.published_at,
-                "created_at": entry.created_at,
-                "is_read": user_entry.is_read if user_entry else False,
-                "is_liked": user_entry.is_liked if user_entry else None,
-                "read_later": user_entry.read_later if user_entry else False,
-                "read_at": user_entry.read_at if user_entry else None,
-            }
-            items.append(EntryResponse(**entry_dict))
+            items.append(
+                EntryResponse(
+                    id=str(entry.id),
+                    feed_id=str(entry.feed_id),
+                    url=str(entry.url),
+                    title=str(entry.title),
+                    author=entry.author,
+                    content=entry.content,
+                    summary=entry.summary,
+                    published_at=entry.published_at,
+                    created_at=entry.created_at,
+                    is_read=bool(user_entry.is_read) if user_entry else False,
+                    is_liked=user_entry.is_liked if user_entry else None,
+                    read_later=bool(user_entry.read_later) if user_entry else False,
+                    read_at=user_entry.read_at if user_entry else None,
+                )
+            )
 
         has_more = total > page * per_page
 
@@ -158,23 +159,21 @@ class EntryService:
         if not sub_result.scalar_one_or_none():
             raise ValueError("Not subscribed to this feed")
 
-        entry_dict = {
-            "id": entry.id,
-            "feed_id": entry.feed_id,
-            "url": entry.url,
-            "title": entry.title,
-            "author": entry.author,
-            "content": entry.content,
-            "summary": entry.summary,
-            "published_at": entry.published_at,
-            "created_at": entry.created_at,
-            "is_read": user_entry.is_read if user_entry else False,
-            "is_liked": user_entry.is_liked if user_entry else None,
-            "read_later": user_entry.read_later if user_entry else False,
-            "read_at": user_entry.read_at if user_entry else None,
-        }
-
-        return EntryResponse(**entry_dict)
+        return EntryResponse(
+            id=str(entry.id),
+            feed_id=str(entry.feed_id),
+            url=str(entry.url),
+            title=str(entry.title),
+            author=entry.author,
+            content=entry.content,
+            summary=entry.summary,
+            published_at=entry.published_at,
+            created_at=entry.created_at,
+            is_read=bool(user_entry.is_read) if user_entry else False,
+            is_liked=user_entry.is_liked if user_entry else None,
+            read_later=bool(user_entry.read_later) if user_entry else False,
+            read_at=user_entry.read_at if user_entry else None,
+        )
 
     async def update_entry_state(
         self, entry_id: str, user_id: str, update: UpdateEntryStateRequest

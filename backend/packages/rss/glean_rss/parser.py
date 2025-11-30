@@ -40,6 +40,13 @@ def _get_favicon_url(site_url: str | None) -> str | None:
 class ParsedFeed:
     """Parsed feed metadata."""
 
+    title: str
+    description: str
+    site_url: str
+    language: str | None
+    icon_url: str | None
+    entries: list["ParsedEntry"]
+
     def __init__(self, data: FeedParserDict):
         """
         Initialize from feedparser data.
@@ -47,18 +54,20 @@ class ParsedFeed:
         Args:
             data: Parsed feed data from feedparser.
         """
-        feed_info = data.get("feed", {})
-        self.title = feed_info.get("title", "")
-        self.description = feed_info.get("description", "")
-        self.site_url = feed_info.get("link", "")
+        # feedparser returns a FeedParserDict for the "feed" key
+        feed_info: dict[str, Any] = dict(data.get("feed", {}))  # type: ignore[arg-type]
+        self.title = str(feed_info.get("title", ""))
+        self.description = str(feed_info.get("description", ""))
+        self.site_url = str(feed_info.get("link", ""))
         self.language = feed_info.get("language")
 
         # Try to get icon from feed, fallback to favicon
-        self.icon_url = (
-            feed_info.get("icon") or feed_info.get("logo") or _get_favicon_url(self.site_url)
-        )
+        icon = feed_info.get("icon") or feed_info.get("logo")
+        self.icon_url = str(icon) if icon else _get_favicon_url(self.site_url)
 
-        self.entries = [ParsedEntry(entry) for entry in data.get("entries", [])]
+        # Get entries with proper type handling
+        entries_data: list[dict[str, Any]] = list(data.get("entries", []))  # type: ignore[arg-type]
+        self.entries = [ParsedEntry(entry) for entry in entries_data]
 
 
 class ParsedEntry:

@@ -190,7 +190,8 @@ async def get_current_admin(
         )
 
     # Build response with explicit field values to avoid lazy loading issues
-    role_value = admin.role if isinstance(admin.role, str) else admin.role.value
+    # AdminRole is a str Enum, so .value gives us the string representation
+    role_value = admin.role.value
 
     return AdminUserResponse(
         id=admin.id,

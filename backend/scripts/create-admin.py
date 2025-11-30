@@ -62,7 +62,7 @@ async def create_admin(username: str, password: str, role: str) -> bool:
             )
             print("✅ Admin user created successfully!")
             print(f"   Username: {admin.username}")
-            print(f"   Role: {admin.role if isinstance(admin.role, str) else admin.role.value}")
+            print(f"   Role: {admin.role.value}")
             print(f"   ID: {admin.id}")
             return True
         except Exception as e:
