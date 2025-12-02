@@ -35,7 +35,7 @@ A self-hosted RSS reader and personal knowledge management tool.
 
 ```bash
 # Download and start Glean
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 
 # Access at http://localhost
@@ -49,7 +49,7 @@ For additional admin features (user management, statistics):
 
 ```bash
 # Download full deployment config
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
 
 # Create admin account on first startup
 CREATE_ADMIN=true docker compose up -d
@@ -77,7 +77,7 @@ docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MyS
 Copy `.env.example` to `.env` and customize:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
 ```
 
 Key settings:
@@ -124,7 +124,7 @@ Quick start:
 
 ```bash
 # Clone and setup
-git clone https://github.com/LesliLeung/glean.git
+git clone https://github.com/LeslieLeung/glean.git
 cd glean
 npm install
 

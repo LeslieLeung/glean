@@ -35,7 +35,7 @@
 
 ```bash
 # 下载并启动 Glean
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 
 # 访问 http://localhost
@@ -49,7 +49,7 @@ docker compose up -d
 
 ```bash
 # 下载完整部署配置
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
 
 # 首次启动时创建管理员账号
 CREATE_ADMIN=true docker compose up -d
@@ -77,7 +77,7 @@ docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MyS
 复制 `.env.example` 为 `.env` 并自定义：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
 ```
 
 主要配置项：
@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/LesliLeung/glean/main/.env.example 
 
 ```bash
 # 克隆并配置
-git clone https://github.com/LesliLeung/glean.git
+git clone https://github.com/LeslieLeung/glean.git
 cd glean
 npm install
 
