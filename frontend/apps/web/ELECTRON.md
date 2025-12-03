@@ -2,6 +2,26 @@
 
 This document describes how to build and distribute Glean as a desktop application using Electron.
 
+## ⚠️ Important: Web vs Electron Modes
+
+This project supports **two separate deployment modes**:
+
+### Web Mode (Default)
+- Standard web application
+- Runs in browser
+- Uses Vite dev server with API proxy
+- Commands: `pnpm dev`, `pnpm build`
+- **No Electron dependencies required**
+
+### Electron Mode (Optional)
+- Desktop application
+- Standalone executable
+- Configurable backend URL
+- Commands: `pnpm dev:electron`, `pnpm build:electron`
+- **Requires Electron dependencies**
+
+**The Electron functionality is completely optional and does NOT affect web deployment.**
+
 ## Features
 
 - 🖥️ Cross-platform desktop application (Windows, macOS, Linux)
@@ -9,6 +29,7 @@ This document describes how to build and distribute Glean as a desktop applicati
 - 🔒 Secure IPC communication between main and renderer processes
 - 💾 Persistent settings storage using electron-store
 - 🔄 Hot reload in development mode
+- 🌐 **Compatible with web deployment** - web mode unchanged
 
 ## Architecture
 
@@ -41,13 +62,55 @@ The Electron app does **NOT** bundle the Python backend. Instead:
    - On a remote server
    - As a separate service
 
-## Development
+## Web Deployment (Unchanged)
+
+### Original Web Mode Still Works
+
+The standard web deployment is **completely unaffected** by Electron integration:
+
+```bash
+# Web development (unchanged)
+pnpm dev          # Starts on http://localhost:3000 with API proxy
+
+# Web production build (unchanged)
+pnpm build        # Outputs to dist/ for web deployment
+
+# Preview web build
+pnpm preview      # Serves production build locally
+```
+
+### How It Works
+
+- Vite configuration detects mode automatically
+- Default mode (`pnpm dev`, `pnpm build`) runs in **web mode**
+- Electron plugin **only activates** when `--mode electron` is specified
+- API client automatically uses correct backend URL based on environment
+  - **Web mode**: Uses `/api` proxy (configured in vite.config.ts)
+  - **Electron mode**: Uses configured URL from Settings
+
+### Deployment Verification
+
+To verify web deployment is unaffected:
+
+```bash
+# Build for web
+pnpm build
+
+# Check output
+ls dist/          # Should contain index.html, assets/, etc.
+
+# Test locally
+pnpm preview      # Should work exactly as before
+```
+
+## Electron Development
 
 ### Prerequisites
 
 - Node.js 18+
 - pnpm
 - A running Glean backend server
+- Electron dependencies (optional for web mode)
 
 ### Install Dependencies
 

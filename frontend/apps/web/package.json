@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:electron": "vite --mode electron",
     "build": "tsc && vite build",
-    "build:electron": "tsc && vite build && electron-builder",
+    "build:electron": "tsc && vite build --mode electron && electron-builder",
     "build:win": "npm run build:electron -- --win",
     "build:mac": "npm run build:electron -- --mac",
     "build:linux": "npm run build:electron -- --linux",
