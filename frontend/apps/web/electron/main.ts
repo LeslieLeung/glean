@@ -36,12 +36,12 @@ let configWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-// 创建应用菜单
+// Create application menu
 function createApplicationMenu() {
   const isMac = process.platform === 'darwin'
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    // macOS 专用的应用菜单
+    // macOS-specific app menu
     ...(isMac
       ? [
           {
@@ -66,7 +66,7 @@ function createApplicationMenu() {
           }
         ]
       : []),
-    // 文件菜单
+    // File menu
     {
       label: 'File',
       submenu: [
@@ -83,7 +83,7 @@ function createApplicationMenu() {
         isMac ? { role: 'close' as const } : { role: 'quit' as const }
       ]
     },
-    // 编辑菜单
+    // Edit menu
     {
       label: 'Edit',
       submenu: [
@@ -102,7 +102,7 @@ function createApplicationMenu() {
           : [{ role: 'delete' as const }, { type: 'separator' as const }, { role: 'selectAll' as const }])
       ]
     },
-    // 视图菜单
+    // View menu
     {
       label: 'View',
       submenu: [
@@ -117,7 +117,7 @@ function createApplicationMenu() {
         { role: 'togglefullscreen' as const }
       ]
     },
-    // 窗口菜单
+    // Window menu
     {
       label: 'Window',
       submenu: [
@@ -134,7 +134,7 @@ function createApplicationMenu() {
   Menu.setApplicationMenu(menu)
 }
 
-// 检查后端连接
+// Check backend connection
 async function checkBackendConnection(apiUrl: string): Promise<boolean> {
   try {
     const controller = new AbortController()
@@ -152,11 +152,11 @@ async function checkBackendConnection(apiUrl: string): Promise<boolean> {
   }
 }
 
-// 创建配置窗口
+// Create configuration window
 function createConfigWindow() {
   console.log('[Main] Creating config window...')
 
-  // 如果配置窗口已经打开，则聚焦它
+  // If config window is already open, focus it
   if (configWindow) {
     configWindow.focus()
     return
@@ -179,21 +179,21 @@ function createConfigWindow() {
     },
     title: 'Glean - Backend Configuration',
     backgroundColor: '#1a1a1a',
-    show: false, // 先不显示，等加载完后再显示以实现淡入效果
+    show: false, // Don't show initially, wait for fade-in animation after loading
     center: true,
-    opacity: 0 // 初始透明度为 0
+    opacity: 0 // Initial opacity is 0
   })
 
-  // 加载配置页面
+  // Load configuration page
   configWindow.loadFile(path.join(__dirname, '../electron/config.html'))
 
-  // 页面加载完成后，使用淡入动画显示窗口
+  // Show window with fade-in animation after page loads
   configWindow.once('ready-to-show', () => {
     if (!configWindow) return
 
     configWindow.show()
 
-    // 淡入动画 (从 0 到 1，持续 300ms)
+    // Fade-in animation (from 0 to 1, lasting 300ms)
     let opacity = 0
     const fadeIn = setInterval(() => {
       opacity += 0.05
@@ -238,7 +238,7 @@ function createWindow() {
     backgroundColor: '#1a1a1a'
   })
 
-  // 添加超时保护：如果 5 秒后窗口还没显示，强制显示
+  // Add timeout protection: force show window if not shown after 5 seconds
   const showTimeout = setTimeout(() => {
     if (mainWindow && !mainWindow.isVisible()) {
       console.warn('[Main] Window did not show after 5s, forcing show...')
@@ -246,49 +246,49 @@ function createWindow() {
     }
   }, 5000)
 
-  // 窗口准备好后显示，避免闪烁
+  // Show window when ready to avoid flickering
   mainWindow.once('ready-to-show', () => {
     console.log('[Main] Window ready to show')
     clearTimeout(showTimeout)
     mainWindow?.show()
   })
 
-  // 监听加载失败
+  // Listen for load failures
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[Main] Failed to load:', validatedURL)
     console.error('[Main] Error:', errorCode, errorDescription)
-    // 即使加载失败也显示窗口，这样用户可以看到错误
+    // Show window even on load failure so user can see the error
     if (mainWindow && !mainWindow.isVisible()) {
       mainWindow.show()
     }
   })
 
-  // 监听加载成功
+  // Listen for load success
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[Main] Page loaded successfully')
   })
 
-  // 加载应用
+  // Load application
   const loadUrl = isDev ? 'http://localhost:3000' : path.join(__dirname, '../dist/index.html')
   console.log('[Main] Loading URL:', loadUrl)
 
   if (isDev) {
-    // 开发模式：加载 Vite 开发服务器
+    // Development mode: load Vite dev server
     mainWindow.loadURL('http://localhost:3000').catch(err => {
       console.error('[Main] Failed to load dev server:', err)
-      // 显示错误信息给用户
+      // Show error to user
       mainWindow?.show()
     })
     mainWindow.webContents.openDevTools()
   } else {
-    // 生产模式：加载打包后的文件
+    // Production mode: load built files
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html')).catch(err => {
       console.error('[Main] Failed to load file:', err)
       mainWindow?.show()
     })
   }
 
-  // 在外部浏览器打开链接
+  // Open links in external browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url)
@@ -302,18 +302,18 @@ function createWindow() {
   })
 }
 
-// 应用准备就绪
+// App ready
 app.whenReady().then(async () => {
   console.log('[Main] App ready, checking backend connection...')
 
-  // 创建应用菜单
+  // Create application menu
   createApplicationMenu()
 
-  // 获取配置的 API URL
+  // Get configured API URL
   const apiUrl = store.get('apiUrl')
   console.log('[Main] Configured API URL:', apiUrl)
 
-  // 检查后端连接
+  // Check backend connection
   const isConnected = await checkBackendConnection(apiUrl)
 
   if (isConnected) {
@@ -325,7 +325,7 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', () => {
-    // macOS: 点击 dock 图标时重新创建窗口
+    // macOS: Recreate window when dock icon is clicked
     const windows = BrowserWindow.getAllWindows()
     if (windows.length === 0) {
       createWindow()
@@ -333,7 +333,7 @@ app.whenReady().then(async () => {
   })
 })
 
-// 所有窗口关闭时退出（macOS 除外）
+// Exit when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -366,23 +366,23 @@ ipcMain.handle('get-platform', () => {
   }
 })
 
-// IPC 通信处理：打开主窗口（从配置窗口调用）
+// IPC handler: open main window (called from config window)
 ipcMain.on('open-main-window', () => {
   console.log('[Main] Received request to open main window')
 
-  // 关闭配置窗口
+  // Close config window
   if (configWindow) {
     configWindow.close()
     configWindow = null
   }
 
-  // 打开主窗口
+  // Open main window
   if (!mainWindow) {
     createWindow()
   }
 })
 
-// IPC 通信处理：打开配置窗口（从主窗口或菜单调用）
+// IPC handler: open config window (called from main window or menu)
 ipcMain.on('open-config-window', () => {
   console.log('[Main] Received request to open config window')
   createConfigWindow()

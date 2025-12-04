@@ -20,11 +20,11 @@
       align-items: center;
       min-height: 100vh;
       padding: 20px;
-      padding-top: 60px; /* macOS 窗口控制按钮区域 */
-      -webkit-app-region: drag; /* 允许拖拽窗口 */
+      padding-top: 60px; /* macOS window control button area */
+      -webkit-app-region: drag; /* Allow window dragging */
     }
 
-    /* 禁用交互元素的拖拽 */
+    /* Disable dragging for interactive elements */
     input, button, a {
       -webkit-app-region: no-drag;
     }
@@ -239,7 +239,7 @@
       animation: slideUp 300ms ease-out 100ms backwards;
     }
 
-    /* 按钮悬停动画 */
+    /* Button hover animation */
     .btn-primary {
       position: relative;
       overflow: hidden;
@@ -268,7 +268,7 @@
       z-index: 1;
     }
 
-    /* 状态消息动画 */
+    /* Status message animation */
     .status {
       animation: slideUp 300ms ease-out;
     }
