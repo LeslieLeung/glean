@@ -3,13 +3,26 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
 
-// ES 模块中的 __dirname polyfill
+// __dirname polyfill for ES modules
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// 配置存储
+// Configuration store
 interface StoreType {
   apiUrl: string
+}
+
+/**
+ * Validate API URL format and protocol
+ * Only allows HTTP and HTTPS protocols
+ */
+function isValidApiUrl(url: string): boolean {
+  try {
+    const parsedUrl = new URL(url)
+    return ['http:', 'https:'].includes(parsedUrl.protocol)
+  } catch {
+    return false
+  }
 }
 
 const store = new Store<StoreType>({
@@ -327,18 +340,23 @@ app.on('window-all-closed', () => {
   }
 })
 
-// IPC 通信处理：获取 API URL
+// IPC handler: get API URL
 ipcMain.handle('get-api-url', () => {
   return store.get('apiUrl')
 })
 
-// IPC 通信处理：设置 API URL
+// IPC handler: set API URL with validation
 ipcMain.handle('set-api-url', (_event, url: string) => {
+  if (!isValidApiUrl(url)) {
+    console.error(`[Main] Invalid API URL: ${url}. Only HTTP and HTTPS protocols are allowed.`)
+    return false
+  }
+
   store.set('apiUrl', url)
   return true
 })
 
-// IPC 通信处理：获取平台信息
+// IPC handler: get platform information
 ipcMain.handle('get-platform', () => {
   return {
     platform: process.platform,

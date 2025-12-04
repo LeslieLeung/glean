@@ -19,10 +19,20 @@ export class ApiClient {
     resolve: (token: string) => void
     reject: (error: unknown) => void
   }> = []
+  private cachedApiUrl: string | null = null
+  private isElectron: boolean
 
   constructor(config: { baseURL?: string; timeout?: number } = {}) {
+    // Check if running in Electron environment
+    this.isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
     // Always use /api as base URL (works for both web and Electron)
     const baseURL = config.baseURL || '/api'
+
+    if (this.isElectron) {
+      // Initialize cache asynchronously
+      this.initializeApiUrlCache()
+    }
 
     this.client = axios.create({
       baseURL,
@@ -33,17 +43,13 @@ export class ApiClient {
     // Request interceptor: Attach auth token and handle Electron API URL
     this.client.interceptors.request.use(async (config) => {
       // In Electron, modify baseURL to include the backend server URL
-      if (typeof window !== 'undefined' && (window as any).electronAPI) {
-        try {
-          const apiUrl = await (window as any).electronAPI.getApiUrl()
-          if (apiUrl) {
-            // apiUrl is like "http://localhost:8000"
-            // baseURL is like "/api"
-            // Result should be "http://localhost:8000/api"
-            config.baseURL = `${apiUrl}${config.baseURL}`
-          }
-        } catch (error) {
-          console.error('Failed to get API URL from Electron:', error)
+      if (this.isElectron) {
+        const apiUrl = await this.getApiUrl()
+        if (apiUrl) {
+          // apiUrl is like "http://localhost:8000"
+          // baseURL is like "/api"
+          // Result should be "http://localhost:8000/api"
+          config.baseURL = `${apiUrl}${config.baseURL}`
         }
       }
 
@@ -124,6 +130,41 @@ export class ApiClient {
         }
       }
     )
+  }
+
+  /**
+   * Initialize API URL cache for Electron environment
+   */
+  private async initializeApiUrlCache(): Promise<void> {
+    if (!this.isElectron || !window.electronAPI) return
+
+    try {
+      this.cachedApiUrl = await window.electronAPI.getApiUrl()
+    } catch (error) {
+      console.error('Failed to initialize API URL cache:', error)
+    }
+  }
+
+  /**
+   * Get API URL with caching for performance
+   * Cache is invalidated on page reload (when settings change)
+   */
+  private async getApiUrl(): Promise<string> {
+    if (this.cachedApiUrl) {
+      return this.cachedApiUrl
+    }
+
+    if (!window.electronAPI) {
+      return ''
+    }
+
+    try {
+      this.cachedApiUrl = await window.electronAPI.getApiUrl()
+      return this.cachedApiUrl
+    } catch (error) {
+      console.error('Failed to get API URL from Electron:', error)
+      return ''
+    }
   }
 
   /**
