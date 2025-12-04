@@ -11,6 +11,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 获取平台信息
   getPlatform: () => ipcRenderer.invoke('get-platform'),
 
+  // Token management
+  getAccessToken: () => ipcRenderer.invoke('get-access-token'),
+  getRefreshToken: () => ipcRenderer.invoke('get-refresh-token'),
+  setAccessToken: (token: string | null) => ipcRenderer.invoke('set-access-token', token),
+  setRefreshToken: (token: string | null) => ipcRenderer.invoke('set-refresh-token', token),
+  clearTokens: () => ipcRenderer.invoke('clear-tokens'),
+
   // 检查是否在 Electron 环境中
   isElectron: true
 })
@@ -25,6 +32,11 @@ export interface ElectronAPI {
     version: string
     name: string
   }>
+  getAccessToken: () => Promise<string | null>
+  getRefreshToken: () => Promise<string | null>
+  setAccessToken: (token: string | null) => Promise<boolean>
+  setRefreshToken: (token: string | null) => Promise<boolean>
+  clearTokens: () => Promise<boolean>
   isElectron: boolean
 }
 

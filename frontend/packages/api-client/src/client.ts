@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
+import { tokenStorage } from './tokenStorage'
 
 /**
  * API client for communicating with the Glean backend.
@@ -59,7 +60,7 @@ export class ApiClient {
         }
       }
 
-      const token = localStorage.getItem('access_token')
+      const token = await tokenStorage.getAccessToken()
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
@@ -79,14 +80,14 @@ export class ApiClient {
 
         // Don't try to refresh if this is already a refresh request or auth request
         if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
-          this.clearTokensAndRedirect()
+          await this.clearTokensAndRedirect()
           return Promise.reject(error)
         }
 
         // Check if we have a refresh token
-        const refreshToken = localStorage.getItem('refresh_token')
+        const refreshToken = await tokenStorage.getRefreshToken()
         if (!refreshToken) {
-          this.clearTokensAndRedirect()
+          await this.clearTokensAndRedirect()
           return Promise.reject(error)
         }
 
@@ -115,8 +116,8 @@ export class ApiClient {
           const { access_token, refresh_token: newRefreshToken } = response.data
 
           // Save new tokens
-          localStorage.setItem('access_token', access_token)
-          localStorage.setItem('refresh_token', newRefreshToken)
+          await tokenStorage.setAccessToken(access_token)
+          await tokenStorage.setRefreshToken(newRefreshToken)
 
           // Update authorization header
           originalRequest.headers.Authorization = `Bearer ${access_token}`
@@ -129,7 +130,7 @@ export class ApiClient {
         } catch (refreshError) {
           // Refresh failed, clear tokens and redirect to login
           this.processQueue(refreshError, null)
-          this.clearTokensAndRedirect()
+          await this.clearTokensAndRedirect()
           return Promise.reject(refreshError)
         } finally {
           this.isRefreshing = false
@@ -218,9 +219,8 @@ export class ApiClient {
   /**
    * Clear tokens and redirect to login page.
    */
-  private clearTokensAndRedirect(): void {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+  private async clearTokensAndRedirect(): Promise<void> {
+    await tokenStorage.clearTokens()
     // Only redirect if not already on login page
     if (!window.location.pathname.includes('/login')) {
       window.location.href = '/login'

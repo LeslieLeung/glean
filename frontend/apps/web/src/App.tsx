@@ -2,9 +2,10 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { Rss } from 'lucide-react'
+import { useAuthStore } from './stores/authStore'
 
 // Lazy load pages
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const RegisterPage = lazy(() => import('./pages/RegisterPage'))
@@ -39,6 +40,21 @@ function LoadingSpinner() {
  * Defines the main routing structure for the web application.
  */
 function App() {
+  const { loadUser } = useAuthStore()
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  useEffect(() => {
+    // Initialize authentication state on app startup
+    loadUser().finally(() => {
+      setIsInitialized(true)
+    })
+  }, [loadUser])
+
+  // Show loading spinner while initializing authentication
+  if (!isInitialized) {
+    return <LoadingSpinner />
+  }
+
   return (
     <Suspense fallback={<LoadingSpinner />}>
       <Routes>

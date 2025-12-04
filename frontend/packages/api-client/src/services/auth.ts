@@ -8,6 +8,7 @@ import type {
   UserUpdateRequest,
 } from '@glean/types'
 import { ApiClient } from '../client'
+import { tokenStorage } from '../tokenStorage'
 
 /**
  * Authentication API service.
@@ -43,8 +44,7 @@ export class AuthService {
    */
   async logout(): Promise<void> {
     await this.client.post<{ message: string }>('/auth/logout')
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+    await tokenStorage.clearTokens()
   }
 
   /**
@@ -62,25 +62,24 @@ export class AuthService {
   }
 
   /**
-   * Save authentication tokens to local storage.
+   * Save authentication tokens to storage.
    */
-  saveTokens(tokens: TokenResponse): void {
-    localStorage.setItem('access_token', tokens.access_token)
-    localStorage.setItem('refresh_token', tokens.refresh_token)
+  async saveTokens(tokens: TokenResponse): Promise<void> {
+    await tokenStorage.setAccessToken(tokens.access_token)
+    await tokenStorage.setRefreshToken(tokens.refresh_token)
   }
 
   /**
-   * Clear authentication tokens from local storage.
+   * Clear authentication tokens from storage.
    */
-  clearTokens(): void {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+  async clearTokens(): Promise<void> {
+    await tokenStorage.clearTokens()
   }
 
   /**
    * Check if user is authenticated.
    */
-  isAuthenticated(): boolean {
-    return !!localStorage.getItem('access_token')
+  async isAuthenticated(): Promise<boolean> {
+    return await tokenStorage.isAuthenticated()
   }
 }

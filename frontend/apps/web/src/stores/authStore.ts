@@ -26,7 +26,7 @@ interface AuthState {
  */
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isAuthenticated: authService.isAuthenticated(),
+  isAuthenticated: false,
   isLoading: false,
   error: null,
 
@@ -84,7 +84,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   loadUser: async () => {
-    if (!authService.isAuthenticated()) {
+    const isAuthenticated = await authService.isAuthenticated()
+    if (!isAuthenticated) {
       set({ isAuthenticated: false, user: null })
       return
     }
@@ -98,7 +99,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
       })
     } catch (error) {
-      authService.clearTokens()
+      await authService.clearTokens()
       set({
         user: null,
         isAuthenticated: false,
