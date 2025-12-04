@@ -10,6 +10,11 @@ declare global {
         version: string
         name: string
       }>
+      getAccessToken: () => Promise<string | null>
+      getRefreshToken: () => Promise<string | null>
+      setAccessToken: (token: string | null) => Promise<boolean>
+      setRefreshToken: (token: string | null) => Promise<boolean>
+      clearTokens: () => Promise<boolean>
       isElectron: boolean
     }
   }

@@ -10,6 +10,7 @@ export { EntryService } from './services/entries'
 export { FolderService } from './services/folders'
 export { TagService } from './services/tags'
 export { BookmarkService, type BookmarkListParams } from './services/bookmarks'
+export { tokenStorage } from './tokenStorage'
 
 // Create service instances
 import { apiClient } from './client'

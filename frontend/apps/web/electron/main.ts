@@ -10,6 +10,8 @@ const __dirname = path.dirname(__filename)
 // Configuration store
 interface StoreType {
   apiUrl: string
+  accessToken?: string
+  refreshToken?: string
 }
 
 /**
@@ -386,4 +388,41 @@ ipcMain.on('open-main-window', () => {
 ipcMain.on('open-config-window', () => {
   console.log('[Main] Received request to open config window')
   createConfigWindow()
+})
+
+// IPC handler: get access token
+ipcMain.handle('get-access-token', () => {
+  return store.get('accessToken') || null
+})
+
+// IPC handler: get refresh token
+ipcMain.handle('get-refresh-token', () => {
+  return store.get('refreshToken') || null
+})
+
+// IPC handler: set access token
+ipcMain.handle('set-access-token', (_event, token: string | null) => {
+  if (token === null) {
+    store.delete('accessToken')
+  } else {
+    store.set('accessToken', token)
+  }
+  return true
+})
+
+// IPC handler: set refresh token
+ipcMain.handle('set-refresh-token', (_event, token: string | null) => {
+  if (token === null) {
+    store.delete('refreshToken')
+  } else {
+    store.set('refreshToken', token)
+  }
+  return true
+})
+
+// IPC handler: clear all tokens
+ipcMain.handle('clear-tokens', () => {
+  store.delete('accessToken')
+  store.delete('refreshToken')
+  return true
 })
