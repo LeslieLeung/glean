@@ -13,19 +13,24 @@ command -v npm >/dev/null 2>&1 || { echo "npm is required but not installed. Abo
 # Setup backend
 echo "Setting up backend..."
 cd backend
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
 fi
-source venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-deactivate
+
+echo "Syncing dependencies with uv..."
+uv sync --all-packages
 cd ..
 
 # Setup frontend
 echo "Setting up frontend..."
 cd frontend
-npm install
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "Installing pnpm..."
+    npm install -g pnpm
+fi
+pnpm install
 cd ..
 
 # Setup environment file
