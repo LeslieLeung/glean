@@ -83,3 +83,12 @@ export {
   MenuSubPopup,
   DropdownMenuSubContent,
 } from './Menu'
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from './Card'
+export { Switch } from './Switch'
