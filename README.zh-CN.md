@@ -2,6 +2,11 @@
 
 **[English](./README.md)** | **[中文](./README.zh-CN.md)**
 
+> [!IMPORTANT]
+> 加入我们的 [Discord](https://discord.gg/KMKC4sRVSJ) 以获取最新动态和获得支持。
+> 
+> 该项目仍在开发中，尚未准备好生产使用。
+
 一个自托管的 RSS 阅读器和个人知识管理工具。
 
 > **Glean**（拾灵）帮助重度信息消费者通过智能 RSS 聚合高效管理阅读。

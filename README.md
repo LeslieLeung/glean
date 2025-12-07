@@ -2,6 +2,11 @@
 
 **[English](./README.md)** | **[中文](./README.zh-CN.md)**
 
+> [!IMPORTANT]
+> Join our [Discord](https://discord.gg/KMKC4sRVSJ) to stay updated on the latest developments and get support.
+> 
+> This project is still in development and is not ready for production use.
+
 A self-hosted RSS reader and personal knowledge management tool.
 
 > **Glean** (拾灵) helps information-heavy consumers efficiently manage their reading through intelligent RSS aggregation.
