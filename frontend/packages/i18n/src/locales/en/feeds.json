@@ -1,0 +1,209 @@
+{
+  "sidebar": {
+    "feeds": "Feeds",
+    "smart": "Smart",
+    "allFeeds": "All Feeds",
+    "bookmarks": "Bookmarks",
+    "tags": "Tags",
+    "settings": "Settings",
+    "folders": "Folders",
+    "logout": "Sign Out",
+    "unread_one": "{{count}} unread",
+    "unread_other": "{{count}} unread"
+  },
+  "actions": {
+    "addFeed": "Add Feed",
+    "refreshAll": "Refresh All",
+    "importOPML": "Import OPML",
+    "exportOPML": "Export OPML",
+    "createFolder": "Create Folder",
+    "createSubfolder": "Create Subfolder",
+    "renameFolder": "Rename Folder",
+    "deleteFolder": "Delete Folder",
+    "editFeed": "Edit Feed",
+    "unsubscribe": "Unsubscribe",
+    "markAllAsRead": "Mark All as Read",
+    "moveTo": "Move to..."
+  },
+  "dialogs": {
+    "addFeed": {
+      "title": "Add Feed",
+      "url": "Feed URL",
+      "urlPlaceholder": "https://example.com/feed.xml",
+      "customTitle": "Custom Title (Optional)",
+      "folder": "Folder (Optional)",
+      "selectFolder": "Select a folder",
+      "add": "Add Feed",
+      "adding": "Adding..."
+    },
+    "createFolder": {
+      "title": "Create Folder",
+      "name": "Folder Name",
+      "namePlaceholder": "Enter folder name",
+      "create": "Create",
+      "creating": "Creating...",
+      "descriptionFeeds": "Create a new folder to organize your feeds.",
+      "descriptionBookmarks": "Create a new folder to organize your bookmarks.",
+      "subfolderDescriptionFeeds": "Create a new subfolder to further organize your feeds.",
+      "subfolderDescriptionBookmarks": "Create a new subfolder to further organize your bookmarks."
+    },
+    "renameFolder": {
+      "title": "Rename Folder",
+      "name": "New Name",
+      "rename": "Rename",
+      "renaming": "Renaming..."
+    },
+    "deleteFolder": {
+      "title": "Delete Folder?",
+      "message": "Are you sure you want to delete this folder?",
+      "message2": "Feeds in this folder will not be deleted.",
+      "delete": "Delete",
+      "deleting": "Deleting...",
+      "description": "Are you sure you want to delete \"{{name}}\"? Feeds in this folder will be moved to uncategorized."
+    },
+    "editFeed": {
+      "title": "Edit Feed",
+      "customTitle": "Custom Title",
+      "folder": "Folder",
+      "save": "Save",
+      "saving": "Saving...",
+      "description": "Customize how this feed appears in your reader."
+    },
+    "unsubscribe": {
+      "title": "Unsubscribe?",
+      "message": "Are you sure you want to unsubscribe from this feed?",
+      "message2": "All entries will be removed.",
+      "unsubscribe": "Unsubscribe",
+      "unsubscribing": "Unsubscribing..."
+    },
+    "markAllAsRead": {
+      "title": "Mark All as Read?",
+      "message": "Mark all entries in this feed as read?",
+      "confirm": "Mark as Read",
+      "marking": "Marking..."
+    },
+    "deleteTag": {
+      "title": "Delete Tag?",
+      "message": "Are you sure you want to delete this tag?",
+      "delete": "Delete",
+      "deleting": "Deleting...",
+      "description": "Are you sure you want to delete the tag \"{{name}}\"? This will remove it from all associated bookmarks and entries. This action cannot be undone."
+    }
+  },
+  "contextMenu": {
+    "edit": "Edit",
+    "rename": "Rename",
+    "delete": "Delete",
+    "unsubscribe": "Unsubscribe",
+    "markAllAsRead": "Mark All as Read",
+    "refresh": "Refresh",
+    "openInNewTab": "Open in New Tab",
+    "copyLink": "Copy Link"
+  },
+  "states": {
+    "refreshing": "Refreshing...",
+    "importing": "Importing...",
+    "exporting": "Exporting...",
+    "loading": "Loading..."
+  },
+  "empty": {
+    "noFeeds": "No feeds yet",
+    "addFirst": "Add your first feed to get started",
+    "noFolders": "No folders",
+    "createFolder": "Create a folder to organize your feeds"
+  },
+  "subscription": {
+    "count_one": "{{count}} feed",
+    "count_other": "{{count}} feeds"
+  },
+  "common": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "saveChanges": "Save Changes",
+    "delete": "Delete",
+    "edit": "Edit",
+    "rename": "Rename",
+    "refresh": "Refresh",
+    "marking": "Marking...",
+    "saving": "Saving...",
+    "removeFromFolder": "Remove from folder",
+    "emptyFolder": "Empty folder",
+    "createSubfolder": "Create Subfolder",
+    "moveToFolder": "Move to Folder",
+    "noFolder": "No folder",
+    "signOut": "Sign Out",
+    "signOutConfirm": "Sign Out?",
+    "signOutDescription": "Are you sure you want to sign out? You will need to sign in again to access your feeds.",
+    "noTagsYet": "No tags yet",
+    "createTag": "Create Tag",
+    "editTag": "Edit Tag",
+    "createTagDescription": "Create a new tag to organize your bookmarks.",
+    "editTagDescription": "Update the tag name and color.",
+    "tagName": "Name",
+    "tagColor": "Color",
+    "noColor": "No color",
+    "creating": "Creating...",
+    "ok": "OK"
+  },
+  "opml": {
+    "importCompleted": "Import Completed",
+    "importFailed": "Import Failed",
+    "feedsImported": "Feeds imported",
+    "foldersCreated": "Folders created",
+    "failed": "Failed",
+    "total": "Total",
+    "totalFeeds": "Total feeds"
+  },
+  "bookmarks": {
+    "allBookmarks": "All Bookmarks"
+  },
+  "manageSubscriptions": {
+    "subscriptionCount": "{{count}} subscription",
+    "subscriptionCount_plural": "{{count}} subscriptions",
+    "searchPlaceholder": "Search subscriptions...",
+    "selected": "selected",
+    "deleteSelected": "Delete Selected",
+    "feed": "Feed",
+    "status": "Status",
+    "active": "Active",
+    "error": "Error",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "noMatchingSubscriptions": "No matching subscriptions",
+    "noSubscriptionsYet": "No subscriptions yet",
+    "tryDifferentSearch": "Try a different search term",
+    "addFeedsFromSidebar": "Add feeds from the sidebar to get started",
+    "page": "Page",
+    "of": "of",
+    "firstPage": "First page",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "lastPage": "Last page",
+    "deleteConfirm": "Delete {{count}} subscriptions?",
+    "deleteConfirmDescription": "Are you sure you want to unsubscribe from {{count}} feed{{plural}}? This action cannot be undone.",
+    "deleting": "Deleting...",
+    "deleteCount": "Delete {{count}}",
+    "unsubscribeConfirm": "Unsubscribe from feed?",
+    "unsubscribeDescription": "Are you sure you want to unsubscribe from this feed? This action cannot be undone.",
+    "unsubscribe": "Unsubscribe",
+    "feedHasErrors": "Feed has errors",
+    "editSubscription": "Edit Subscription",
+    "editDescription": "Customize how this feed appears in your reader.",
+    "customTitle": "Custom Title",
+    "leaveEmpty": "Leave empty to use the original feed title",
+    "feedUrl": "Feed URL",
+    "rssUrlDescription": "The RSS or Atom feed URL",
+    "folder": "Folder",
+    "searchFolders": "Search folders...",
+    "noFoldersFound": "No folders found",
+    "folderName": "Folder name",
+    "createNewFolder": "Create new folder",
+    "addFeed": "Add Feed",
+    "feedUrlOrWebsite": "Feed URL or Website URL",
+    "feedUrlDescription": "Enter a feed URL or website URL — we'll try to discover the feed automatically",
+    "folderOptional": "Folder (optional)",
+    "adding": "Adding..."
+  }
+}

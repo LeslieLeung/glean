@@ -1,0 +1,55 @@
+{
+  "filters": {
+    "all": "All",
+    "unread": "Unread",
+    "liked": "Liked",
+    "readLater": "Later"
+  },
+  "actions": {
+    "markRead": "Mark Read",
+    "markUnread": "Mark Unread",
+    "readLater": "Read Later",
+    "savedForLater": "Saved for Later",
+    "archive": "Archive",
+    "archived": "Archived",
+    "openOriginal": "Open Original",
+    "open": "Open",
+    "close": "Close",
+    "fullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "like": "Like",
+    "liked": "Liked",
+    "dislike": "Dislike",
+    "disliked": "Disliked"
+  },
+  "entries": {
+    "loadError": "Failed to load entries",
+    "noEntries": "No entries found",
+    "markAll": "Mark all as read",
+    "marking": "Marking...",
+    "markConfirm": "Mark all entries as read?",
+    "markConfirmDescription": "This will mark all {{scope}} as read. This action cannot be undone.",
+    "scope": {
+      "feed": "entries in this feed",
+      "folder": "entries in this folder",
+      "all": "entries"
+    },
+    "pagination": {
+      "next": "Next",
+      "previous": "Previous"
+    }
+  },
+  "smart": {
+    "title": "Smart",
+    "description": "Sorted by your preferences"
+  },
+  "empty": {
+    "selectArticle": "Select an article",
+    "selectArticleDescription": "Choose an article from the list to start reading",
+    "tryChangingFilter": "Try changing the filter or adding more feeds"
+  },
+  "article": {
+    "noContent": "No content available",
+    "viewOriginal": "View Original Article"
+  }
+}

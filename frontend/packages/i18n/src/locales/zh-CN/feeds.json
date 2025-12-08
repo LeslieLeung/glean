@@ -1,0 +1,209 @@
+{
+  "sidebar": {
+    "feeds": "订阅",
+    "smart": "智能列表",
+    "allFeeds": "全部订阅",
+    "bookmarks": "书签",
+    "tags": "标签",
+    "settings": "设置",
+    "folders": "文件夹",
+    "logout": "退出登录",
+    "unread_one": "{{count}} 未读",
+    "unread_other": "{{count}} 未读"
+  },
+  "actions": {
+    "addFeed": "添加订阅",
+    "refreshAll": "全部刷新",
+    "importOPML": "导入 OPML",
+    "exportOPML": "导出 OPML",
+    "createFolder": "创建文件夹",
+    "createSubfolder": "创建子文件夹",
+    "renameFolder": "重命名文件夹",
+    "deleteFolder": "删除文件夹",
+    "editFeed": "编辑订阅",
+    "unsubscribe": "取消订阅",
+    "markAllAsRead": "全部标为已读",
+    "moveTo": "移动到..."
+  },
+  "dialogs": {
+    "addFeed": {
+      "title": "添加订阅",
+      "url": "订阅地址",
+      "urlPlaceholder": "https://example.com/feed.xml",
+      "customTitle": "自定义标题（可选）",
+      "folder": "文件夹（可选）",
+      "selectFolder": "选择文件夹",
+      "add": "添加订阅",
+      "adding": "添加中..."
+    },
+    "createFolder": {
+      "title": "创建文件夹",
+      "name": "文件夹名称",
+      "namePlaceholder": "输入文件夹名称",
+      "create": "创建",
+      "creating": "创建中...",
+      "descriptionFeeds": "创建一个新文件夹来整理订阅。",
+      "descriptionBookmarks": "创建一个新文件夹来整理书签。",
+      "subfolderDescriptionFeeds": "创建新子文件夹以进一步组织订阅。",
+      "subfolderDescriptionBookmarks": "创建新子文件夹以进一步组织书签。"
+    },
+    "renameFolder": {
+      "title": "重命名文件夹",
+      "name": "新名称",
+      "rename": "重命名",
+      "renaming": "重命名中..."
+    },
+    "deleteFolder": {
+      "title": "删除文件夹？",
+      "message": "确定要删除此文件夹吗？",
+      "message2": "文件夹中的订阅不会被删除。",
+      "delete": "删除",
+      "deleting": "删除中...",
+      "description": "确定要删除“{{name}}”吗？此文件夹中的订阅将被移动到未分类。"
+    },
+    "editFeed": {
+      "title": "编辑订阅",
+      "customTitle": "自定义标题",
+      "folder": "文件夹",
+      "save": "保存",
+      "saving": "保存中...",
+      "description": "自定义此订阅在阅读器中的展示方式。"
+    },
+    "unsubscribe": {
+      "title": "取消订阅？",
+      "message": "确定要取消订阅此源吗？",
+      "message2": "所有文章都将被移除。",
+      "unsubscribe": "取消订阅",
+      "unsubscribing": "取消订阅中..."
+    },
+    "markAllAsRead": {
+      "title": "全部标为已读？",
+      "message": "将此订阅中的所有文章标为已读？",
+      "confirm": "标为已读",
+      "marking": "标记中..."
+    },
+    "deleteTag": {
+      "title": "删除标签？",
+      "message": "确定要删除此标签吗？",
+      "delete": "删除",
+      "deleting": "删除中...",
+      "description": "确定要删除标签“{{name}}”吗？这将把它从所有关联的书签和文章中移除，且该操作无法撤销。"
+    }
+  },
+  "contextMenu": {
+    "edit": "编辑",
+    "rename": "重命名",
+    "delete": "删除",
+    "unsubscribe": "取消订阅",
+    "markAllAsRead": "全部标为已读",
+    "refresh": "刷新",
+    "openInNewTab": "在新标签页中打开",
+    "copyLink": "复制链接"
+  },
+  "states": {
+    "refreshing": "刷新中...",
+    "importing": "导入中...",
+    "exporting": "导出中...",
+    "loading": "加载中..."
+  },
+  "empty": {
+    "noFeeds": "暂无订阅",
+    "addFirst": "添加您的第一个订阅以开始使用",
+    "noFolders": "无文件夹",
+    "createFolder": "创建文件夹以整理您的订阅"
+  },
+  "subscription": {
+    "count_one": "{{count}} 个订阅",
+    "count_other": "{{count}} 个订阅"
+  },
+  "common": {
+    "add": "添加",
+    "cancel": "取消",
+    "close": "关闭",
+    "save": "保存",
+    "saveChanges": "保存更改",
+    "delete": "删除",
+    "edit": "编辑",
+    "rename": "重命名",
+    "refresh": "刷新",
+    "marking": "标记中...",
+    "saving": "保存中...",
+    "removeFromFolder": "从文件夹中移除",
+    "emptyFolder": "空文件夹",
+    "createSubfolder": "创建子文件夹",
+    "moveToFolder": "移动到文件夹",
+    "noFolder": "无文件夹",
+    "signOut": "退出登录",
+    "signOutConfirm": "退出登录？",
+    "signOutDescription": "确定要退出登录吗？您需要重新登录才能访问您的订阅。",
+    "noTagsYet": "暂无标签",
+    "createTag": "创建标签",
+    "editTag": "编辑标签",
+    "createTagDescription": "创建新标签以整理您的书签。",
+    "editTagDescription": "更新标签名称和颜色。",
+    "tagName": "名称",
+    "tagColor": "颜色",
+    "noColor": "无颜色",
+    "creating": "创建中...",
+    "ok": "确定"
+  },
+  "opml": {
+    "importCompleted": "导入完成",
+    "importFailed": "导入失败",
+    "feedsImported": "已导入订阅",
+    "foldersCreated": "已创建文件夹",
+    "failed": "失败",
+    "total": "总计",
+    "totalFeeds": "总订阅数"
+  },
+  "bookmarks": {
+    "allBookmarks": "全部收藏"
+  },
+  "manageSubscriptions": {
+    "subscriptionCount": "{{count}} 个订阅",
+    "subscriptionCount_plural": "{{count}} 个订阅",
+    "searchPlaceholder": "搜索订阅...",
+    "selected": "已选择",
+    "deleteSelected": "删除所选",
+    "feed": "订阅",
+    "status": "状态",
+    "active": "活跃",
+    "error": "错误",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "noMatchingSubscriptions": "未找到匹配的订阅",
+    "noSubscriptionsYet": "暂无订阅",
+    "tryDifferentSearch": "尝试使用不同的搜索词",
+    "addFeedsFromSidebar": "从侧边栏添加订阅以开始使用",
+    "page": "第",
+    "of": "页，共",
+    "firstPage": "首页",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "lastPage": "末页",
+    "deleteConfirm": "删除 {{count}} 个订阅？",
+    "deleteConfirmDescription": "确定要取消订阅 {{count}} 个订阅源吗？此操作无法撤销。",
+    "deleting": "删除中...",
+    "deleteCount": "删除 {{count}}",
+    "unsubscribeConfirm": "取消订阅？",
+    "unsubscribeDescription": "确定要取消订阅此源吗？此操作无法撤销。",
+    "unsubscribe": "取消订阅",
+    "feedHasErrors": "订阅源有错误",
+    "editSubscription": "编辑订阅",
+    "editDescription": "自定义此订阅在阅读器中的显示方式。",
+    "customTitle": "自定义标题",
+    "leaveEmpty": "留空以使用原始订阅标题",
+    "feedUrl": "订阅地址",
+    "rssUrlDescription": "RSS 或 Atom 订阅地址",
+    "folder": "文件夹",
+    "searchFolders": "搜索文件夹...",
+    "noFoldersFound": "未找到文件夹",
+    "folderName": "文件夹名称",
+    "createNewFolder": "创建新文件夹",
+    "addFeed": "添加订阅",
+    "feedUrlOrWebsite": "订阅地址或网站地址",
+    "feedUrlDescription": "输入订阅地址或网站地址 — 我们将尝试自动发现订阅",
+    "folderOptional": "文件夹（可选）",
+    "adding": "添加中..."
+  }
+}

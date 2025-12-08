@@ -1,0 +1,135 @@
+{
+  "title": "Bookmarks",
+  "subtitle": "Your saved articles",
+  "actions": {
+    "addBookmark": "Add Bookmark",
+    "removeBookmark": "Remove Bookmark",
+    "editBookmark": "Edit Bookmark",
+    "moveToFolder": "Move to Folder",
+    "addToFolder": "Add to Folder",
+    "removeFromFolder": "Remove from Folder",
+    "addTags": "Add Tags",
+    "removeTags": "Remove Tags"
+  },
+  "folders": {
+    "title": "Folders",
+    "create": "Create Folder",
+    "rename": "Rename Folder",
+    "delete": "Delete Folder",
+    "deleteConfirm": "Are you sure you want to delete this folder?",
+    "folderName": "Folder Name",
+    "createSubfolder": "Create Subfolder",
+    "moveToFolder": "Move to Folder",
+    "noFolders": "No folders yet",
+    "createFirst": "Create your first folder"
+  },
+  "tags": {
+    "title": "Tags",
+    "add": "Add Tag",
+    "create": "Create Tag",
+    "rename": "Rename Tag",
+    "delete": "Delete Tag",
+    "deleteConfirm": "Are you sure you want to delete this tag?",
+    "tagName": "Tag Name",
+    "noTags": "No tags yet",
+    "addFirst": "Add your first tag"
+  },
+  "empty": {
+    "title": "No bookmarks yet",
+    "description": "Save articles you want to read later",
+    "addBookmark": "Add a Bookmark"
+  },
+  "metadata": {
+    "title": "Title",
+    "url": "URL",
+    "notes": "Notes",
+    "folder": "Folder",
+    "tags": "Tags",
+    "createdAt": "Created",
+    "updatedAt": "Updated"
+  },
+  "placeholders": {
+    "searchBookmarks": "Search bookmarks...",
+    "searchTag": "Search or create tag...",
+    "articleTitle": "Article title",
+    "addNote": "Add a note...",
+    "bookmarkTitle": "Bookmark title",
+    "bookmarkNotes": "Add notes...",
+    "searchFolder": "Search or create folder..."
+  },
+  "common": {
+    "savedFromFeed": "Saved from feed",
+    "openExternalLink": "Open external link",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "create": "Create"
+  },
+  "empty": {
+    "noBookmarks": "No bookmarks found",
+    "noBookmarksDescription": "Save articles or add external URLs to build your collection",
+    "addFirstBookmark": "Add Your First Bookmark"
+  },
+  "pagination": {
+    "showing": "Showing {{count}} of {{total}} bookmarks",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "delete": {
+    "confirm": "This action cannot be undone. The bookmark will be permanently deleted.",
+    "deleting": "Deleting...",
+    "delete": "Delete"
+  },
+  "emptyState": {
+    "articleNotFound": "Article not found",
+    "articleNotFoundDescription": "The article may have been removed or is no longer available.",
+    "close": "Close"
+  },
+  "tags": {
+    "noTagsYet": "No tags yet. Type to create one.",
+    "creating": "Creating...",
+    "create": "Create \"{{name}}\""
+  },
+  "dialogs": {
+    "createBookmark": {
+      "title": "Add Bookmark",
+      "description": "Save a URL or create a note for later reading.",
+      "url": "URL",
+      "title": "Title",
+      "notes": "Notes",
+      "folders": "Folders",
+      "tags": "Tags",
+      "error": {
+        "urlOrTitleRequired": "Please provide a URL or title",
+        "failedToCreate": "Failed to create bookmark"
+      },
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "save": "Save Bookmark"
+    },
+    "editBookmark": {
+      "title": "Edit Bookmark",
+      "description": "Update bookmark details, folders, and tags.",
+      "title": "Title",
+      "notes": "Notes",
+      "source": {
+        "savedFromFeed": "Saved from feed",
+        "externalLink": "External link",
+        "noSource": "No source"
+      },
+      "folders": "Folders",
+      "tags": "Tags",
+      "error": {
+        "titleRequired": "Title is required",
+        "failedToUpdate": "Failed to update bookmark"
+      },
+      "cancel": "Cancel",
+      "saving": "Saving...",
+      "save": "Save Changes"
+    }
+  },
+  "filters": {
+    "label": "Filters:"
+  }
+}

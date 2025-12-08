@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@glean/api-client": "workspace:*",
+    "@glean/i18n": "workspace:*",
+    "@glean/logger": "workspace:*",
     "@glean/types": "workspace:*",
     "@glean/ui": "workspace:*",
     "@hookform/resolvers": "^3.3.0",

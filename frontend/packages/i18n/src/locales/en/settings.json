@@ -1,0 +1,141 @@
+{
+  "title": "Settings",
+  "subtitle": "Manage your account and preferences",
+  "tabs": {
+    "profile": "Profile",
+    "readLater": "Read Later",
+    "appearance": "Appearance",
+    "manageFeeds": "Manage Feeds",
+    "preferences": "Preferences"
+  },
+  "profile": {
+    "title": "Profile",
+    "desc": "Manage your account information",
+    "name": "Name",
+    "notSet": "Not set",
+    "email": "Email",
+    "accountStatus": "Account Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "verified": "Verified",
+    "notVerified": "Not Verified",
+    "language": "Language",
+    "changePassword": "Change Password",
+    "deleteAccount": "Delete Account"
+  },
+  "readLater": {
+    "title": "Read Later",
+    "desc": "Configure your read later list behavior",
+    "autoCleanup": "Auto-cleanup Period",
+    "autoCleanupDesc": "Items marked as \"Read Later\" will be automatically removed after this period. Set to \"Never expire\" to keep them indefinitely.",
+    "showRemainingTime": "Show Remaining Time",
+    "showRemainingTimeDesc": "Display how much time is left before items expire in the Read Later list",
+    "settingsSaved": "Settings saved successfully",
+    "cleanupPeriod": {
+      "1day": "1 day",
+      "7days": "7 days",
+      "30days": "30 days",
+      "never": "Never expire"
+    }
+  },
+  "appearance": {
+    "title": "Appearance",
+    "desc": "Customize the look and feel",
+    "theme": "Theme",
+    "chooseTheme": "Choose your theme",
+    "themes": {
+      "night": "Night",
+      "nightDesc": "Dark theme for comfortable reading",
+      "day": "Day",
+      "dayDesc": "Light theme for daytime use",
+      "auto": "Auto",
+      "autoDesc": "Follow your system preference"
+    }
+  },
+  "manageFeeds": {
+    "title": "Manage Feeds",
+    "desc": "Manage your RSS feed subscriptions",
+    "searchPlaceholder": "Search subscriptions...",
+    "importOPML": "Import OPML",
+    "exportOPML": "Export OPML",
+    "loading": "Loading...",
+    "subscriptionCount": "{{count}} subscription",
+    "subscriptionCount_plural": "{{count}} subscriptions",
+    "failedToLoad": "Failed to load subscriptions",
+    "untitledFeed": "Untitled Feed",
+    "openFeed": "Open feed",
+    "refreshFeed": "Refresh feed",
+    "edit": "Edit",
+    "unsubscribe": "Unsubscribe",
+    "noSubscriptionsFound": "No subscriptions found",
+    "tryDifferentSearch": "Try adjusting your search terms",
+    "addFirstFeed": "Subscribe to your first RSS feed to get started",
+    "addFeed": "Add Feed",
+    "pageInfo": "Page {{page}} of {{totalPages}} • {{totalItems}} total subscription{{plural}}",
+    "previous": "Previous",
+    "next": "Next",
+    "unsubscribeConfirm": "Unsubscribe from feed?",
+    "unsubscribeDescription": "Are you sure you want to unsubscribe from this feed? This action cannot be undone.",
+    "cancel": "Cancel"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "desc": "Manage your content preferences and smart filters",
+    "rebuildModel": "Rebuild Model",
+    "rebuilding": "Rebuilding...",
+    "showPreferenceScores": "Show Preference Scores",
+    "showPreferenceScoresDesc": "Display relevance scores in the Smart feed",
+    "failedToLoad": "Failed to load preferences",
+    "totalInteractions": "Total Interactions",
+    "acrossAllFeeds": "Across all your feeds",
+    "likedItems": "Liked Items",
+    "dislikedItems": "Disliked Items",
+    "modelStrength": "Model Strength",
+    "basedOnInteractionCount": "Based on interaction count",
+    "recentActivity": "Recent Activity",
+    "lastModelTraining": "Last Model Training",
+    "interactionsLast7Days": "Interactions (Last 7 days)",
+    "modelAccuracy": "Model Accuracy",
+    "featureImportance": "Feature Importance",
+    "featureImportanceDesc": "What factors influence your recommendations",
+    "rebuildConfirmTitle": "Rebuild Preference Model?",
+    "rebuildConfirmDesc": "This will retrain your personal recommendation model using all your historical interactions. This process may take a few minutes to complete.",
+    "cancel": "Cancel",
+    "strength": {
+      "strong": "Strong",
+      "moderate": "Moderate",
+      "weak": "Weak",
+      "none": "None"
+    },
+    "ofInteractions": "% of interactions",
+    "stats": {
+      "liked": "Liked articles",
+      "disliked": "Disliked articles",
+      "bookmarked": "Bookmarked articles",
+      "modelStrength": "Model Strength",
+      "modelStrengthDesc": "Based on your feedback history",
+      "lastUpdated": "Last updated: {{date}}"
+    },
+    "displaySettings": {
+      "title": "Display Settings",
+      "desc": "Customize how preferences are shown",
+      "showScore": "Show Preference Score",
+      "showScoreDesc": "Display recommendation scores on Smart list entries"
+    },
+    "rebuildHint": "Rebuild your preference model from all historical feedback",
+    "topSources": {
+      "title": "Top Sources",
+      "description": "Feeds with highest affinity",
+      "feed": "Feed {{id}}"
+    },
+    "topAuthors": {
+      "title": "Top Authors",
+      "description": "Authors with highest affinity"
+    },
+    "empty": {
+      "title": "No preference data yet",
+      "description": "Start liking or disliking articles to build your preference model"
+    }
+  },
+  "version": "Glean v{{version}}"
+}

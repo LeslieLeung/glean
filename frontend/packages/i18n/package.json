@@ -1,5 +1,5 @@
 {
-  "name": "@glean/api-client",
+  "name": "@glean/i18n",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./client": "./src/client.ts"
+    "./react": "./src/react.ts",
+    "./utils/date-formatter": "./src/utils/date-formatter.ts"
   },
   "scripts": {
     "lint": "eslint src --ext ts",
@@ -15,12 +16,12 @@
     "clean": "rm -rf node_modules .turbo"
   },
   "dependencies": {
-    "@glean/types": "workspace:*",
-    "@glean/logger": "workspace:*",
-    "axios": "^1.6.0"
+    "i18next": "^23.7.0",
+    "i18next-browser-languagedetector": "^7.2.0",
+    "react-i18next": "^14.0.0",
+    "date-fns": "^3.3.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "typescript": "^5.3.0"
   }
 }

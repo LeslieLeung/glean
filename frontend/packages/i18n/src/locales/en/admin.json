@@ -1,0 +1,173 @@
+{
+  "layout": {
+    "badge": "Admin",
+    "nav": {
+      "dashboard": "Dashboard",
+      "users": "Users",
+      "feeds": "Feeds",
+      "entries": "Entries",
+      "settings": "Settings"
+    },
+    "logout": {
+      "button": "Sign out",
+      "title": "Sign Out?",
+      "description": "Are you sure you want to sign out from the admin dashboard?"
+    }
+  },
+  "settings": {
+    "embedding": {
+      "title": "Embedding Settings",
+      "subtitle": "Configure embedding provider and trigger full re-embedding.",
+      "config": "Configuration",
+      "provider": "Provider",
+      "model": "Model",
+      "dimension": "Dimension",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Optional",
+      "baseUrl": "Base URL (optional)",
+      "rateLimit": "Rate limit (rpm)",
+      "rateLimitDefault": "Default",
+      "inherit": "Inherit default",
+      "progress": "Re-embedding Progress",
+      "progressDesc": "Progress is derived from entry counts. Saving config will re-embed all entries.",
+      "total": "Total",
+      "done": "Done",
+      "failed": "Failed",
+      "percent": "{{percent}}% completed",
+      "saveSuccess": "Configuration saved. Re-embedding has been queued.",
+      "saveError": "Failed to save configuration."
+    }
+  },
+  "login": {
+    "title": "Glean Admin",
+    "subtitle": "Sign in to manage your system",
+    "username": "Username",
+    "password": "Password",
+    "usernamePlaceholder": "Enter your username",
+    "passwordPlaceholder": "Enter your password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in...",
+    "invalid": "Invalid username or password",
+    "footer": "Admin access only. Unauthorized access is prohibited.",
+    "errorTitle": "Error"
+  },
+  "entries": {
+    "title": "Entry Management",
+    "subtitle": "Manage and moderate all entries across feeds",
+    "badge": "entries",
+    "searchPlaceholder": "Search by title...",
+    "search": "Search",
+    "clear": "Clear",
+    "filters": {
+      "allFeeds": "All Feeds"
+    },
+    "pagination": {
+      "previous": "Previous",
+      "next": "Next",
+      "pageOf": "Page {{page}} of {{total}}"
+    },
+    "emptyFilter": "No entries found matching your criteria",
+    "empty": "No entries yet",
+    "open": "Open",
+    "delete": "Delete",
+    "deleteTitle": "Delete Entry",
+    "deleteDescription": "Are you sure you want to delete this entry? This action cannot be undone and will permanently remove the entry from the database.",
+    "deleting": "Deleting...",
+    "loading": "Loading...",
+    "noContent": "No content available",
+    "viewOriginal": "View Original Article"
+  },
+  "feeds": {
+    "feedErrorTitle": "Feed Error",
+    "feedErrorDescription": "This feed has encountered {{count}} consecutive error(s).",
+    "feedErrorMessageLabel": "Error Message:",
+    "noErrorMessage": "No error message available",
+    "title": "Feed Management",
+    "subtitle": "Manage and monitor all RSS feeds",
+    "searchPlaceholder": "Search by title or URL...",
+    "search": "Search",
+    "clear": "Clear",
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "inactive": "Inactive",
+      "error": "Error"
+    },
+    "table": {
+      "feed": "Feed",
+      "status": "Status",
+      "subscribers": "Subscribers",
+      "lastFetched": "Last Fetched",
+      "created": "Created",
+      "actions": "Actions"
+    },
+    "resetTooltip": "Reset error count",
+    "disableTooltip": "Disable feed",
+    "enableTooltip": "Enable feed",
+    "deleteTitle": "Delete Feed?",
+    "deleteDescription": "Are you sure you want to delete this feed? This action cannot be undone.",
+    "delete": "Delete Feed",
+    "deleting": "Deleting...",
+    "neverFetched": "Never",
+    "emptyFiltered": "No feeds found matching your criteria",
+    "empty": "No feeds yet",
+    "pagination": {
+      "page": "Page {{page}} of {{totalPages}} ({{total}} total feeds)",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
+  "users": {
+    "title": "User Management",
+    "subtitle": "Manage user accounts and permissions",
+    "searchPlaceholder": "Search by email...",
+    "search": "Search",
+    "clear": "Clear",
+    "table": {
+      "email": "Email",
+      "name": "Name",
+      "status": "Status",
+      "created": "Created",
+      "lastLogin": "Last Login",
+      "actions": "Actions"
+    },
+    "active": "Active",
+    "inactive": "Inactive",
+    "never": "Never",
+    "disable": "Disable",
+    "enable": "Enable",
+    "emptyFiltered": "No users found matching your search",
+    "empty": "No users yet",
+    "pagination": {
+      "page": "Page {{page}} of {{totalPages}} ({{total}} total users)",
+      "previous": "Previous",
+      "next": "Next"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "System overview and statistics",
+    "cards": {
+      "totalUsers": "Total Users",
+      "activeUsers": "Active Users",
+      "totalFeeds": "Total Feeds",
+      "totalEntries": "Total Entries",
+      "newUsers": "New Users",
+      "newEntries": "New Entries",
+      "last7Days": "Last 7 days"
+    },
+    "activity": {
+      "title": "Today's Activity",
+      "newUsersToday_one": "{{count}} new user",
+      "newUsersToday_other": "{{count}} new users",
+      "newEntriesToday_one": "{{count}} new entry",
+      "newEntriesToday_other": "{{count}} new entries",
+      "registeredToday": "Registered today",
+      "addedToday": "Added today"
+    }
+  },
+  "common": {
+    "loading": "Loading..."
+  }
+}
+
