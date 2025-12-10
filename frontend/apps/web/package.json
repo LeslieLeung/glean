@@ -31,7 +31,7 @@
     "electron-store": "^11.0.2",
     "highlight.js": "^11.11.1",
     "lightgallery": "^2.9.0",
-    "lucide-react": "^0.336.0",
+    "lucide-react": "^0.556.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.50.0",
