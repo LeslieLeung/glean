@@ -90,8 +90,8 @@ importers:
         specifier: ^3.22.0
         version: 3.25.76
       zustand:
-        specifier: ^4.5.0
-        version: 4.5.7(@types/react@18.3.27)(react@18.3.1)
+        specifier: ^5.0.0
+        version: 5.0.9(@types/react@18.3.27)(react@18.3.1)
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.1.17
@@ -178,8 +178,8 @@ importers:
         specifier: ^3.22.0
         version: 3.25.76
       zustand:
-        specifier: ^4.5.0
-        version: 4.5.7(@types/react@18.3.27)(react@18.3.1)
+        specifier: ^5.0.0
+        version: 5.0.9(@types/react@18.3.27)(react@18.3.1)
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.1.17
@@ -5413,13 +5413,14 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
     dev: false
 
-  /zustand@4.5.7(@types/react@18.3.27)(react@18.3.1):
-    resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
-    engines: {node: '>=12.7.0'}
+  /zustand@5.0.9(@types/react@18.3.27)(react@18.3.1):
+    resolution: {integrity: sha512-ALBtUj0AfjJt3uNRQoL1tL2tMvj6Gp/6e39dnfT6uzpelGru8v1tPOGBzayOWbPJvujM8JojDk3E1LxeFisBNg==}
+    engines: {node: '>=12.20.0'}
     peerDependencies:
-      '@types/react': '>=16.8'
+      '@types/react': '>=18.0.0'
       immer: '>=9.0.6'
-      react: '>=16.8'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
     peerDependenciesMeta:
       '@types/react':
         optional: true
@@ -5427,8 +5428,9 @@ packages:
         optional: true
       react:
         optional: true
+      use-sync-external-store:
+        optional: true
     dependencies:
       '@types/react': 18.3.27
       react: 18.3.1
-      use-sync-external-store: 1.6.0(react@18.3.1)
     dev: false
