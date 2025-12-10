@@ -27,7 +27,7 @@
     "@tanstack/react-query": "^5.24.0",
     "axios": "^1.6.0",
     "clsx": "^2.1.0",
-    "date-fns": "^3.3.0",
+    "date-fns": "^4.0.0",
     "electron-store": "^11.0.2",
     "highlight.js": "^11.11.1",
     "lightgallery": "^2.9.0",
