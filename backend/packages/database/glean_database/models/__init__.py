@@ -12,6 +12,7 @@ from .feed import Feed, FeedStatus
 from .folder import Folder, FolderType
 from .junction import BookmarkFolder, BookmarkTag, UserEntryTag
 from .subscription import Subscription
+from .system_setting import SystemSetting
 from .tag import Tag
 from .user import User
 from .user_entry import UserEntry
@@ -28,6 +29,7 @@ __all__ = [
     "AdminUser",
     "AdminRole",
     "SystemConfig",
+    "SystemSetting",
     # M2 models
     "Folder",
     "FolderType",

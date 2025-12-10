@@ -12,6 +12,7 @@ from .feed_service import FeedService
 from .folder_service import FolderService
 from .tag_service import TagService
 from .user_service import UserService
+from .system_service import SystemService
 
 __all__ = [
     "AdminService",
@@ -23,4 +24,5 @@ __all__ = [
     "BookmarkService",
     "FolderService",
     "TagService",
+    "SystemService",
 ]

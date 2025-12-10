@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { LogOut, LayoutDashboard, Users, Rss, FileText } from 'lucide-react'
+import { LogOut, LayoutDashboard, Users, Rss, FileText, Settings } from 'lucide-react'
 import { Button, Badge } from '@glean/ui'
 
 /**
@@ -38,6 +38,11 @@ export function Layout() {
       path: '/entries',
       label: 'Entries',
       icon: FileText,
+    },
+    {
+      path: '/settings',
+      label: 'Settings',
+      icon: Settings,
     },
   ]
 

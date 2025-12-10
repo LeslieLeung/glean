@@ -21,6 +21,7 @@ from glean_core.services import (
     EntryService,
     FeedService,
     FolderService,
+    SystemService,
     TagService,
     UserService,
 )
@@ -151,6 +152,13 @@ def get_bookmark_service(
 ) -> BookmarkService:
     """Get bookmark service instance."""
     return BookmarkService(session)
+
+
+def get_system_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SystemService:
+    """Get system service instance."""
+    return SystemService(session)
 
 
 async def get_current_admin(
