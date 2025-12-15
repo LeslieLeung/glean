@@ -5,11 +5,11 @@ import { ChevronsUpDownIcon, XIcon } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../utils";
-import { Input } from "./input";
+import { Input } from "./Input";
 import { ScrollArea } from "./scroll-area";
 
 const ComboboxContext = React.createContext<{
-  chipsRef: React.RefObject<HTMLDivElement | null> | null;
+  chipsRef: React.RefObject<HTMLDivElement> | null;
   multiple: boolean;
 }>({
   chipsRef: null,
@@ -24,7 +24,7 @@ type ComboboxRootProps<
 function Combobox<ItemValue, Multiple extends boolean | undefined = false>(
   props: ComboboxPrimitive.Root.Props<ItemValue, Multiple>,
 ) {
-  const chipsRef = React.useRef<HTMLDivElement | null>(null);
+  const chipsRef = React.useRef<HTMLDivElement>(null);
   return (
     <ComboboxContext.Provider value={{ chipsRef, multiple: !!props.multiple }}>
       <ComboboxPrimitive.Root

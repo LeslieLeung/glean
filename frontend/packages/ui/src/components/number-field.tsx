@@ -5,7 +5,7 @@ import { MinusIcon, PlusIcon } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../utils";
-import { Label } from "./label";
+import { Label } from "./Label";
 
 const NumberFieldContext = React.createContext<{
   fieldId: string;

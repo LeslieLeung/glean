@@ -8,8 +8,8 @@ import * as React from "react";
 
 import { useIsMobile } from "../use-mobile";
 import { cn } from "../utils";
-import { Button } from "./button";
-import { Input } from "./input";
+import { Button } from "./Button";
+import { Input } from "./Input";
 import { Separator } from "./separator";
 import {
   Sheet,
@@ -18,7 +18,7 @@ import {
   SheetPopup,
   SheetTitle,
 } from "./sheet";
-import { Skeleton } from "./skeleton";
+import { Skeleton } from "./Skeleton";
 import {
   Tooltip,
   TooltipPopup,
@@ -268,7 +268,7 @@ function SidebarTrigger({
       className={cn("size-7", className)}
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
-      onClick={(event) => {
+      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
         onClick?.(event);
         toggleSidebar();
       }}
