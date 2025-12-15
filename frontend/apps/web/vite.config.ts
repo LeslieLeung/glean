@@ -5,11 +5,31 @@ import react from '@vitejs/plugin-react-swc'
 import { defineConfig } from 'vite'
 import electron from 'vite-plugin-electron/simple'
 
-// Read version from root package.json
-const rootPackageJson = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf-8')
-)
-const appVersion = rootPackageJson.version
+// Read version from package.json
+// Try multiple paths to support both local dev and Docker builds
+function getAppVersion(): string {
+  const possiblePaths = [
+    '../../../package.json', // Local dev: project root is 3 levels up from frontend/apps/web
+    '../../package.json', // Docker: frontend root is 2 levels up from apps/web
+  ]
+
+  for (const relativePath of possiblePaths) {
+    try {
+      const fullPath = path.resolve(__dirname, relativePath)
+      const packageJson = JSON.parse(fs.readFileSync(fullPath, 'utf-8'))
+      if (packageJson.version) {
+        return packageJson.version
+      }
+    } catch {
+      // Try next path
+    }
+  }
+
+  console.warn('Could not read version from package.json, using "unknown"')
+  return 'unknown'
+}
+
+const appVersion = getAppVersion()
 
 export default defineConfig(({ mode }) => {
   const isElectron = mode === 'electron'
