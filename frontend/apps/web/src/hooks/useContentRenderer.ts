@@ -3,6 +3,10 @@ import hljs from 'highlight.js'
 import lightGallery from 'lightgallery'
 import type { LightGallery } from 'lightgallery/lightgallery'
 
+// Configure highlight.js to ignore unescaped HTML warnings.
+// RSS feed content often contains pre-formatted code blocks with HTML entities.
+hljs.configure({ ignoreUnescapedHTML: true })
+
 /**
  * Hook to enhance content rendering with syntax highlighting and image gallery.
  * 
@@ -22,6 +26,8 @@ export function useContentRenderer(content?: string) {
     // Apply syntax highlighting to all code blocks
     const codeBlocks = contentRef.current.querySelectorAll('pre code')
     codeBlocks.forEach((block) => {
+      // Remove the highlighted marker to allow re-highlighting (e.g., in React Strict Mode)
+      delete (block as HTMLElement).dataset.highlighted
       hljs.highlightElement(block as HTMLElement)
     })
 

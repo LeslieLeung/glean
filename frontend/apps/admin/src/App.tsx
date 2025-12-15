@@ -7,6 +7,8 @@ import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 import FeedsPage from './pages/FeedsPage'
 import EntriesPage from './pages/EntriesPage'
+import SettingsPage from './pages/SettingsPage'
+import RegistrationSettingsPage from './pages/RegistrationSettingsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +38,9 @@ function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="feeds" element={<FeedsPage />} />
             <Route path="entries" element={<EntriesPage />} />
+            <Route path="embeddings" element={<SettingsPage />} />
+            <Route path="system" element={<RegistrationSettingsPage />} />
+            <Route path="settings" element={<Navigate to="/embeddings" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

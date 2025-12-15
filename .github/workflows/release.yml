@@ -45,6 +45,10 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Build and push Backend image
         uses: docker/build-push-action@v6
         with:
@@ -54,6 +58,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -151,9 +157,88 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  build-electron:
+    name: Build Electron App (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        shell: bash
+        working-directory: frontend/apps/web
+        run: |
+          npm pkg set version=${{ steps.version.outputs.version }}
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Build Electron app
+        working-directory: frontend/apps/web
+        run: pnpm build:electron -- --${{ matrix.platform }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            frontend/apps/web/release/*.dmg
+            frontend/apps/web/release/*.zip
+            frontend/apps/web/release/*.exe
+            frontend/apps/web/release/*.AppImage
+            frontend/apps/web/release/*.deb
+            frontend/apps/web/release/*.rpm
+            frontend/apps/web/release/*.yml
+            frontend/apps/web/release/*.yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   create-release:
     name: Create GitHub Release
-    needs: [build-backend, build-web, build-admin]
+    needs: [build-backend, build-web, build-admin, build-electron]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -174,6 +259,10 @@ jobs:
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-backend:${{ github.ref_name }}`
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}`
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-admin:${{ github.ref_name }}`
+            
+            ## Desktop Apps
+            
+            Download the desktop application for your platform from the assets below.
             
             ## Quick Start
             

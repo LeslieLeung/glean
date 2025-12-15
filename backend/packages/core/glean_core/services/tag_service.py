@@ -47,7 +47,7 @@ class TagService:
         tags = result.scalars().all()
 
         # Get counts for each tag
-        tag_responses = []
+        tag_responses: list[TagWithCountsResponse] = []
         for tag in tags:
             # Count bookmarks with this tag
             bookmark_count_stmt = (

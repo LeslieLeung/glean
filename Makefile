@@ -1,4 +1,4 @@
-.PHONY: help setup up down api worker web admin db-migrate db-upgrade db-downgrade \
+.PHONY: help setup up down api worker web admin electron db-migrate db-upgrade db-downgrade \
         test lint format clean logs install-backend install-frontend install-root verify dev-all
 
 # Default target
@@ -21,6 +21,7 @@ help:
 	@echo "  make worker         - Start background worker"
 	@echo "  make web            - Start web app (port 3000)"
 	@echo "  make admin          - Start admin dashboard"
+	@echo "  make electron       - Start Electron desktop app"
 	@echo "  make dev-all        - Start all services concurrently (api + worker + web)"
 	@echo ""
 	@echo "Database:"
@@ -64,17 +65,17 @@ install-frontend:
 
 up:
 	@echo "🐳 Starting Docker services..."
-	@docker compose -f deploy/docker-compose.dev.yml up -d
+	@docker compose -f docker-compose.dev.yml up -d
 	@echo "✅ Services started"
 	@echo "   PostgreSQL: localhost:5432"
 	@echo "   Redis:      localhost:6379"
 
 down:
 	@echo "🛑 Stopping Docker services..."
-	@docker compose -f deploy/docker-compose.dev.yml down
+	@docker compose -f docker-compose.dev.yml down
 
 logs:
-	@docker compose -f deploy/docker-compose.dev.yml logs -f
+	@docker compose -f docker-compose.dev.yml logs -f
 
 # =============================================================================
 # Development Servers
@@ -97,6 +98,10 @@ admin:
 	@echo "🔧 Starting admin dashboard..."
 	@cd frontend && pnpm dev:admin
 
+electron:
+	@echo "⚡ Starting Electron desktop app..."
+	@cd frontend/apps/web && pnpm dev:electron
+
 # =============================================================================
 # Database
 # =============================================================================
@@ -118,8 +123,8 @@ db-downgrade:
 
 db-reset:
 	@echo "🗑️  Resetting database..."
-	@docker compose -f deploy/docker-compose.dev.yml down -v
-	@docker compose -f deploy/docker-compose.dev.yml up -d
+	@docker compose -f docker-compose.dev.yml down -v
+	@docker compose -f docker-compose.dev.yml up -d
 	@sleep 5
 	@cd backend/packages/database && uv run alembic upgrade head
 	@echo "✅ Database reset complete"

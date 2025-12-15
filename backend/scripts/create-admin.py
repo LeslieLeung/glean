@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import asyncio
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -34,8 +35,22 @@ from glean_database.models.admin import AdminRole  # noqa: E402
 from glean_database.session import get_session, init_database  # noqa: E402
 
 
+def hash_password_sha256(password: str) -> str:
+    """
+    Hash password using SHA256 to match frontend behavior.
+
+    The frontend hashes passwords with SHA256 before transmission,
+    so we need to do the same when creating admin accounts via script.
+    """
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
 async def create_admin(username: str, password: str, role: str) -> bool:
     """Create an admin user. Returns True if successful."""
+    # Hash the password with SHA256 to match frontend behavior
+    # Frontend sends SHA256(password), so we need to store bcrypt(SHA256(password))
+    hashed_password = hash_password_sha256(password)
+
     # Get database URL from environment
     database_url = os.getenv(
         "DATABASE_URL", "postgresql+asyncpg://glean:devpassword@localhost:5432/glean"
@@ -58,7 +73,7 @@ async def create_admin(username: str, password: str, role: str) -> bool:
 
         try:
             admin = await service.create_admin_user(
-                username=username, password=password, role=admin_role
+                username=username, password=hashed_password, role=admin_role
             )
             print("✅ Admin user created successfully!")
             print(f"   Username: {admin.username}")

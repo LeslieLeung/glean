@@ -6,6 +6,7 @@ Provides business logic for administrative operations.
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from glean_database.models.subscription import Subscription
 from glean_database.models.user import User
 
 from ..auth.password import hash_password, verify_password
+from .system_config_service import SystemConfigService
 
 
 class AdminService:
@@ -30,6 +32,7 @@ class AdminService:
             session: Database session.
         """
         self.session = session
+        self.system_config = SystemConfigService(session)
 
     async def authenticate_admin(self, username: str, password: str) -> AdminUser | None:
         """
@@ -261,7 +264,7 @@ class AdminService:
         feeds = list(result.scalars().all())
 
         # Get subscriber counts for each feed
-        feed_data = []
+        feed_data: list[dict[str, Any]] = []
         for feed in feeds:
             sub_count_result = await self.session.execute(
                 select(func.count())
@@ -580,3 +583,54 @@ class AdminService:
 
         await self.session.commit()
         return count
+
+    # =========================
+    # System settings: embedding
+    # =========================
+    async def get_embedding_config(self) -> dict[str, Any] | None:
+        """Return current embedding configuration from system settings."""
+        return await self.system_config.get_config("embedding.config")
+
+    async def save_embedding_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        """
+        Validate and persist embedding configuration.
+
+        Adds version and updated_at for tracking.
+        """
+        provider = (config.get("provider") or "").lower()
+        dimension = config.get("dimension")
+        if not provider:
+            raise ValueError("provider is required")
+        if dimension is None:
+            raise ValueError("dimension is required")
+        if provider in ("volc-engine", "volc_engine", "volcengine") and not dimension:
+            raise ValueError("VolcEngine requires explicit dimension")
+
+        version = uuid4().hex
+        now = datetime.now(UTC).isoformat()
+        config["version"] = version
+        config["updated_at"] = now
+
+        await self.system_config.set_config(
+            "embedding.config", config, description="Embedding provider config"
+        )
+        return config
+
+    async def get_embedding_progress(self) -> dict[str, int]:
+        """
+        Compute embedding rebuild progress using entry counters.
+        """
+        total_result = await self.session.execute(select(func.count()).select_from(Entry))
+        total = total_result.scalar_one()
+
+        done_query = select(func.count()).select_from(Entry).where(Entry.embedding_status == "done")
+        done_result = await self.session.execute(done_query)
+        done = done_result.scalar_one()
+
+        failed_query = (
+            select(func.count()).select_from(Entry).where(Entry.embedding_status == "failed")
+        )
+        failed_result = await self.session.execute(failed_query)
+        failed = failed_result.scalar_one()
+
+        return {"total": total, "done": done, "failed": failed}

@@ -8,6 +8,7 @@ import type {
   UserUpdateRequest,
 } from '@glean/types'
 import { ApiClient } from '../client'
+import { hashPassword } from '../crypto'
 import { tokenStorage } from '../tokenStorage'
 
 /**
@@ -20,16 +21,28 @@ export class AuthService {
 
   /**
    * Register a new user account.
+   *
+   * Password is hashed client-side before transmission.
    */
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    return this.client.post<AuthResponse>('/auth/register', data)
+    const hashedPassword = await hashPassword(data.password)
+    return this.client.post<AuthResponse>('/auth/register', {
+      ...data,
+      password: hashedPassword,
+    })
   }
 
   /**
    * Authenticate user and get tokens.
+   *
+   * Password is hashed client-side before transmission.
    */
   async login(data: LoginRequest): Promise<AuthResponse> {
-    return this.client.post<AuthResponse>('/auth/login', data)
+    const hashedPassword = await hashPassword(data.password)
+    return this.client.post<AuthResponse>('/auth/login', {
+      ...data,
+      password: hashedPassword,
+    })
   }
 
   /**

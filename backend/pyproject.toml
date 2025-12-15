@@ -1,10 +1,13 @@
 [project]
 name = "glean-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "Glean Backend - Personal Knowledge Management Tool"
 requires-python = ">=3.11"
 readme = "README.md"
 license = { text = "AGPL-3.0" }
+dependencies = [
+    "python-dotenv>=1.2.1",
+]
 
 [dependency-groups]
 dev = [
@@ -14,6 +17,7 @@ dev = [
     "httpx>=0.27.0",
     "ruff>=0.3.0",
     "pyright>=1.1.350",
+    "loguru>=0.7.0",
 ]
 
 [tool.uv.workspace]
@@ -23,6 +27,7 @@ members = [
     "packages/database",
     "packages/core",
     "packages/rss",
+    "packages/vector",
 ]
 
 [tool.ruff]
@@ -45,7 +50,7 @@ select = [
 ignore = ["E501", "B008"]  # B008 is a false positive for FastAPI Query() pattern
 
 [tool.ruff.lint.isort]
-known-first-party = ["glean_api", "glean_worker", "glean_database", "glean_core", "glean_rss"]
+known-first-party = ["glean_api", "glean_worker", "glean_database", "glean_core", "glean_rss", "glean_vector"]
 
 [tool.pyright]
 pythonVersion = "3.11"
@@ -59,6 +64,7 @@ extraPaths = [
     "packages/database",
     "packages/core",
     "packages/rss",
+    "packages/vector",
 ]
 # Disable missing type stubs for local workspace packages
 reportMissingTypeStubs = false
@@ -71,6 +77,5 @@ exclude = ["**/tests/**", "**/migrations/**", ".venv", "**/__pycache__"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "apps/api/tests", "apps/worker/tests", "packages/rss/tests"]
 pythonpath = ["."]
-addopts = "-v --cov --cov-report=term-missing"
+addopts = "-v --cov --cov-report=term-missing --import-mode=importlib"

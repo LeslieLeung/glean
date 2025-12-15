@@ -10,10 +10,26 @@ from typing import Any
 from arq import cron
 from arq.connections import RedisSettings
 
+from glean_core import get_logger, init_logging
 from glean_database.session import init_database
+from glean_vector.clients.milvus_client import MilvusClient
 
 from .config import settings
-from .tasks import bookmark_metadata, cleanup, feed_fetcher
+from .tasks import (
+    bookmark_metadata,
+    cleanup,
+    embedding_rebuild,
+    embedding_worker,
+    feed_fetcher,
+    preference_worker,
+    subscription_cleanup,
+)
+
+# Initialize logging system
+init_logging()
+
+# Get logger instance
+logger = get_logger(__name__)
 
 
 async def startup(ctx: dict[str, Any]) -> None:
@@ -23,25 +39,60 @@ async def startup(ctx: dict[str, Any]) -> None:
     Args:
         ctx: Worker context dictionary for shared resources.
     """
-    print("=" * 60)
-    print("Starting Glean Worker")
-    print(
+    logger.info("=" * 60)
+    logger.info("Starting Glean Worker")
+    logger.info(
         f"Database URL: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'configured'}"
     )
-    print(
+    logger.info(
         f"Redis URL: {settings.redis_url.split('@')[1] if '@' in settings.redis_url else 'configured'}"
     )
     init_database(settings.database_url)
-    print("Database initialized")
-    print("Registered task functions:")
-    print("  - fetch_feed_task")
-    print("  - fetch_all_feeds")
-    print("  - cleanup_read_later")
-    print("  - fetch_bookmark_metadata_task")
-    print("Scheduled cron jobs:")
-    print("  - scheduled_fetch (every 15 minutes: 0, 15, 30, 45)")
-    print("  - scheduled_cleanup (hourly at minute 0)")
-    print("=" * 60)
+    logger.info("Database initialized")
+
+    # Store Redis client for distributed locks (arq provides it via ctx['redis'])
+    # The redis client is automatically available in the worker context
+    logger.info("Redis client available for distributed locks")
+
+    # Initialize Milvus client (M3) - optional for embedding/preference features
+    from glean_vector.config import milvus_config
+
+    # Check if Milvus is explicitly configured (not just default localhost)
+    milvus_configured = milvus_config.host and milvus_config.host != "localhost"
+
+    if milvus_configured or milvus_config.host == "localhost":
+        # Try to connect even for localhost (might be intentional dev setup)
+        logger.info(f"Attempting to connect to Milvus at {milvus_config.host}:{milvus_config.port}")
+        milvus_client = MilvusClient()
+        try:
+            milvus_client.connect()
+            ctx["milvus_client"] = milvus_client
+            logger.info("✓ Milvus client connected successfully")
+        except Exception as e:
+            logger.warning(f"✗ Failed to connect to Milvus: {e}")
+            logger.info(
+                "Worker will continue without Milvus - embedding and preference tasks will be skipped"
+            )
+            ctx["milvus_client"] = None
+    else:
+        logger.info("Milvus not configured - embedding and preference features disabled")
+        ctx["milvus_client"] = None
+
+    # Dynamically log registered task functions
+    logger.info("Registered task functions:")
+    for func in WorkerSettings.functions:
+        logger.info(f"  - {func.__name__}")
+
+    # Dynamically log scheduled cron jobs
+    logger.info("Scheduled cron jobs:")
+    for job in WorkerSettings.cron_jobs:
+        # Extract function name and cron schedule from job
+        func_name = "unknown"
+        if hasattr(job, "coroutine") and hasattr(job.coroutine, "__name__"):
+            func_name = job.coroutine.__name__  # type: ignore[union-attr]
+        minute = getattr(job, "minute", "unknown")
+        logger.info(f"  - {func_name} (minute: {minute})")
+    logger.info("=" * 60)
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
@@ -51,9 +102,16 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     Args:
         ctx: Worker context dictionary.
     """
-    print("=" * 60)
-    print("Shutting down Glean Worker")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Shutting down Glean Worker")
+
+    # Disconnect Milvus client
+    milvus_client = ctx.get("milvus_client")
+    if milvus_client:
+        milvus_client.disconnect()
+        logger.info("Milvus client disconnected")
+
+    logger.info("=" * 60)
 
 
 class WorkerSettings:
@@ -69,6 +127,17 @@ class WorkerSettings:
         feed_fetcher.fetch_all_feeds,
         cleanup.cleanup_read_later,
         bookmark_metadata.fetch_bookmark_metadata_task,
+        # M3: Embedding tasks (triggered immediately after feed fetch)
+        embedding_worker.generate_entry_embedding,
+        embedding_worker.batch_generate_embeddings,
+        embedding_worker.retry_failed_embeddings,
+        embedding_worker.validate_and_rebuild_embeddings,
+        embedding_rebuild.rebuild_embeddings,
+        # M3: Preference tasks
+        preference_worker.update_user_preference,
+        preference_worker.rebuild_user_preference,
+        # Subscription cleanup
+        subscription_cleanup.cleanup_orphan_embeddings,
     ]
 
     # Scheduled cron jobs

@@ -1,14 +1,15 @@
 {
   "name": "glean",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n api,worker,web,admin -c blue,green,yellow,magenta \"make api\" \"make worker\" \"make web\" \"make admin\"",
+    "dev": "concurrently --handle-input --kill-others --kill-signal SIGINT --kill-timeout 5000 -n api,worker,web,admin -c blue,green,yellow,magenta \"make api\" \"make worker\" \"make web\" \"make admin\"",
     "dev:api": "make api",
     "dev:worker": "make worker",
     "dev:web": "make web",
     "dev:admin": "make admin",
-    "dev:all": "concurrently -n api,worker,web,admin -c blue,green,yellow,magenta \"make api\" \"make worker\" \"make web\" \"make admin\""
+    "dev:all": "concurrently --handle-input --kill-others --kill-signal SIGINT --kill-timeout 5000 -n api,worker,web,admin -c blue,green,yellow,magenta \"make api\" \"make worker\" \"make web\" \"make admin\"",
+    "sync-version": "node scripts/sync-version.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

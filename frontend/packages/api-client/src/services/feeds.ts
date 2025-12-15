@@ -1,6 +1,8 @@
 import type {
   Subscription,
   SubscriptionListResponse,
+  SubscriptionSyncResponse,
+  SubscriptionListParams,
   DiscoverFeedRequest,
   UpdateSubscriptionRequest,
   OPMLImportResponse,
@@ -18,10 +20,46 @@ export class FeedService {
   constructor(private client: ApiClient) {}
 
   /**
-   * Get all user subscriptions.
+   * Get paginated user subscriptions.
    */
-  async getSubscriptions(): Promise<SubscriptionListResponse> {
-    return this.client.get<SubscriptionListResponse>('/feeds')
+  async getSubscriptions(params?: SubscriptionListParams): Promise<SubscriptionListResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.page) searchParams.set('page', params.page.toString())
+    if (params?.per_page) searchParams.set('per_page', params.per_page.toString())
+    if (params?.folder_id !== undefined) searchParams.set('folder_id', params.folder_id ?? '')
+    if (params?.search) searchParams.set('search', params.search)
+
+    const query = searchParams.toString()
+    const url = query ? `/feeds?${query}` : '/feeds'
+    return this.client.get<SubscriptionListResponse>(url)
+  }
+
+  /**
+   * Sync all subscriptions with ETag support.
+   * Returns null if data hasn't changed (304 response).
+   */
+  async syncAllSubscriptions(
+    cachedEtag?: string
+  ): Promise<{ data: SubscriptionSyncResponse | null; etag: string | null }> {
+    const headers: Record<string, string> = {}
+    if (cachedEtag) {
+      headers['If-None-Match'] = `"${cachedEtag}"`
+    }
+
+    try {
+      const response = await this.client.getWithHeaders<SubscriptionSyncResponse>(
+        '/feeds/sync/all',
+        { headers }
+      )
+      const etag = response.headers.get('ETag')?.replace(/"/g, '') || null
+      return { data: response.data, etag }
+    } catch (error: unknown) {
+      // Handle 304 Not Modified
+      if (error && typeof error === 'object' && 'status' in error && error.status === 304) {
+        return { data: null, etag: cachedEtag || null }
+      }
+      throw error
+    }
   }
 
   /**

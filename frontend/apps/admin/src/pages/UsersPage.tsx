@@ -3,11 +3,13 @@ import { useUsers, useToggleUserStatus } from '../hooks/useUsers'
 import { Button, Input, Badge, Skeleton } from '@glean/ui'
 import { Search, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * User management page.
  */
 export default function UsersPage() {
+  const { t } = useTranslation(['admin', 'common'])
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
@@ -31,9 +33,9 @@ export default function UsersPage() {
       <div className="border-b border-border bg-card px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">User Management</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t('admin:users.title')}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Manage user accounts and permissions
+              {t('admin:users.subtitle')}
             </p>
           </div>
         </div>
@@ -50,11 +52,11 @@ export default function UsersPage() {
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search by email..."
+                placeholder={t('admin:users.searchPlaceholder')}
                 className="pl-10"
               />
             </div>
-            <Button type="submit">Search</Button>
+            <Button type="submit">{t('admin:users.search')}</Button>
             {search && (
               <Button
                 type="button"
@@ -65,7 +67,7 @@ export default function UsersPage() {
                   setPage(1)
                 }}
               >
-                Clear
+                {t('admin:users.clear')}
               </Button>
             )}
           </form>
@@ -78,22 +80,22 @@ export default function UsersPage() {
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Email
+                    {t('admin:users.table.email')}
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Name
+                    {t('admin:users.table.name')}
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Status
+                    {t('admin:users.table.status')}
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Created
+                    {t('admin:users.table.created')}
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Last Login
+                    {t('admin:users.table.lastLogin')}
                   </th>
                   <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Actions
+                    {t('admin:users.table.actions')}
                   </th>
                 </tr>
               </thead>
@@ -136,12 +138,12 @@ export default function UsersPage() {
                         {user.is_active ? (
                           <Badge variant="default" className="gap-1">
                             <CheckCircle className="h-3 w-3" />
-                            Active
+                            {t('admin:users.active')}
                           </Badge>
                         ) : (
                           <Badge variant="destructive" className="gap-1">
                             <XCircle className="h-3 w-3" />
-                            Inactive
+                            {t('admin:users.inactive')}
                           </Badge>
                         )}
                       </td>
@@ -154,7 +156,7 @@ export default function UsersPage() {
                         <p className="text-sm text-muted-foreground">
                           {user.last_login_at
                             ? format(new Date(user.last_login_at), 'MMM d, yyyy HH:mm')
-                            : 'Never'}
+                            : t('admin:users.never')}
                         </p>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -167,9 +169,9 @@ export default function UsersPage() {
                           {toggleMutation.isPending ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : user.is_active ? (
-                            'Disable'
+                            t('admin:users.disable')
                           ) : (
-                            'Enable'
+                            t('admin:users.enable')
                           )}
                         </Button>
                       </td>
@@ -179,7 +181,7 @@ export default function UsersPage() {
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
                       <p className="text-sm text-muted-foreground">
-                        {search ? 'No users found matching your search' : 'No users yet'}
+                        {search ? t('admin:users.emptyFiltered') : t('admin:users.empty')}
                       </p>
                     </td>
                   </tr>
@@ -192,7 +194,7 @@ export default function UsersPage() {
           {data && data.total_pages > 1 && (
             <div className="flex items-center justify-between border-t border-border px-6 py-4">
               <p className="text-sm text-muted-foreground">
-                Page {data.page} of {data.total_pages} ({data.total} total users)
+                {t('admin:users.pagination.page', { page: data.page, totalPages: data.total_pages, total: data.total })}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -201,7 +203,7 @@ export default function UsersPage() {
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={data.page === 1}
                 >
-                  Previous
+                  {t('admin:users.pagination.previous')}
                 </Button>
                 <Button
                   size="sm"
@@ -209,7 +211,7 @@ export default function UsersPage() {
                   onClick={() => setPage((p) => p + 1)}
                   disabled={data.page === data.total_pages}
                 >
-                  Next
+                  {t('admin:users.pagination.next')}
                 </Button>
               </div>
             </div>

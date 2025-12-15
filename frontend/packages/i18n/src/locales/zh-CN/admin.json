@@ -1,0 +1,221 @@
+{
+  "layout": {
+    "badge": "管理员",
+    "nav": {
+      "dashboard": "仪表盘",
+      "users": "用户",
+      "feeds": "订阅",
+      "entries": "文章",
+      "settings": "设置",
+      "embeddings": "向量",
+      "system": "系统"
+    },
+    "language": {
+      "label": "语言"
+    },
+    "logout": {
+      "button": "退出登录",
+      "title": "退出登录？",
+      "description": "确定要从管理后台退出登录吗？"
+    }
+  },
+  "settings": {
+    "system": {
+      "title": "系统设置",
+      "subtitle": "管理 Glean 实例的全局配置。"
+    },
+    "registration": {
+      "title": "用户注册",
+      "description": "控制是否允许新用户注册。现有用户仍可正常登录。",
+      "enableLabel": "启用注册",
+      "enabled": "新用户可以注册。",
+      "disabled": "注册已禁用。"
+    },
+    "embedding": {
+      "title": "向量化设置",
+      "subtitle": "配置向量化以启用智能推荐。",
+      "config": "配置",
+      "enabled": "启用向量化",
+      "provider": "提供商",
+      "model": "模型",
+      "dimension": "维度",
+      "autoFilled": "自动填充",
+      "customModelPlaceholder": "输入自定义模型名称",
+      "apiKey": "API Key",
+      "apiKeySet": "已配置",
+      "apiKeyPlaceholder": "输入新 API Key 进行更新",
+      "baseUrl": "自定义地址（可选）",
+      "rateLimit": "限流（rpm）",
+      "rateLimitDefault": "默认",
+      "inherit": "继承默认",
+      "progress": "进度",
+      "progressDesc": "进度基于文章计数。保存配置会重新生成所有向量。",
+      "total": "总数",
+      "done": "已完成",
+      "failed": "失败",
+      "percent": "已完成 {{percent}}%",
+      "saved": "设置已保存",
+      "saveSuccess": "配置已成功保存。",
+      "saveError": "保存配置失败。",
+      "testConnection": "测试连接",
+      "validating": "验证中...",
+      "validatingConnection": "正在验证提供商连接...",
+      "downloadingModel": "注意：首次验证可能需要几分钟，因为需要从 HuggingFace 下载模型。",
+      "validatingInProgress": "验证进行中",
+      "modelDownloadNotice": "如果这是您第一次使用此模型，可能需要几分钟从 HuggingFace 下载。请耐心等待。",
+      "downloadTimeout": "验证将在 10 分钟后超时。如果因超时而验证失败，模型可能仍在后台下载中。",
+      "validationError": "验证错误",
+      "modelDownloadTip": "提示：如果错误与超时相关，模型可能仍在下载中。请几分钟后重试。",
+      "validationSuccess": "连接成功",
+      "validationFailed": "连接失败",
+      "rebuild": "全量重建",
+      "cancelRebuild": "取消重建",
+      "errorOccurred": "发生错误",
+      "errorCount": "错误次数：{{count}}",
+      "info": "说明",
+      "infoDesc": "向量化通过为文章内容生成向量，在智能视图中启用 AI 推荐功能。",
+      "infoLocal": "Sentence Transformers 在本地运行（无需 API Key）",
+      "infoOpenAI": "OpenAI 需要 API Key 并产生费用",
+      "infoRebuild": "更改提供商或模型将触发全量重建",
+      "status": {
+        "disabled": "已禁用",
+        "idle": "运行中",
+        "validating": "验证中...",
+        "rebuilding": "重建中...",
+        "error": "错误"
+      }
+    }
+  },
+  "login": {
+    "title": "Glean 管理后台",
+    "subtitle": "登录以管理系统",
+    "username": "用户名",
+    "password": "密码",
+    "usernamePlaceholder": "请输入用户名",
+    "passwordPlaceholder": "请输入密码",
+    "signIn": "登录",
+    "signingIn": "登录中...",
+    "invalid": "用户名或密码错误",
+    "footer": "仅限管理员访问。未经授权的访问将被禁止。",
+    "errorTitle": "错误"
+  },
+  "entries": {
+    "title": "文章管理",
+    "subtitle": "管理并审核所有订阅文章",
+    "badge": "文章",
+    "searchPlaceholder": "按标题搜索...",
+    "search": "搜索",
+    "clear": "清除",
+    "filters": {
+      "allFeeds": "所有订阅"
+    },
+    "pagination": {
+      "previous": "上一页",
+      "next": "下一页",
+      "pageOf": "第 {{page}} 页 / 共 {{total}} 页"
+    },
+    "emptyFilter": "未找到符合条件的文章",
+    "empty": "暂无文章",
+    "open": "打开",
+    "delete": "删除",
+    "deleteTitle": "删除文章",
+    "deleteDescription": "确定要删除这篇文章吗？此操作无法撤销并将永久删除数据库中的文章。",
+    "deleting": "删除中...",
+    "loading": "加载中...",
+    "noContent": "暂无内容",
+    "viewOriginal": "查看原文"
+  },
+  "feeds": {
+    "feedErrorTitle": "订阅错误",
+    "feedErrorDescription": "此订阅连续发生 {{count}} 次错误。",
+    "feedErrorMessageLabel": "错误信息：",
+    "noErrorMessage": "无错误信息",
+    "title": "订阅管理",
+    "subtitle": "管理并监控所有 RSS 订阅",
+    "searchPlaceholder": "按标题或链接搜索...",
+    "search": "搜索",
+    "clear": "清除",
+    "status": {
+      "all": "全部",
+      "active": "正常",
+      "inactive": "停用",
+      "error": "错误"
+    },
+    "table": {
+      "feed": "订阅",
+      "status": "状态",
+      "subscribers": "订阅人数",
+      "lastFetched": "上次拉取",
+      "created": "创建时间",
+      "actions": "操作"
+    },
+    "resetTooltip": "重置错误计数",
+    "disableTooltip": "禁用订阅",
+    "enableTooltip": "启用订阅",
+    "deleteTitle": "删除订阅？",
+    "deleteDescription": "确定要删除此订阅吗？此操作无法撤销。",
+    "delete": "删除订阅",
+    "deleting": "删除中...",
+    "neverFetched": "从未拉取",
+    "emptyFiltered": "未找到符合条件的订阅",
+    "empty": "暂无订阅",
+    "pagination": {
+      "page": "第 {{page}} 页 / 共 {{totalPages}} 页（共 {{total}} 个订阅）",
+      "previous": "上一页",
+      "next": "下一页"
+    }
+  },
+  "users": {
+    "title": "用户管理",
+    "subtitle": "管理用户账号和权限",
+    "searchPlaceholder": "按邮箱搜索...",
+    "search": "搜索",
+    "clear": "清除",
+    "table": {
+      "email": "邮箱",
+      "name": "姓名",
+      "status": "状态",
+      "created": "创建时间",
+      "lastLogin": "上次登录",
+      "actions": "操作"
+    },
+    "active": "启用",
+    "inactive": "停用",
+    "never": "从未",
+    "disable": "禁用",
+    "enable": "启用",
+    "emptyFiltered": "未找到符合搜索条件的用户",
+    "empty": "暂无用户",
+    "pagination": {
+      "page": "第 {{page}} 页 / 共 {{totalPages}} 页（共 {{total}} 个用户）",
+      "previous": "上一页",
+      "next": "下一页"
+    }
+  },
+  "dashboard": {
+    "title": "仪表盘",
+    "subtitle": "系统概览与统计",
+    "cards": {
+      "totalUsers": "用户总数",
+      "activeUsers": "活跃用户",
+      "totalFeeds": "订阅总数",
+      "totalEntries": "文章总数",
+      "newUsers": "今日新增用户",
+      "newEntries": "今日新增文章",
+      "last7Days": "过去 7 天"
+    },
+    "activity": {
+      "title": "今日动态",
+      "newUsersToday_one": "{{count}} 位新用户",
+      "newUsersToday_other": "{{count}} 位新用户",
+      "newEntriesToday_one": "{{count}} 篇新文章",
+      "newEntriesToday_other": "{{count}} 篇新文章",
+      "registeredToday": "今日注册",
+      "addedToday": "今日新增"
+    }
+  },
+  "common": {
+    "loading": "加载中..."
+  }
+}
+

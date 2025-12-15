@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { folderService } from '@glean/api-client'
+import { logger } from '@glean/logger'
 import type {
   FolderTreeNode,
   FolderType,
@@ -21,7 +22,7 @@ export function useFolders(type?: FolderType) {
       setFolders(response.folders)
     } catch (err) {
       setError('Failed to load folders')
-      console.error('Failed to fetch folders:', err)
+      logger.error('Failed to fetch folders:', err)
     } finally {
       setLoading(false)
     }
@@ -35,7 +36,7 @@ export function useFolders(type?: FolderType) {
         return folder
       } catch (err) {
         setError('Failed to create folder')
-        console.error('Failed to create folder:', err)
+        logger.error('Failed to create folder:', err)
         return null
       }
     },
@@ -50,7 +51,7 @@ export function useFolders(type?: FolderType) {
         return folder
       } catch (err) {
         setError('Failed to update folder')
-        console.error('Failed to update folder:', err)
+        logger.error('Failed to update folder:', err)
         return null
       }
     },
@@ -65,7 +66,7 @@ export function useFolders(type?: FolderType) {
         return true
       } catch (err) {
         setError('Failed to delete folder')
-        console.error('Failed to delete folder:', err)
+        logger.error('Failed to delete folder:', err)
         return false
       }
     },
@@ -80,7 +81,7 @@ export function useFolders(type?: FolderType) {
         return folder
       } catch (err) {
         setError('Failed to move folder')
-        console.error('Failed to move folder:', err)
+        logger.error('Failed to move folder:', err)
         return null
       }
     },

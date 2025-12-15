@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isAxiosError } from 'axios'
 import type { User, UserSettings } from '@glean/types'
 import { authService } from '@glean/api-client'
 
@@ -60,7 +61,12 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Registration failed'
+      let message = 'Registration failed'
+      if (isAxiosError(error) && error.response?.data?.detail) {
+        message = error.response.data.detail
+      } else if (error instanceof Error) {
+        message = error.message
+      }
       set({ error: message, isLoading: false })
       throw error
     }

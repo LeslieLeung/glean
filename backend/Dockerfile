@@ -6,6 +6,10 @@ FROM python:3.14-slim
 # Build arguments
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
+ARG APP_VERSION=dev
+
+# Set version as environment variable
+ENV APP_VERSION=${APP_VERSION}
 
 # Set working directory
 WORKDIR /app

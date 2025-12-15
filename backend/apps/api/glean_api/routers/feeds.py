@@ -7,7 +7,7 @@ Provides endpoints for feed discovery, subscription management, and OPML import/
 from typing import Annotated
 
 from arq.connections import ArqRedis
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, UploadFile, status
 
 from glean_core.schemas import (
     BatchDeleteSubscriptionsRequest,
@@ -15,7 +15,9 @@ from glean_core.schemas import (
     DiscoverFeedRequest,
     FolderCreate,
     FolderTreeNode,
+    SubscriptionListResponse,
     SubscriptionResponse,
+    SubscriptionSyncResponse,
     UpdateSubscriptionRequest,
     UserResponse,
 )
@@ -33,19 +35,71 @@ async def list_subscriptions(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     folder_id: str | None = None,
-) -> list[SubscriptionResponse]:
+    page: int = 1,
+    per_page: int = 20,
+    search: str | None = None,
+) -> SubscriptionListResponse:
     """
-    Get all user subscriptions.
+    Get paginated user subscriptions.
 
     Args:
         current_user: Current authenticated user.
         feed_service: Feed service.
         folder_id: Optional folder filter. Use empty string for ungrouped feeds.
+        page: Page number (1-indexed, default 1).
+        per_page: Items per page (default 20, max 100).
+        search: Optional search query to filter by title or URL.
 
     Returns:
-        List of user subscriptions.
+        Paginated list of user subscriptions.
     """
-    return await feed_service.get_user_subscriptions(current_user.id, folder_id)
+    # Clamp per_page to reasonable limits
+    per_page = max(1, min(per_page, 100))
+    page = max(1, page)
+
+    return await feed_service.get_user_subscriptions_paginated(
+        current_user.id, page, per_page, folder_id, search
+    )
+
+
+@router.get("/sync/all")
+async def sync_all_subscriptions(
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    feed_service: Annotated[FeedService, Depends(get_feed_service)],
+    response: Response,
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> SubscriptionSyncResponse | None:
+    """
+    Get all subscriptions with ETag support for efficient syncing.
+
+    This endpoint returns all subscriptions for the current user along with
+    an ETag. Clients can cache the response and send the ETag in the
+    If-None-Match header on subsequent requests. If the data hasn't changed,
+    a 304 Not Modified response is returned.
+
+    Args:
+        current_user: Current authenticated user.
+        feed_service: Feed service.
+        response: FastAPI response object for setting headers.
+        if_none_match: Optional ETag from client cache.
+
+    Returns:
+        All subscriptions with ETag, or 304 if unchanged.
+    """
+    sync_response = await feed_service.get_user_subscriptions_sync(current_user.id)
+
+    # Set ETag header
+    response.headers["ETag"] = f'"{sync_response.etag}"'
+
+    # Check if client has cached data
+    if if_none_match:
+        # Strip quotes from If-None-Match header if present
+        client_etag = if_none_match.strip('"')
+        if client_etag == sync_response.etag:
+            response.status_code = status.HTTP_304_NOT_MODIFIED
+            return None
+
+    return sync_response
 
 
 @router.get("/{subscription_id}")
@@ -115,8 +169,9 @@ async def discover_feed_url(
             current_user.id, feed_url, feed_title, data.folder_id
         )
 
-        # Immediately enqueue feed fetch task for new feed
-        await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
+        # Immediately enqueue feed fetch task only if feed has never been fetched
+        if subscription.feed.last_fetched_at is None:
+            await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
 
         return subscription
     except ValueError as e:
@@ -168,20 +223,34 @@ async def delete_subscription(
     subscription_id: str,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> None:
     """
-    Delete a subscription.
+    Delete a subscription and clean up related data.
+
+    This endpoint:
+    1. Deletes the user's reading state for entries in this feed
+    2. Removes the subscription
+    3. If no other users subscribe, deletes the feed and its entries
+    4. Queues cleanup of vector embeddings if feed was deleted
 
     Args:
         subscription_id: Subscription identifier.
         current_user: Current authenticated user.
         feed_service: Feed service.
+        redis: Redis connection pool for task queue.
 
     Raises:
         HTTPException: If subscription not found or unauthorized.
     """
     try:
-        await feed_service.delete_subscription(subscription_id, current_user.id)
+        orphaned_feed_id, entry_ids = await feed_service.delete_subscription(
+            subscription_id, current_user.id
+        )
+
+        # Queue Milvus embedding cleanup if feed was orphaned
+        if orphaned_feed_id and entry_ids:
+            await redis.enqueue_job("cleanup_orphan_embeddings", orphaned_feed_id, entry_ids)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -191,21 +260,31 @@ async def batch_delete_subscriptions(
     data: BatchDeleteSubscriptionsRequest,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> BatchDeleteSubscriptionsResponse:
     """
-    Delete multiple subscriptions at once.
+    Delete multiple subscriptions at once with cleanup.
+
+    This endpoint performs the same cleanup as single delete for each subscription.
 
     Args:
         data: Batch delete request with subscription IDs.
         current_user: Current authenticated user.
         feed_service: Feed service.
+        redis: Redis connection pool for task queue.
 
     Returns:
         Result with deleted and failed counts.
     """
-    deleted_count, failed_count = await feed_service.batch_delete_subscriptions(
+    deleted_count, failed_count, orphaned_feeds = await feed_service.batch_delete_subscriptions(
         data.subscription_ids, current_user.id
     )
+
+    # Queue Milvus embedding cleanup for each orphaned feed
+    for feed_id, entry_ids in orphaned_feeds.items():
+        if entry_ids:
+            await redis.enqueue_job("cleanup_orphan_embeddings", feed_id, entry_ids)
+
     return BatchDeleteSubscriptionsResponse(deleted_count=deleted_count, failed_count=failed_count)
 
 
@@ -330,8 +409,9 @@ async def import_opml(
                     opml_feed.title,
                     folder_id,
                 )
-                # Immediately enqueue feed fetch task for new feed
-                await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
+                # Immediately enqueue feed fetch task only if feed has never been fetched
+                if subscription.feed.last_fetched_at is None:
+                    await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
                 success_count += 1
             except ValueError:
                 # Already subscribed or invalid feed

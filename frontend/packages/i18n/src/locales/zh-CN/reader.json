@@ -1,0 +1,60 @@
+{
+  "filters": {
+    "all": "全部",
+    "unread": "未读",
+    "liked": "喜欢",
+    "readLater": "稍后阅读"
+  },
+  "actions": {
+    "markRead": "标记已读",
+    "markUnread": "标记未读",
+    "readLater": "稍后阅读",
+    "savedForLater": "已保存稍后阅读",
+    "archive": "归档",
+    "archived": "已归档",
+    "openOriginal": "打开原文",
+    "open": "打开",
+    "close": "关闭",
+    "fullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏",
+    "like": "喜欢",
+    "liked": "已喜欢",
+    "dislike": "不喜欢",
+    "disliked": "已标记不喜欢"
+  },
+  "entries": {
+    "loadError": "加载条目失败",
+    "noEntries": "没有找到条目",
+    "loadingMore": "加载更多...",
+    "noMoreEntries": "没有更多内容了",
+    "markAll": "全部标记为已读",
+    "marking": "标记中...",
+    "markConfirm": "将所有条目标记为已读？",
+    "markConfirmDescription": "这将把{{scope}}的所有条目标记为已读。此操作无法撤销。",
+    "scope": {
+      "feed": "此订阅中的条目",
+      "folder": "此文件夹中的条目",
+      "all": "所有条目"
+    },
+    "pagination": {
+      "next": "下一页",
+      "previous": "上一页"
+    }
+  },
+  "smart": {
+    "title": "智能列表",
+    "description": "按您的偏好排序",
+    "limitedMode": "简化智能模式",
+    "enableVectorizationHint": "启用向量化后，可获得基于内容相似度的 AI 推荐。",
+    "goToSettings": "前往设置"
+  },
+  "empty": {
+    "selectArticle": "选择文章",
+    "selectArticleDescription": "从列表中选择一篇文章开始阅读",
+    "tryChangingFilter": "尝试更改筛选条件或添加更多订阅"
+  },
+  "article": {
+    "noContent": "没有可用内容",
+    "viewOriginal": "查看原文"
+  }
+}

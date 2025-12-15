@@ -9,10 +9,23 @@ from typing import Any
 
 from arq import Retry
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
 from glean_database.session import get_session
 from glean_rss import fetch_feed, parse_feed
+
+
+async def _is_vectorization_enabled(session: AsyncSession) -> bool:
+    """Check if vectorization is enabled and healthy."""
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+    return config.enabled and config.status in (
+        VectorizationStatus.IDLE,
+        VectorizationStatus.REBUILDING,
+    )
 
 
 async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | int]:
@@ -109,7 +122,13 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     published_at=parsed_entry.published_at,
                 )
                 session.add(entry)
+                await session.flush()  # Get entry ID
                 new_entries += 1
+
+                # M3: Queue embedding task for new entry (only if vectorization enabled)
+                if ctx.get("milvus_client") and await _is_vectorization_enabled(session):
+                    await ctx["redis"].enqueue_job("generate_entry_embedding", entry.id)
+                    print(f"[fetch_feed_task] Queued embedding task for entry: {entry.id}")
 
                 # Track latest entry time
                 if parsed_entry.published_at and (

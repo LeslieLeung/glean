@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   useSubscriptions,
   useDeleteSubscription,
@@ -10,9 +10,11 @@ import {
   useExportOPML,
 } from '../hooks/useSubscriptions'
 import { useFolderStore } from '../stores/folderStore'
+import { useTranslation } from '@glean/i18n'
 import type { Subscription, FolderTreeNode } from '@glean/types'
 import {
   Button,
+  buttonVariants,
   Badge,
   Input,
   Label,
@@ -64,15 +66,21 @@ import {
   Upload,
   Download,
   Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react'
+
+const PER_PAGE = 20
 
 /**
  * Subscription management page.
  *
- * Provides list view with multi-select for batch operations.
+ * Provides list view with multi-select for batch operations and pagination.
  */
 export default function SubscriptionsPage() {
-  const { data: subscriptions, isLoading } = useSubscriptions()
+  const { t } = useTranslation('feeds')
   const { feedFolders, fetchFolders } = useFolderStore()
   const deleteMutation = useDeleteSubscription()
   const refreshMutation = useRefreshFeed()
@@ -80,9 +88,33 @@ export default function SubscriptionsPage() {
   const importMutation = useImportOPML()
   const exportMutation = useExportOPML()
 
+  // Pagination state
+  const [page, setPage] = useState(1)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+      setPage(1) // Reset to first page on search
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Fetch paginated subscriptions
+  const { data, isLoading, isFetching } = useSubscriptions({
+    page,
+    per_page: PER_PAGE,
+    search: debouncedSearch || undefined,
+  })
+
+  const subscriptions = data?.items ?? []
+  const totalPages = data?.total_pages ?? 1
+  const totalItems = data?.total ?? 0
+
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [searchQuery, setSearchQuery] = useState('')
 
   // Dialog states
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false)
@@ -124,26 +156,13 @@ export default function SubscriptionsPage() {
     exportMutation.mutate()
   }
 
-  // Filter subscriptions based on search
-  const filteredSubscriptions = useMemo(() => {
-    if (!subscriptions) return []
-    if (!searchQuery.trim()) return subscriptions
-
-    const query = searchQuery.toLowerCase()
-    return subscriptions.filter((sub) => {
-      const title = (sub.custom_title || sub.feed.title || sub.feed.url).toLowerCase()
-      const url = sub.feed.url.toLowerCase()
-      return title.includes(query) || url.includes(query)
-    })
-  }, [subscriptions, searchQuery])
-
   // Selection helpers
   const isAllSelected =
-    filteredSubscriptions.length > 0 &&
-    filteredSubscriptions.every((sub) => selectedIds.has(sub.id))
+    subscriptions.length > 0 &&
+    subscriptions.every((sub) => selectedIds.has(sub.id))
   const isSomeSelected =
-    filteredSubscriptions.some((sub) => selectedIds.has(sub.id)) && !isAllSelected
-  const selectedCount = filteredSubscriptions.filter((sub) => selectedIds.has(sub.id)).length
+    subscriptions.some((sub) => selectedIds.has(sub.id)) && !isAllSelected
+  const selectedCount = subscriptions.filter((sub) => selectedIds.has(sub.id)).length
 
   const handleSelectAll = () => {
     if (isAllSelected) {
@@ -151,7 +170,7 @@ export default function SubscriptionsPage() {
       setSelectedIds(new Set())
     } else {
       // Select all visible
-      setSelectedIds(new Set(filteredSubscriptions.map((sub) => sub.id)))
+      setSelectedIds(new Set(subscriptions.map((sub) => sub.id)))
     }
   }
 
@@ -187,6 +206,12 @@ export default function SubscriptionsPage() {
     await refreshMutation.mutateAsync(subscriptionId)
   }
 
+  // Pagination handlers
+  const goToPage = useCallback((newPage: number) => {
+    setPage(Math.max(1, Math.min(newPage, totalPages)))
+    setSelectedIds(new Set()) // Clear selection on page change
+  }, [totalPages])
+
   return (
     <div className="min-h-full bg-background p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-5xl">
@@ -198,10 +223,13 @@ export default function SubscriptionsPage() {
             </div>
             <div>
               <h1 className="font-display text-2xl font-bold text-foreground sm:text-3xl">
-                Manage Subscriptions
+                {t('manageFeeds.title')}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                {subscriptions?.length || 0} subscriptions total
+                {t('manageSubscriptions.subscriptionCount', { count: totalItems })} {t('opml.total')}
+                {isFetching && !isLoading && (
+                  <Loader2 className="ml-2 inline h-3 w-3 animate-spin" />
+                )}
               </p>
             </div>
           </div>
@@ -213,7 +241,7 @@ export default function SubscriptionsPage() {
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search subscriptions..."
+              placeholder={t('manageSubscriptions.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -225,7 +253,7 @@ export default function SubscriptionsPage() {
             {selectedCount > 0 && (
               <>
                 <span className="text-sm text-muted-foreground">
-                  {selectedCount} selected
+                  {selectedCount} {t('manageSubscriptions.selected')}
                 </span>
                 <Button
                   variant="destructive"
@@ -238,7 +266,7 @@ export default function SubscriptionsPage() {
                   ) : (
                     <Trash2 className="h-4 w-4" />
                   )}
-                  <span>Delete Selected</span>
+                  <span>{t('manageSubscriptions.deleteSelected')}</span>
                 </Button>
               </>
             )}
@@ -246,7 +274,7 @@ export default function SubscriptionsPage() {
             {/* Add Feed Button */}
             <Button size="sm" onClick={() => setShowAddFeedDialog(true)} className="btn-glow">
               <Plus className="h-4 w-4" />
-              <span>Add Feed</span>
+              <span>{t('actions.addFeed')}</span>
             </Button>
 
             {/* Import/Export Menu */}
@@ -259,11 +287,11 @@ export default function SubscriptionsPage() {
               <MenuPopup align="end">
                 <MenuItem onClick={handleImportClick} disabled={importMutation.isPending}>
                   <Upload className="h-4 w-4" />
-                  <span>{importMutation.isPending ? 'Importing...' : 'Import OPML'}</span>
+                  <span>{importMutation.isPending ? t('states.importing') : t('actions.importOPML')}</span>
                 </MenuItem>
                 <MenuItem onClick={handleExport} disabled={exportMutation.isPending}>
                   <Download className="h-4 w-4" />
-                  <span>{exportMutation.isPending ? 'Exporting...' : 'Export OPML'}</span>
+                  <span>{exportMutation.isPending ? t('states.exporting') : t('actions.exportOPML')}</span>
                 </MenuItem>
               </MenuPopup>
             </Menu>
@@ -277,7 +305,7 @@ export default function SubscriptionsPage() {
             <button
               onClick={handleSelectAll}
               className="flex h-5 w-5 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-              title={isAllSelected ? 'Deselect all' : 'Select all'}
+              title={isAllSelected ? t('manageSubscriptions.deselectAll') : t('manageSubscriptions.selectAll')}
             >
               {isAllSelected ? (
                 <CheckSquare className="h-5 w-5 text-primary" />
@@ -287,9 +315,9 @@ export default function SubscriptionsPage() {
                 <Square className="h-5 w-5" />
               )}
             </button>
-            <div className="flex-1 text-sm font-medium text-muted-foreground">Feed</div>
+            <div className="flex-1 text-sm font-medium text-muted-foreground">{t('manageSubscriptions.feed')}</div>
             <div className="hidden w-24 text-sm font-medium text-muted-foreground md:block">
-              Status
+              {t('manageSubscriptions.status')}
             </div>
             <div className="w-10"></div>
           </div>
@@ -315,26 +343,26 @@ export default function SubscriptionsPage() {
           )}
 
           {/* Empty State */}
-          {!isLoading && filteredSubscriptions.length === 0 && (
+          {!isLoading && subscriptions.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Rss className="h-8 w-8 text-muted-foreground" />
               </div>
               <p className="text-lg font-medium text-foreground">
-                {searchQuery ? 'No matching subscriptions' : 'No subscriptions yet'}
+                {debouncedSearch ? t('manageSubscriptions.noMatchingSubscriptions') : t('manageSubscriptions.noSubscriptionsYet')}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {searchQuery
-                  ? 'Try a different search term'
-                  : 'Add feeds from the sidebar to get started'}
+                {debouncedSearch
+                  ? t('manageSubscriptions.tryDifferentSearch')
+                  : t('manageSubscriptions.addFeedsFromSidebar')}
               </p>
             </div>
           )}
 
           {/* Subscription List */}
-          {!isLoading && filteredSubscriptions.length > 0 && (
+          {!isLoading && subscriptions.length > 0 && (
             <div className="divide-y divide-border">
-              {filteredSubscriptions.map((sub, index) => (
+              {subscriptions.map((sub, index) => (
                 <SubscriptionRow
                   key={sub.id}
                   subscription={sub}
@@ -352,18 +380,94 @@ export default function SubscriptionsPage() {
           )}
         </div>
 
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {t('manageSubscriptions.page')} {page} {t('manageSubscriptions.of')} {totalPages}
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => goToPage(1)}
+                disabled={page === 1}
+                title={t('manageSubscriptions.firstPage')}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 1}
+                title={t('manageSubscriptions.previousPage')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              
+              {/* Page numbers */}
+              <div className="flex items-center gap-1 px-2">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  // Show pages around current page
+                  let pageNum: number
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (page <= 3) {
+                    pageNum = i + 1
+                  } else if (page >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = page - 2 + i
+                  }
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pageNum === page ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => goToPage(pageNum)}
+                      className="min-w-[2rem]"
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+              </div>
+
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => goToPage(page + 1)}
+                disabled={page === totalPages}
+                title={t('manageSubscriptions.nextPage')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => goToPage(totalPages)}
+                disabled={page === totalPages}
+                title={t('manageSubscriptions.lastPage')}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Batch Delete Confirmation */}
         <AlertDialog open={showBatchDeleteConfirm} onOpenChange={setShowBatchDeleteConfirm}>
           <AlertDialogPopup>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete {selectedCount} subscriptions?</AlertDialogTitle>
+              <AlertDialogTitle>{t('manageSubscriptions.deleteConfirm', { count: selectedCount })}</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to unsubscribe from {selectedCount} feed
-                {selectedCount > 1 ? 's' : ''}? This action cannot be undone.
+                {t('manageSubscriptions.deleteConfirmDescription', { count: selectedCount, plural: selectedCount > 1 ? 's' : '' })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+              <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('common.cancel')}</AlertDialogClose>
               <Button
                 variant="destructive"
                 onClick={handleBatchDelete}
@@ -372,12 +476,12 @@ export default function SubscriptionsPage() {
                 {batchDeleteMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Deleting...
+                    {t('manageSubscriptions.deleting')}
                   </>
                 ) : (
                   <>
                     <Trash2 className="h-4 w-4" />
-                    Delete {selectedCount}
+                    {t('manageSubscriptions.deleteCount', { count: selectedCount })}
                   </>
                 )}
               </Button>
@@ -392,13 +496,13 @@ export default function SubscriptionsPage() {
         >
           <AlertDialogPopup>
             <AlertDialogHeader>
-              <AlertDialogTitle>Unsubscribe from feed?</AlertDialogTitle>
+              <AlertDialogTitle>{t('manageSubscriptions.unsubscribeConfirm')}</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to unsubscribe from this feed? This action cannot be undone.
+                {t('manageSubscriptions.unsubscribeDescription')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+              <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('common.cancel')}</AlertDialogClose>
               <Button
                 variant="destructive"
                 onClick={handleSingleDelete}
@@ -407,10 +511,10 @@ export default function SubscriptionsPage() {
                 {deleteMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Deleting...
+                    {t('manageSubscriptions.deleting')}
                   </>
                 ) : (
-                  'Unsubscribe'
+                  t('manageSubscriptions.unsubscribe')
                 )}
               </Button>
             </AlertDialogFooter>
@@ -448,18 +552,18 @@ export default function SubscriptionsPage() {
         <AlertDialog open={!!importResult} onOpenChange={() => setImportResult(null)}>
           <AlertDialogPopup>
             <AlertDialogHeader>
-              <AlertDialogTitle>Import Completed</AlertDialogTitle>
+              <AlertDialogTitle>{t('opml.importCompleted')}</AlertDialogTitle>
               <AlertDialogDescription>
                 <div className="space-y-1 text-left">
-                  <div>Feeds imported: {importResult?.success}</div>
-                  <div>Folders created: {importResult?.folders_created}</div>
-                  <div>Failed: {importResult?.failed}</div>
-                  <div>Total feeds: {importResult?.total}</div>
+                  <div>{t('opml.feedsImported')}: {importResult?.success}</div>
+                  <div>{t('opml.foldersCreated')}: {importResult?.folders_created}</div>
+                  <div>{t('opml.failed')}: {importResult?.failed}</div>
+                  <div>{t('opml.totalFeeds')}: {importResult?.total}</div>
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button />}>OK</AlertDialogClose>
+              <AlertDialogClose className={buttonVariants()}>{t('common.ok')}</AlertDialogClose>
             </AlertDialogFooter>
           </AlertDialogPopup>
         </AlertDialog>
@@ -468,11 +572,11 @@ export default function SubscriptionsPage() {
         <AlertDialog open={!!importError} onOpenChange={() => setImportError(null)}>
           <AlertDialogPopup>
             <AlertDialogHeader>
-              <AlertDialogTitle>Import Failed</AlertDialogTitle>
+              <AlertDialogTitle>{t('opml.importFailed')}</AlertDialogTitle>
               <AlertDialogDescription>{importError}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogClose render={<Button />}>OK</AlertDialogClose>
+              <AlertDialogClose className={buttonVariants()}>{t('common.ok')}</AlertDialogClose>
             </AlertDialogFooter>
           </AlertDialogPopup>
         </AlertDialog>
@@ -504,6 +608,7 @@ function SubscriptionRow({
   folders,
   style,
 }: SubscriptionRowProps) {
+  const { t } = useTranslation('feeds')
   const updateMutation = useUpdateSubscription()
 
   const title = subscription.custom_title || subscription.feed.title || subscription.feed.url
@@ -562,7 +667,7 @@ function SubscriptionRow({
           <div className="flex items-center gap-2">
             <span className="truncate font-medium text-foreground">{title}</span>
             {hasError && (
-              <span title="Feed has errors">
+              <span title={t('manageSubscriptions.feedHasErrors')}>
                 <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
               </span>
             )}
@@ -587,7 +692,7 @@ function SubscriptionRow({
           size="sm"
           className={hasError ? '' : 'bg-green-500/10 text-green-600'}
         >
-          {hasError ? 'Error' : 'Active'}
+          {hasError ? t('manageSubscriptions.error') : t('manageSubscriptions.active')}
         </Badge>
       </div>
 
@@ -599,21 +704,21 @@ function SubscriptionRow({
         <MenuPopup align="end">
           <MenuItem onClick={onEdit}>
             <Pencil className="h-4 w-4" />
-            <span>Edit</span>
+            <span>{t('contextMenu.edit')}</span>
           </MenuItem>
           <MenuItem onClick={onRefresh} disabled={isRefreshing}>
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{t('contextMenu.refresh')}</span>
           </MenuItem>
           {folders.length > 0 && (
             <MenuSub>
               <MenuSubTrigger>
                 <FolderInput className="h-4 w-4" />
-                <span>Move to Folder</span>
+                <span>{t('common.moveToFolder')}</span>
               </MenuSubTrigger>
               <MenuSubPopup>
                 <MenuItem onClick={() => handleFolderChange(null)}>
-                  <span className="text-muted-foreground">No folder</span>
+                  <span className="text-muted-foreground">{t('common.noFolder')}</span>
                 </MenuItem>
                 <MenuSeparator />
                 {flatFolders.map((folder) => (
@@ -627,7 +732,7 @@ function SubscriptionRow({
           <MenuSeparator />
           <MenuItem variant="destructive" onClick={onDelete}>
             <Trash2 className="h-4 w-4" />
-            <span>Unsubscribe</span>
+            <span>{t('contextMenu.unsubscribe')}</span>
           </MenuItem>
         </MenuPopup>
       </Menu>
@@ -642,6 +747,7 @@ interface EditSubscriptionDialogProps {
 }
 
 function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscriptionDialogProps) {
+  const { t } = useTranslation('feeds')
   const updateMutation = useUpdateSubscription()
   const { createFolder } = useFolderStore()
   const [customTitle, setCustomTitle] = useState(subscription.custom_title || '')
@@ -678,10 +784,10 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
 
   // Get selected folder name
   const selectedFolderName = useMemo(() => {
-    if (!selectedFolderId) return 'No folder'
+    if (!selectedFolderId) return t('common.noFolder')
     const folder = flatFolders.find((f) => f.id === selectedFolderId)
-    return folder?.name || 'No folder'
-  }, [selectedFolderId, flatFolders])
+    return folder?.name || t('common.noFolder')
+  }, [selectedFolderId, flatFolders, t])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -735,13 +841,13 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
     <Dialog open onOpenChange={onClose}>
       <DialogPopup className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit Subscription</DialogTitle>
-          <DialogDescription>Customize how this feed appears in your reader.</DialogDescription>
+          <DialogTitle>{t('manageSubscriptions.editSubscription')}</DialogTitle>
+          <DialogDescription>{t('manageSubscriptions.editDescription')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 px-6 py-4">
           {/* Custom Title */}
           <div className="space-y-2">
-            <Label htmlFor="custom-title">Custom Title</Label>
+            <Label htmlFor="custom-title">{t('manageSubscriptions.customTitle')}</Label>
             <Input
               id="custom-title"
               value={customTitle}
@@ -749,13 +855,13 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
               placeholder={subscription.feed.title || subscription.feed.url}
             />
             <p className="text-xs text-muted-foreground">
-              Leave empty to use the original feed title
+              {t('manageSubscriptions.leaveEmpty')}
             </p>
           </div>
 
           {/* Feed URL */}
           <div className="space-y-2">
-            <Label htmlFor="feed-url">Feed URL</Label>
+            <Label htmlFor="feed-url">{t('manageSubscriptions.feedUrl')}</Label>
             <Input
               id="feed-url"
               type="url"
@@ -763,12 +869,12 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
               onChange={(e) => setFeedUrl(e.target.value)}
               placeholder="https://example.com/feed.xml"
             />
-            <p className="text-xs text-muted-foreground">The RSS or Atom feed URL</p>
+            <p className="text-xs text-muted-foreground">{t('manageSubscriptions.rssUrlDescription')}</p>
           </div>
 
           {/* Folder Selection with Search */}
           <div className="space-y-2">
-            <Label>Folder</Label>
+            <Label>{t('manageSubscriptions.folder')}</Label>
             <div className="relative" ref={dropdownRef}>
               {/* Dropdown Trigger */}
               <button
@@ -796,7 +902,7 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="text"
-                        placeholder="Search folders..."
+                        placeholder={t('manageSubscriptions.searchFolders')}
                         value={folderSearchQuery}
                         onChange={(e) => setFolderSearchQuery(e.target.value)}
                         className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
@@ -819,7 +925,7 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
                         selectedFolderId === null ? 'bg-primary/10 text-primary' : ''
                       }`}
                     >
-                      <span className="text-muted-foreground">No folder</span>
+                      <span className="text-muted-foreground">{t('common.noFolder')}</span>
                       {selectedFolderId === null && <Check className="h-4 w-4" />}
                     </button>
 
@@ -845,7 +951,7 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
                     {/* No results */}
                     {filteredFolders.length === 0 && folderSearchQuery && !isCreatingFolder && (
                       <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                        No folders found
+                        {t('manageSubscriptions.noFoldersFound')}
                       </p>
                     )}
                   </div>
@@ -856,7 +962,7 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
-                          placeholder="Folder name"
+                          placeholder={t('manageSubscriptions.folderName')}
                           value={newFolderName}
                           onChange={(e) => setNewFolderName(e.target.value)}
                           onKeyDown={(e) => {
@@ -898,7 +1004,7 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
                         <Plus className="h-4 w-4" />
-                        <span>Create new folder</span>
+                        <span>{t('manageSubscriptions.createNewFolder')}</span>
                       </button>
                     )}
                   </div>
@@ -909,16 +1015,16 @@ function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscrip
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
+                {t('common.saving')}
               </>
             ) : (
-              'Save Changes'
+              t('common.saveChanges')
             )}
           </Button>
         </DialogFooter>
@@ -933,6 +1039,7 @@ interface AddFeedDialogProps {
 }
 
 function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
+  const { t } = useTranslation('feeds')
   const discoverMutation = useDiscoverFeed()
   const { createFolder } = useFolderStore()
   const [url, setUrl] = useState('')
@@ -966,10 +1073,10 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
 
   // Get selected folder name
   const selectedFolderName = useMemo(() => {
-    if (!selectedFolderId) return 'No folder'
+    if (!selectedFolderId) return t('common.noFolder')
     const folder = flatFolders.find((f) => f.id === selectedFolderId)
-    return folder?.name || 'No folder'
-  }, [selectedFolderId, flatFolders])
+    return folder?.name || t('common.noFolder')
+  }, [selectedFolderId, flatFolders, t])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -1024,7 +1131,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
               <Sparkles className="h-5 w-5 text-primary" />
             </div>
-            <h2 className="font-display text-xl font-bold text-foreground">Add Feed</h2>
+            <h2 className="font-display text-xl font-bold text-foreground">{t('manageSubscriptions.addFeed')}</h2>
           </div>
           <Button
             variant="ghost"
@@ -1048,7 +1155,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
 
           <div className="space-y-2">
             <Label htmlFor="feedUrl" className="text-foreground">
-              Feed URL or Website URL
+              {t('manageSubscriptions.feedUrlOrWebsite')}
             </Label>
             <Input
               id="feedUrl"
@@ -1060,13 +1167,13 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
               className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              Enter a feed URL or website URL — we&apos;ll try to discover the feed automatically
+              {t('manageSubscriptions.feedUrlDescription')}
             </p>
           </div>
 
           {/* Folder Selection with Search */}
           <div className="space-y-2">
-            <Label>Folder (optional)</Label>
+            <Label>{t('manageSubscriptions.folderOptional')}</Label>
             <div className="relative" ref={dropdownRef}>
               {/* Dropdown Trigger */}
               <button
@@ -1094,7 +1201,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="text"
-                        placeholder="Search folders..."
+                        placeholder={t('manageSubscriptions.searchFolders')}
                         value={folderSearchQuery}
                         onChange={(e) => setFolderSearchQuery(e.target.value)}
                         className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
@@ -1117,7 +1224,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
                         selectedFolderId === null ? 'bg-primary/10 text-primary' : ''
                       }`}
                     >
-                      <span className="text-muted-foreground">No folder</span>
+                      <span className="text-muted-foreground">{t('common.noFolder')}</span>
                       {selectedFolderId === null && <Check className="h-4 w-4" />}
                     </button>
 
@@ -1143,7 +1250,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
                     {/* No results */}
                     {filteredFolders.length === 0 && folderSearchQuery && !isCreatingFolder && (
                       <p className="px-2 py-3 text-center text-sm text-muted-foreground">
-                        No folders found
+                        {t('manageSubscriptions.noFoldersFound')}
                       </p>
                     )}
                   </div>
@@ -1154,7 +1261,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
-                          placeholder="Folder name"
+                          placeholder={t('manageSubscriptions.folderName')}
                           value={newFolderName}
                           onChange={(e) => setNewFolderName(e.target.value)}
                           onKeyDown={(e) => {
@@ -1199,7 +1306,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
                         <Plus className="h-4 w-4" />
-                        <span>Create new folder</span>
+                        <span>{t('manageSubscriptions.createNewFolder')}</span>
                       </button>
                     )}
                   </div>
@@ -1215,7 +1322,7 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
               onClick={onClose}
               disabled={discoverMutation.isPending}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               type="submit"
@@ -1225,12 +1332,12 @@ function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
               {discoverMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Adding...</span>
+                  <span>{t('manageSubscriptions.adding')}</span>
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  <span>Add Feed</span>
+                  <span>{t('manageSubscriptions.addFeed')}</span>
                 </>
               )}
             </Button>

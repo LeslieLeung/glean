@@ -1,6 +1,9 @@
 """
-Middleware modules for the API application.
+API中间件模块。
 
-This package contains middleware for authentication, CORS,
-and other cross-cutting concerns.
+包含日志、认证等中间件。
 """
+
+from .logging import LoggingMiddleware
+
+__all__ = ["LoggingMiddleware"]

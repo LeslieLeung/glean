@@ -11,13 +11,27 @@ from .bookmark import (
     BookmarkTagRequest,
     BookmarkUpdate,
 )
+from .config import (
+    EmbeddingConfig,
+    EmbeddingConfigResponse,
+    EmbeddingConfigUpdateRequest,
+    EmbeddingRebuildProgress,
+    PreferenceConfig,
+    RateLimitConfig,
+    ScoreConfig,
+    ValidationResult,
+    VectorizationStatus,
+    VectorizationStatusResponse,
+)
 from .entry import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from .feed import (
     BatchDeleteSubscriptionsRequest,
     BatchDeleteSubscriptionsResponse,
     DiscoverFeedRequest,
     FeedResponse,
+    SubscriptionListResponse,
     SubscriptionResponse,
+    SubscriptionSyncResponse,
     UpdateSubscriptionRequest,
 )
 from .folder import (
@@ -51,6 +65,8 @@ __all__ = [
     # Feed
     "FeedResponse",
     "SubscriptionResponse",
+    "SubscriptionListResponse",
+    "SubscriptionSyncResponse",
     "DiscoverFeedRequest",
     "UpdateSubscriptionRequest",
     "BatchDeleteSubscriptionsRequest",
@@ -81,4 +97,15 @@ __all__ = [
     "TagWithCountsResponse",
     "TagListResponse",
     "TagBatchRequest",
+    # Config
+    "EmbeddingConfig",
+    "EmbeddingConfigResponse",
+    "EmbeddingConfigUpdateRequest",
+    "EmbeddingRebuildProgress",
+    "PreferenceConfig",
+    "RateLimitConfig",
+    "ScoreConfig",
+    "ValidationResult",
+    "VectorizationStatus",
+    "VectorizationStatusResponse",
 ]

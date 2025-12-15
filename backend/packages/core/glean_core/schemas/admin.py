@@ -20,6 +20,7 @@ class AdminLoginResponse(BaseModel):
     """Admin login response schema."""
 
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     admin: "AdminUserResponse"
 
@@ -167,3 +168,38 @@ class AdminBatchEntryRequest(BaseModel):
 
     action: str = Field(..., pattern="^(delete)$")
     entry_ids: list[str]
+
+
+# System settings: embedding configuration
+class EmbeddingRateLimit(BaseModel):
+    """Global and per-provider rate limit (rpm)."""
+
+    default: int
+    providers: dict[str, int] = Field(default_factory=dict)
+
+
+class EmbeddingConfigPayload(BaseModel):
+    """Embedding configuration payload stored in system settings."""
+
+    provider: str
+    model: str
+    dimension: int
+    rate_limit: EmbeddingRateLimit
+    api_key: str | None = None
+    base_url: str | None = None
+    version: str | None = None
+    updated_at: datetime | None = None
+
+
+class EmbeddingConfigResponse(EmbeddingConfigPayload):
+    """Response schema for embedding config."""
+
+    pass
+
+
+class EmbeddingRebuildStatus(BaseModel):
+    """Embedding rebuild progress."""
+
+    total: int
+    done: int
+    failed: int

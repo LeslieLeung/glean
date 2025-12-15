@@ -1,0 +1,71 @@
+{
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "close": "Close",
+    "ok": "OK",
+    "create": "Create",
+    "update": "Update",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "add": "Add",
+    "remove": "Remove",
+    "rename": "Rename",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "reset": "Reset"
+  },
+  "states": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "verified": "Verified",
+    "unverified": "Not Verified",
+    "saving": "Saving...",
+    "deleting": "Deleting...",
+    "loading": "Loading...",
+    "refreshing": "Refreshing...",
+    "creating": "Creating...",
+    "updating": "Updating...",
+    "importing": "Importing...",
+    "exporting": "Exporting..."
+  },
+  "messages": {
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Information",
+    "confirmDelete": "Are you sure you want to delete this item?",
+    "cannotUndo": "This action cannot be undone.",
+    "saved": "Changes saved successfully",
+    "deleted": "Item deleted successfully",
+    "failed": "Operation failed"
+  },
+  "time": {
+    "justNow": "Just now",
+    "ago": "ago",
+    "in": "in",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow"
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "none": "None",
+    "more": "More",
+    "less": "Less",
+    "show": "Show",
+    "hide": "Hide",
+    "expand": "Expand",
+    "collapse": "Collapse"
+  }
+}

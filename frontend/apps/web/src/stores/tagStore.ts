@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { tagService } from '@glean/api-client'
+import { logger } from '@glean/logger'
 import type { TagWithCounts, CreateTagRequest, UpdateTagRequest, Tag } from '@glean/types'
 
 interface TagState {
@@ -13,6 +14,7 @@ interface TagState {
   deleteTag: (id: string) => Promise<boolean>
   batchAddTag: (tagId: string, targetType: 'bookmark' | 'user_entry', targetIds: string[]) => Promise<number>
   batchRemoveTag: (tagId: string, targetType: 'bookmark' | 'user_entry', targetIds: string[]) => Promise<number>
+  reset: () => void
 }
 
 export const useTagStore = create<TagState>((set, get) => ({
@@ -27,7 +29,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       set({ tags: response.tags })
     } catch (err) {
       set({ error: 'Failed to load tags' })
-      console.error('Failed to fetch tags:', err)
+      logger.error('Failed to fetch tags:', err)
     } finally {
       set({ loading: false })
     }
@@ -40,7 +42,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       return tag
     } catch (err) {
       set({ error: 'Failed to create tag' })
-      console.error('Failed to create tag:', err)
+      logger.error('Failed to create tag:', err)
       return null
     }
   },
@@ -52,7 +54,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       return tag
     } catch (err) {
       set({ error: 'Failed to update tag' })
-      console.error('Failed to update tag:', err)
+      logger.error('Failed to update tag:', err)
       return null
     }
   },
@@ -64,7 +66,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       return true
     } catch (err) {
       set({ error: 'Failed to delete tag' })
-      console.error('Failed to delete tag:', err)
+      logger.error('Failed to delete tag:', err)
       return false
     }
   },
@@ -81,7 +83,7 @@ export const useTagStore = create<TagState>((set, get) => ({
       return result.affected
     } catch (err) {
       set({ error: 'Failed to add tags' })
-      console.error('Failed to batch add tag:', err)
+      logger.error('Failed to batch add tag:', err)
       return 0
     }
   },
@@ -98,9 +100,17 @@ export const useTagStore = create<TagState>((set, get) => ({
       return result.affected
     } catch (err) {
       set({ error: 'Failed to remove tags' })
-      console.error('Failed to batch remove tag:', err)
+      logger.error('Failed to batch remove tag:', err)
       return 0
     }
+  },
+
+  reset: () => {
+    set({
+      tags: [],
+      loading: false,
+      error: null,
+    })
   },
 }))
 

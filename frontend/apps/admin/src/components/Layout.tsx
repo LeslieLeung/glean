@@ -1,7 +1,28 @@
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { LogOut, LayoutDashboard, Users, Rss, FileText } from 'lucide-react'
-import { Button, Badge } from '@glean/ui'
+import { useLanguageStore } from '../stores/languageStore'
+import { LogOut, LayoutDashboard, Users, Rss, FileText, SlidersHorizontal, Settings, Languages } from 'lucide-react'
+import {
+  Button,
+  Badge,
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogClose,
+  Label,
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  buttonVariants,
+} from '@glean/ui'
+import { useState } from 'react'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * Admin layout component.
@@ -9,35 +30,54 @@ import { Button, Badge } from '@glean/ui'
  * Provides navigation sidebar and header for admin pages.
  */
 export function Layout() {
+  const { t } = useTranslation(['admin', 'common'])
   const { admin, logout } = useAuthStore()
+  const { language, setLanguage } = useLanguageStore()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const handleLogout = () => {
+    // Clear auth state
     logout()
+
+    // Clear all React Query cache
+    queryClient.clear()
+
     navigate('/login')
   }
 
   const navItems = [
     {
       path: '/dashboard',
-      label: 'Dashboard',
+      label: t('admin:layout.nav.dashboard'),
       icon: LayoutDashboard,
     },
     {
       path: '/users',
-      label: 'Users',
+      label: t('admin:layout.nav.users'),
       icon: Users,
     },
     {
       path: '/feeds',
-      label: 'Feeds',
+      label: t('admin:layout.nav.feeds'),
       icon: Rss,
     },
     {
       path: '/entries',
-      label: 'Entries',
+      label: t('admin:layout.nav.entries'),
       icon: FileText,
+    },
+    {
+      path: '/embeddings',
+      label: t('admin:layout.nav.embeddings'),
+      icon: SlidersHorizontal,
+    },
+    {
+      path: '/system',
+      label: t('admin:layout.nav.system'),
+      icon: Settings,
     },
   ]
 
@@ -54,7 +94,7 @@ export function Layout() {
             <div>
               <span className="font-display text-xl font-bold text-foreground">Glean</span>
               <Badge variant="secondary" className="ml-2 text-xs">
-                Admin
+              {t('admin:layout.badge')}
               </Badge>
             </div>
           </Link>
@@ -94,14 +134,36 @@ export function Layout() {
             <p className="text-xs font-medium text-foreground">{admin?.username}</p>
             <p className="mt-1 text-xs text-muted-foreground capitalize">{admin?.role}</p>
           </div>
+
+          {/* Language Selector */}
+          <div className="mb-3">
+            <Label className="mb-2 block text-xs font-medium text-muted-foreground">
+              {t('admin:layout.language.label')}
+            </Label>
+            <Select value={language} onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}>
+              <SelectTrigger className="w-full">
+                <div className="flex items-center gap-2">
+                  <Languages className="h-4 w-4 text-muted-foreground" />
+                  <SelectValue>
+                    {language === 'en' ? '🇺🇸 English' : '🇨🇳 简体中文'}
+                  </SelectValue>
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">🇺🇸 English</SelectItem>
+                <SelectItem value="zh-CN">🇨🇳 简体中文</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             variant="outline"
             className="w-full justify-start gap-2"
             size="sm"
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {t('admin:layout.logout.button')}
           </Button>
         </div>
       </aside>
@@ -110,6 +172,29 @@ export function Layout() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+
+      {/* Logout confirmation dialog */}
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('admin:layout.logout.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('admin:layout.logout.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
+              {t('common:actions.cancel')}
+            </AlertDialogClose>
+            <AlertDialogClose
+              className={buttonVariants({ variant: 'destructive' })}
+              onClick={handleLogout}
+            >
+              {t('admin:layout.logout.button')}
+            </AlertDialogClose>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </div>
   )
 }

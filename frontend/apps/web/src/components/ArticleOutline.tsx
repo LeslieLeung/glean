@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { List, X, ChevronRight } from 'lucide-react'
+import { List, X, ChevronRight, ArrowUp } from 'lucide-react'
 
 interface HeadingItem {
   id: string
@@ -22,7 +22,8 @@ interface ArticleOutlineProps {
 }
 
 /**
- * Hook to track reading progress
+ * Hook to track reading progress using scroll events
+ * (Scroll events are appropriate here since we need precise percentage)
  */
 function useReadingProgress(scrollContainerRef: React.RefObject<HTMLDivElement | null>) {
   const [progress, setProgress] = useState(0)
@@ -52,63 +53,111 @@ function useReadingProgress(scrollContainerRef: React.RefObject<HTMLDivElement |
 }
 
 /**
- * Extract headings from article content
+ * Hook to track active heading using IntersectionObserver
+ * More performant than scroll event + getBoundingClientRect
  */
-function extractHeadings(container: HTMLElement): HeadingItem[] {
-  const headings: HeadingItem[] = []
-  const elements = container.querySelectorAll('h1, h2, h3, h4')
+function useActiveHeading(
+  headings: HeadingItem[],
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>,
+  isScrollingToHeading: boolean
+) {
+  const [activeId, setActiveId] = useState<string | null>(null)
+  // Track which headings are currently visible
+  const visibleHeadingsRef = useRef<Set<string>>(new Set())
 
-  elements.forEach((el, index) => {
-    const element = el as HTMLElement
-    const level = parseInt(element.tagName.charAt(1))
-    const text = element.textContent?.trim() || ''
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current
+    if (!scrollContainer || headings.length === 0) return
 
-    if (text) {
-      // Generate or use existing ID
-      let id = element.id
-      if (!id) {
-        id = `heading-${index}-${text.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`
-        element.id = id
-      }
-
-      headings.push({ id, text, level, element })
+    // Set first heading as active initially
+    if (!activeId && headings.length > 0) {
+      setActiveId(headings[0].id)
     }
-  })
 
-  return headings
+    // Create IntersectionObserver to track which headings are in viewport
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Skip if we're programmatically scrolling
+        if (isScrollingToHeading) return
+
+        entries.forEach((entry) => {
+          const id = entry.target.id
+          if (entry.isIntersecting) {
+            visibleHeadingsRef.current.add(id)
+          } else {
+            visibleHeadingsRef.current.delete(id)
+          }
+        })
+
+        // Find the topmost visible heading
+        // If no headings are visible, keep current active
+        if (visibleHeadingsRef.current.size > 0) {
+          // Get the first heading (by document order) that is visible
+          for (const heading of headings) {
+            if (visibleHeadingsRef.current.has(heading.id)) {
+              setActiveId(heading.id)
+              break
+            }
+          }
+        } else {
+          // No headings visible - find the heading that was most recently passed
+          // by checking which is closest above the viewport
+          const containerRect = scrollContainer.getBoundingClientRect()
+          let lastPassedHeading: HeadingItem | null = null
+
+          for (const heading of headings) {
+            const rect = heading.element.getBoundingClientRect()
+            const relativeTop = rect.top - containerRect.top
+
+            if (relativeTop < containerRect.height * 0.1) {
+              lastPassedHeading = heading
+            } else {
+              break
+            }
+          }
+
+          if (lastPassedHeading) {
+            setActiveId(lastPassedHeading.id)
+          }
+        }
+      },
+      {
+        root: scrollContainer,
+        // Trigger when heading enters/leaves the top 30% of viewport
+        rootMargin: '-10% 0px -70% 0px',
+        threshold: 0,
+      }
+    )
+
+    // Observe all heading elements
+    headings.forEach((heading) => {
+      observer.observe(heading.element)
+    })
+
+    return () => {
+      observer.disconnect()
+      visibleHeadingsRef.current.clear()
+    }
+  }, [headings, scrollContainerRef, isScrollingToHeading, activeId])
+
+  return [activeId, setActiveId] as const
 }
 
 /**
- * ArticleOutline component
- *
- * Displays a table of contents extracted from the article headings.
- * Features smooth scroll-to-heading and active heading tracking.
- * Shows on scroll, hides after idle.
+ * Hook to control outline visibility based on scroll velocity (desktop)
  */
-export function ArticleOutline({
-  contentRef,
-  scrollContainerRef,
-  isMobile = false,
-  className = '',
-  onHasHeadings,
-}: ArticleOutlineProps) {
-  const [headings, setHeadings] = useState<HeadingItem[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [isOpen, setIsOpen] = useState(false)
-  const [isVisible, setIsVisible] = useState(true) // Start visible (unblurred) on initial load
-  const [isHovered, setIsHovered] = useState(false)
-  const [isInInitialPeriod, setIsInInitialPeriod] = useState(true) // Track initial 5-second visibility period
+function useOutlineVisibility(
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>,
+  isMobile: boolean,
+  isHovered: boolean
+) {
+  const [isVisible, setIsVisible] = useState(true)
+  const [isInInitialPeriod, setIsInInitialPeriod] = useState(true)
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const initialHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null) // For the initial 5s delay
-  // Flag to prevent scroll handler from updating activeId during programmatic scroll
-  const isScrollingToHeadingRef = useRef(false)
-  const scrollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  
-  // Track reading progress
-  const progress = useReadingProgress(scrollContainerRef)
-
-  // Track isHovered in a ref for use in initial timer callback
+  const initialHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isHoveredRef = useRef(isHovered)
+
+  // Keep isHovered ref in sync
   useEffect(() => {
     isHoveredRef.current = isHovered
   }, [isHovered])
@@ -116,10 +165,9 @@ export function ArticleOutline({
   // Initial 5 second delay before blurring (desktop only)
   useEffect(() => {
     if (isMobile) return
-    
-    // Start the 5 second timer on initial load
+
     initialHideTimeoutRef.current = setTimeout(() => {
-      setIsInInitialPeriod(false) // End the initial period
+      setIsInInitialPeriod(false)
       if (!isHoveredRef.current) {
         setIsVisible(false)
       }
@@ -132,68 +180,7 @@ export function ArticleOutline({
     }
   }, [isMobile])
 
-  // Extract headings when content changes
-  useEffect(() => {
-    if (contentRef.current) {
-      // Wait for content to render
-      const timer = setTimeout(() => {
-        if (contentRef.current) {
-          const extracted = extractHeadings(contentRef.current)
-          setHeadings(extracted)
-          onHasHeadings?.(extracted.length > 0)
-          if (extracted.length > 0) {
-            setActiveId(extracted[0].id)
-          }
-        }
-      }, 100)
-
-      return () => clearTimeout(timer)
-    }
-  }, [contentRef, onHasHeadings])
-
-  // Track active heading based on scroll position
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current
-    if (!scrollContainer || headings.length === 0) return
-
-    const handleScroll = () => {
-      // Skip updating activeId if we're in the middle of a programmatic scroll
-      if (isScrollingToHeadingRef.current) return
-
-      const scrollTop = scrollContainer.scrollTop
-      const containerRect = scrollContainer.getBoundingClientRect()
-
-      // Find the heading that's currently in view
-      let currentHeading: HeadingItem | null = null
-
-      for (const heading of headings) {
-        const rect = heading.element.getBoundingClientRect()
-        const relativeTop = rect.top - containerRect.top
-
-        // Consider a heading "active" when it's in the top third of the viewport
-        if (relativeTop <= containerRect.height * 0.33) {
-          currentHeading = heading
-        } else {
-          break
-        }
-      }
-
-      if (currentHeading) {
-        setActiveId(currentHeading.id)
-      } else if (scrollTop < 50) {
-        // At the very top, activate the first heading
-        setActiveId(headings[0]?.id || null)
-      }
-    }
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
-    handleScroll() // Initial check
-
-    return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [headings, scrollContainerRef])
-
   // Show outline on fast scroll, hide on slow scroll (desktop only)
-  // Initially visible, blur when user starts slow scrolling, unblur on fast scroll
   useEffect(() => {
     if (isMobile) return
 
@@ -202,7 +189,6 @@ export function ArticleOutline({
 
     let lastScrollTop = scrollContainer.scrollTop
     let lastScrollTime = performance.now()
-    // Threshold in viewport heights per second (e.g., 3.5 = scrolling 3.5x viewport height per second)
     const VELOCITY_THRESHOLD_VH_PER_SEC = 4
 
     const handleScroll = () => {
@@ -210,32 +196,30 @@ export function ArticleOutline({
       const currentTime = performance.now()
       const timeDelta = currentTime - lastScrollTime
       const viewportHeight = scrollContainer.clientHeight
-      
+
       if (timeDelta > 0 && viewportHeight > 0) {
         const scrollDelta = Math.abs(currentScrollTop - lastScrollTop)
-        // Convert to viewport heights per second for resolution-independent measurement
         const velocityVhPerSec = (scrollDelta / viewportHeight) / (timeDelta / 1000)
-        
+
         if (velocityVhPerSec > VELOCITY_THRESHOLD_VH_PER_SEC) {
-          // Fast scroll - show (unblur) outline
           setIsVisible(true)
-          setIsInInitialPeriod(false) // End initial period on user interaction
-          // Clear any existing hide timeouts (including initial)
+          setIsInInitialPeriod(false)
+
           if (hideTimeoutRef.current) {
             clearTimeout(hideTimeoutRef.current)
           }
           if (initialHideTimeoutRef.current) {
             clearTimeout(initialHideTimeoutRef.current)
           }
-          // Set hide timeout if not hovered
-          if (!isHovered) {
+
+          if (!isHoveredRef.current) {
             hideTimeoutRef.current = setTimeout(() => {
               setIsVisible(false)
-            }, 2000) // Hide after 2 seconds of no fast scrolling
+            }, 2000)
           }
         }
       }
-      
+
       lastScrollTop = currentScrollTop
       lastScrollTime = currentTime
     }
@@ -251,12 +235,11 @@ export function ArticleOutline({
         clearTimeout(initialHideTimeoutRef.current)
       }
     }
-  }, [isMobile, scrollContainerRef, isHovered])
+  }, [isMobile, scrollContainerRef])
 
   // Keep visible when hovered
   useEffect(() => {
     if (isHovered) {
-      // Clear all hide timeouts when hovering
       if (hideTimeoutRef.current) {
         clearTimeout(hideTimeoutRef.current)
       }
@@ -265,14 +248,25 @@ export function ArticleOutline({
       }
       setIsVisible(true)
     } else if (!isMobile && !isInInitialPeriod) {
-      // Start hide timer when mouse leaves (but not during initial 5-second period)
       hideTimeoutRef.current = setTimeout(() => {
         setIsVisible(false)
       }, 800)
     }
   }, [isHovered, isMobile, isInInitialPeriod])
 
-  // Auto-hide outline on scroll (mobile)
+  return { isVisible, setIsVisible }
+}
+
+/**
+ * Hook to control mobile FAB visibility based on scroll direction
+ */
+function useMobileVisibility(
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>,
+  isMobile: boolean,
+  setIsOpen: (open: boolean) => void
+) {
+  const [isVisible, setIsVisible] = useState(true)
+
   useEffect(() => {
     if (!isMobile) return
 
@@ -308,10 +302,98 @@ export function ArticleOutline({
 
     scrollContainer.addEventListener('scroll', onScroll, { passive: true })
     return () => scrollContainer.removeEventListener('scroll', onScroll)
-  }, [isMobile, scrollContainerRef])
+  }, [isMobile, scrollContainerRef, setIsOpen])
+
+  return isVisible
+}
+
+/**
+ * Extract headings from article content
+ */
+function extractHeadings(container: HTMLElement): HeadingItem[] {
+  const headings: HeadingItem[] = []
+  const elements = container.querySelectorAll('h1, h2, h3, h4')
+
+  elements.forEach((el, index) => {
+    const element = el as HTMLElement
+    const level = parseInt(element.tagName.charAt(1))
+    const text = element.textContent?.trim() || ''
+
+    if (text) {
+      // Generate or use existing ID
+      let id = element.id
+      if (!id) {
+        id = `heading-${index}-${text.toLowerCase().replace(/\s+/g, '-').slice(0, 30)}`
+        element.id = id
+      }
+
+      headings.push({ id, text, level, element })
+    }
+  })
+
+  return headings
+}
+
+/**
+ * ArticleOutline component
+ *
+ * Displays a table of contents extracted from the article headings.
+ * Uses IntersectionObserver for efficient active heading tracking.
+ * Features smooth scroll-to-heading and reading progress indication.
+ */
+export function ArticleOutline({
+  contentRef,
+  scrollContainerRef,
+  isMobile = false,
+  className = '',
+  onHasHeadings,
+}: ArticleOutlineProps) {
+  const [headings, setHeadings] = useState<HeadingItem[]>([])
+  const [isOpen, setIsOpen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+
+  // Flag to prevent observer from updating activeId during programmatic scroll
+  const isScrollingToHeadingRef = useRef(false)
+  const scrollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track reading progress
+  const progress = useReadingProgress(scrollContainerRef)
+
+  // Track active heading using IntersectionObserver
+  const [activeId, setActiveId] = useActiveHeading(
+    headings,
+    scrollContainerRef,
+    isScrollingToHeadingRef.current
+  )
+
+  // Desktop visibility control
+  const { isVisible: desktopVisible } = useOutlineVisibility(
+    scrollContainerRef,
+    isMobile,
+    isHovered
+  )
+
+  // Mobile visibility control
+  const mobileVisible = useMobileVisibility(scrollContainerRef, isMobile, setIsOpen)
+
+  const isVisible = isMobile ? mobileVisible : desktopVisible
+
+  // Extract headings when content changes
+  useEffect(() => {
+    if (contentRef.current) {
+      const timer = setTimeout(() => {
+        if (contentRef.current) {
+          const extracted = extractHeadings(contentRef.current)
+          setHeadings(extracted)
+          onHasHeadings?.(extracted.length > 0)
+        }
+      }, 100)
+
+      return () => clearTimeout(timer)
+    }
+  }, [contentRef, onHasHeadings])
 
   // Calculate minimum heading level for proper indentation
-  // Must be before early return to maintain hooks order
   const minLevel = useMemo(
     () => (headings.length > 0 ? Math.min(...headings.map((h) => h.level)) : 1),
     [headings]
@@ -326,10 +408,9 @@ export function ArticleOutline({
       // Set active immediately
       setActiveId(heading.id)
 
-      // Lock the activeId from being updated by scroll handler
+      // Lock the activeId from being updated by observer
       isScrollingToHeadingRef.current = true
 
-      // Clear any existing timeout
       if (scrollingTimeoutRef.current) {
         clearTimeout(scrollingTimeoutRef.current)
       }
@@ -339,17 +420,15 @@ export function ArticleOutline({
       const relativeTop = headingRect.top - containerRect.top + scrollContainer.scrollTop
 
       scrollContainer.scrollTo({
-        top: relativeTop - 80, // Offset for header
+        top: relativeTop - 80,
         behavior: 'smooth',
       })
 
-      // Use scroll event to detect when scrolling stops
-      // This handles variable-length smooth scroll animations
+      // Detect when scrolling stops to unlock observer
       const detectScrollEnd = () => {
         if (scrollingTimeoutRef.current) {
           clearTimeout(scrollingTimeoutRef.current)
         }
-        // Unlock after 150ms of no scrolling (scroll stopped)
         scrollingTimeoutRef.current = setTimeout(() => {
           isScrollingToHeadingRef.current = false
           scrollContainer.removeEventListener('scroll', detectScrollEnd)
@@ -357,14 +436,13 @@ export function ArticleOutline({
       }
 
       scrollContainer.addEventListener('scroll', detectScrollEnd, { passive: true })
-      // Fallback timeout in case scrollTo finishes immediately (already at position)
       detectScrollEnd()
 
       if (isMobile) {
         setIsOpen(false)
       }
     },
-    [scrollContainerRef, isMobile]
+    [scrollContainerRef, isMobile, setActiveId]
   )
 
   // Cleanup timeout on unmount
@@ -375,6 +453,11 @@ export function ArticleOutline({
       }
     }
   }, [])
+
+  // Scroll to top handler
+  const handleScrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [scrollContainerRef])
 
   // Don't render if no headings
   if (headings.length === 0) return null
@@ -502,110 +585,118 @@ export function ArticleOutline({
   }
 
   // Desktop: Sticky outline in reserved sidebar space
-  // When hidden, show dots placeholder while keeping structure visible
   return (
     <div
       className={`outline-sidebar h-full ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-hidden">
-        {/* Content with text fade effect - structure always visible */}
-        <div
-          className={`transition-all duration-500 ease-in-out ${
+      <div className="flex h-full flex-col py-4">
+        {/* Header with progress - always visible */}
+        <div className="mb-2 flex-none px-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <List className={`h-3 w-3 transition-opacity duration-500 ${isVisible ? 'text-primary/70' : 'text-muted-foreground/20'}`} />
+              <span className={`text-[10px] font-medium uppercase tracking-wider transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/70' : 'text-muted-foreground/20'}`}>
+                Contents
+              </span>
+            </div>
+            <span className={`text-[10px] font-medium tabular-nums transition-opacity duration-500 ${isVisible ? 'text-primary/80' : 'text-muted-foreground/20'}`}>
+              {progress}%
+            </span>
+          </div>
+          {/* Progress bar - always primary color */}
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-border/30">
+            <div
+              className="h-full rounded-full bg-primary/60 transition-all duration-500 ease-out"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Heading list - scrollable, takes remaining space */}
+        <nav
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-2 outline-scrollbar transition-all duration-500 ease-in-out ${
             isVisible ? '' : 'pointer-events-none'
           }`}
         >
-          {/* Header with progress */}
-          <div className="mb-2 px-2">
-            <div className="mb-1.5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <List className={`h-3 w-3 transition-opacity duration-500 ${isVisible ? 'text-primary/70' : 'text-muted-foreground/20'}`} />
-                <span className={`text-[10px] font-medium uppercase tracking-wider transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/70' : 'text-muted-foreground/20'}`}>
-                  Contents
-                </span>
-              </div>
-              <span className={`text-[10px] font-medium tabular-nums transition-opacity duration-500 ${isVisible ? 'text-primary/80' : 'text-muted-foreground/20'}`}>
-                {progress}%
-              </span>
-            </div>
-            {/* Progress bar - always primary color */}
-            <div className="h-0.5 w-full overflow-hidden rounded-full bg-border/30">
-              <div
-                className="h-full rounded-full bg-primary/60 transition-all duration-500 ease-out"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
+          {/* Progress line - moved further left */}
+          <div className="relative pl-4">
+            {/* Background track */}
+            <div className="absolute left-0 top-0 h-full w-px bg-border/40" />
+            {/* Progress fill - always primary color */}
+            <div
+              className="absolute left-0 top-0 w-px bg-primary/50 transition-all duration-500 ease-out"
+              style={{ height: `${progress}%` }}
+            />
 
-          {/* Heading list */}
-          <nav className="max-h-[calc(100vh-8rem)] overflow-y-auto pr-2">
-            {/* Progress line - moved further left */}
-            <div className="relative pl-4">
-              {/* Background track */}
-              <div className="absolute left-0 top-0 h-full w-px bg-border/40" />
-              {/* Progress fill - always primary color */}
-              <div
-                className="absolute left-0 top-0 w-px bg-primary/50 transition-all duration-500 ease-out"
-                style={{ height: `${progress}%` }}
-              />
-              
-              <ul className="space-y-px">
-                {headings.map((heading) => {
-                  const isActive = activeId === heading.id
-                  return (
-                    <li key={heading.id} className="relative">
-                      {/* Active indicator - always visible when active */}
-                      {isActive && (
-                        <div
-                          className="absolute -left-4 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-500"
-                          style={{ boxShadow: isVisible ? '0 0 8px hsl(var(--primary) / 0.5)' : '0 0 4px hsl(var(--primary) / 0.3)' }}
-                        />
-                      )}
-                      <button
-                        onClick={() => handleHeadingClick(heading)}
-                        disabled={!isVisible}
-                        className="group relative flex w-full items-center py-1.5 text-left text-[12px] leading-snug min-h-[1.5rem]"
-                        style={{ paddingLeft: `${(heading.level - minLevel) * 8}px` }}
+            <ul className="space-y-px pb-1">
+              {headings.map((heading) => {
+                const isActive = activeId === heading.id
+                return (
+                  <li key={heading.id} className="relative">
+                    {/* Active indicator - always visible when active */}
+                    {isActive && (
+                      <div
+                        className="absolute -left-4 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-500"
+                        style={{ boxShadow: isVisible ? '0 0 8px hsl(var(--primary) / 0.5)' : '0 0 4px hsl(var(--primary) / 0.3)' }}
+                      />
+                    )}
+                    <button
+                      onClick={() => handleHeadingClick(heading)}
+                      disabled={!isVisible}
+                      className="group relative flex w-full items-center py-1.5 text-left text-[12px] leading-snug min-h-[1.5rem]"
+                      style={{ paddingLeft: `${(heading.level - minLevel) * 8}px` }}
+                    >
+                      {/* Text content with blur effect - keeps same visual weight */}
+                      <span
+                        className={`block line-clamp-1 ${
+                          isVisible
+                            ? isActive
+                              ? 'text-primary font-medium'
+                              : 'text-muted-foreground/70 hover:text-foreground'
+                            : isActive
+                              ? 'text-primary/40'
+                              : 'text-muted-foreground/25'
+                        }`}
+                        style={{
+                          filter: isVisible ? 'blur(0px)' : 'blur(3px)',
+                          transition: isVisible
+                            ? 'filter 200ms ease-out, color 150ms ease-out'
+                            : 'filter 500ms cubic-bezier(0.4, 0, 0.2, 1), color 300ms ease-out',
+                        }}
                       >
-                        {/* Text content with blur effect - keeps same visual weight */}
-                        <span 
-                          className={`block line-clamp-1 ${
-                            isVisible
-                              ? isActive
-                                ? 'text-primary font-medium'
-                                : 'text-muted-foreground/70 hover:text-foreground'
-                              : isActive
-                                ? 'text-primary/40'
-                                : 'text-muted-foreground/25'
-                          }`}
-                          style={{
-                            filter: isVisible ? 'blur(0px)' : 'blur(3px)',
-                            // Fast transition when revealing (hover), slower when hiding
-                            transition: isVisible 
-                              ? 'filter 200ms ease-out, color 150ms ease-out'
-                              : 'filter 500ms cubic-bezier(0.4, 0, 0.2, 1), color 300ms ease-out',
-                          }}
-                        >
-                          {heading.text}
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          </nav>
-
-          {/* Footer */}
-          <div className="mt-3 px-2">
-            <span className={`text-[10px] transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/50' : 'text-muted-foreground/15'}`}>
-              {headings.length} sections
-            </span>
+                        {heading.text}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           </div>
+        </nav>
+
+        {/* Footer - always visible with fixed height */}
+        <div className="mt-auto flex h-8 flex-none items-center justify-between border-t border-border/20 px-2 pt-2">
+          <span className={`text-[10px] transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/50' : 'text-muted-foreground/15'}`}>
+            {headings.length} sections
+          </span>
+          <button
+            onClick={handleScrollToTop}
+            disabled={!isVisible}
+            className={`flex h-5 items-center gap-1 rounded px-1.5 text-[10px] transition-all duration-200 ${
+              isVisible
+                ? 'text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+                : 'text-muted-foreground/15'
+            }`}
+            aria-label="Scroll to top"
+            title="Scroll to top"
+          >
+            <ArrowUp className="h-3 w-3" />
+            <span>Top</span>
+          </button>
         </div>
       </div>
     </div>
   )
 }
-

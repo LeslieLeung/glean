@@ -2,8 +2,8 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui-components/react/dialog";
 import { XIcon } from "lucide-react";
-import { cn } from "../utils/cn";
-import { ScrollArea } from "./ScrollArea";
+import { cn } from "../utils";
+import { ScrollArea } from "./scroll-area";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -63,7 +63,7 @@ function DialogPopup({
       <DialogViewport>
         <DialogPrimitive.Popup
           className={cn(
-            "relative row-start-2 flex max-h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-xl transition-[scale,opacity,translate] duration-200 ease-in-out will-change-transform data-nested-dialog-open:origin-top data-ending-style:opacity-0 data-starting-style:opacity-0 max-sm:rounded-b-none max-sm:border-b-0 max-sm:data-ending-style:translate-y-4 max-sm:data-starting-style:translate-y-4 sm:max-w-lg sm:-translate-y-[calc(1.25rem*var(--nested-dialogs))] sm:scale-[calc(1-0.1*var(--nested-dialogs))] sm:opacity-[calc(1-0.1*var(--nested-dialogs))] sm:data-nested:data-ending-style:translate-y-8 sm:data-nested:data-starting-style:translate-y-8 sm:data-ending-style:scale-98 sm:data-starting-style:scale-98",
+            "sm:-translate-y-[calc(1.25rem*var(--nested-dialogs))] relative row-start-2 flex max-h-full min-h-0 w-full min-w-0 flex-col border-t bg-popover bg-clip-padding text-popover-foreground opacity-[calc(1-0.1*var(--nested-dialogs))] shadow-lg transition-[scale,opacity,translate] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-nested-dialog-open:origin-top data-ending-style:opacity-0 data-starting-style:opacity-0 max-sm:opacity-[calc(1-min(var(--nested-dialogs),1))] max-sm:data-ending-style:translate-y-4 max-sm:data-starting-style:translate-y-4 max-sm:before:hidden sm:max-w-lg sm:data-nested:data-ending-style:translate-y-8 sm:data-nested:data-starting-style:translate-y-8 sm:scale-[calc(1-0.1*var(--nested-dialogs))] sm:rounded-2xl sm:border sm:data-ending-style:scale-98 sm:data-starting-style:scale-98 sm:before:rounded-[calc(var(--radius-2xl)-1px)] dark:bg-clip-border dark:before:shadow-[0_-1px_--theme(--color-white/8%)]",
             className,
           )}
           data-slot="dialog-popup"
@@ -71,7 +71,7 @@ function DialogPopup({
         >
           {children}
           {showCloseButton && (
-            <DialogPrimitive.Close className="absolute end-2 top-2 inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent text-muted-foreground opacity-72 outline-none transition-[color,background-color,box-shadow,opacity] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 hover:bg-accent hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0">
+            <DialogPrimitive.Close className="absolute end-2 top-2 inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent opacity-72 outline-none transition-[color,background-color,box-shadow,opacity] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0">
               <XIcon />
               <span className="sr-only">Close</span>
             </DialogPrimitive.Close>
@@ -97,7 +97,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogFooter({
   className,
-  variant = "bare",
+  variant = "default",
   ...props
 }: React.ComponentProps<"div"> & {
   variant?: "default" | "bare";
@@ -105,8 +105,10 @@ function DialogFooter({
   return (
     <div
       className={cn(
-        "flex flex-col-reverse gap-2 px-6 pb-6 pt-4 sm:flex-row sm:justify-end",
-        variant === "default" && "border-t border-border bg-muted/50",
+        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-xl",
+        variant === "default" && "border-t bg-muted/50 py-4",
+        variant === "bare" &&
+          "in-[[data-slot=dialog-popup]:has([data-slot=dialog-panel])]:pt-3 pt-4 pb-6",
         className,
       )}
       data-slot="dialog-footer"
@@ -169,4 +171,3 @@ export {
   DialogPanel,
   DialogViewport,
 };
-

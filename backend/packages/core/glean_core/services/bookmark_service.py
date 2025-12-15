@@ -6,10 +6,12 @@ Handles bookmark CRUD operations and folder/tag associations.
 
 from math import ceil
 
+from arq.connections import ArqRedis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from glean_core import get_logger
 from glean_core.schemas.bookmark import (
     BookmarkCreate,
     BookmarkFolderSimple,
@@ -28,18 +30,22 @@ from glean_database.models import (
 )
 from glean_rss import strip_html_tags
 
+logger = get_logger(__name__)
+
 
 class BookmarkService:
     """Bookmark management service."""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, redis_pool: ArqRedis | None = None):
         """
         Initialize bookmark service.
 
         Args:
             session: Database session.
+            redis_pool: Optional Redis connection pool for task queue.
         """
         self.session = session
+        self.redis_pool = redis_pool
 
     async def get_bookmarks(
         self,
@@ -113,7 +119,7 @@ class BookmarkService:
         bookmarks = result.scalars().unique().all()
 
         # Build response
-        items = []
+        items: list[BookmarkResponse] = []
         for bookmark in bookmarks:
             folders = [
                 BookmarkFolderSimple(id=bf.folder.id, name=bf.folder.name)
@@ -289,6 +295,43 @@ class BookmarkService:
                 self.session.add(BookmarkTag(bookmark_id=bookmark.id, tag_id=tag_id))
 
         await self.session.commit()
+
+        # Queue preference update task if this is an entry bookmark (M3)
+        if entry_id and self.redis_pool:
+            try:
+                # Debounce: Check if we recently queued bookmark signal for this entry
+                debounce_key = f"pref_update_debounce:{user_id}:{entry_id}:bookmark"
+                debounce_ttl = 30  # 30 seconds debounce
+
+                # Try to set the key only if it doesn't exist (NX)
+                was_set = await self.redis_pool.set(
+                    debounce_key,
+                    "1",
+                    ex=debounce_ttl,
+                    nx=True,  # SET if not exists
+                )
+
+                # Only queue if key was newly set (not debounced)
+                if was_set:
+                    await self.redis_pool.enqueue_job(
+                        "update_user_preference",
+                        user_id=user_id,
+                        entry_id=entry_id,
+                        signal_type="bookmark",
+                    )
+                    logger.info(
+                        f"Queued preference update: user={user_id[:8]}... "
+                        f"entry={entry_id[:8]}... signal=bookmark"
+                    )
+                else:
+                    logger.debug(
+                        f"Preference update debounced: user={user_id[:8]}... "
+                        f"entry={entry_id[:8]}... signal=bookmark"
+                    )
+            except Exception as e:
+                # Don't fail the request if task queueing fails
+                logger.warning(f"Failed to queue preference update: {e}")
+                pass
 
         # Return with associations
         return await self.get_bookmark(bookmark.id, user_id), needs_metadata_fetch

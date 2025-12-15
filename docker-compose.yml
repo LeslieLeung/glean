@@ -1,8 +1,17 @@
-# Glean Quick Start - Docker Compose
-# Usage: docker compose up -d
+# Glean Docker Compose Configuration
+# Usage: 
+#   Basic deployment: docker compose up -d
+#   With admin dashboard: docker compose --profile admin up -d
+#   Local development: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 #
-# This is the default (lite) deployment without admin dashboard.
-# For full deployment with admin UI, use: docker compose -f docker-compose.full.yml up -d
+# Environment variables can be set in .env file:
+#   - WEB_PORT: Web interface port (default: 80)
+#   - ADMIN_PORT: Admin dashboard port (default: 3001)
+#   - POSTGRES_DB/USER/PASSWORD: Database credentials
+#   - SECRET_KEY: JWT signing key
+#   - CREATE_ADMIN: Create admin account on startup (default: false)
+#   - ADMIN_USERNAME/PASSWORD: Admin credentials
+#   - DEBUG: Enable debug mode (default: false)
 
 services:
   postgres:
@@ -45,10 +54,24 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
-      CORS_ORIGINS: '["http://localhost", "http://localhost:3000"]'
+      CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
       # Only backend runs migrations to avoid race conditions
       RUN_MIGRATIONS: "true"
+      # Admin auto-creation (set to true for first startup)
+      CREATE_ADMIN: ${CREATE_ADMIN:-false}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
+      # Logging configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: ${LOG_FILE:-/app/logs/glean-api.log}
+      LOG_ROTATION: ${LOG_ROTATION:-100 MB}
+      LOG_RETENTION: ${LOG_RETENTION:-30 days}
+      LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
+      LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+    volumes:
+      - glean_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,6 +95,15 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      # Logging configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: ${LOG_FILE:-/app/logs/glean-worker.log}
+      LOG_ROTATION: ${LOG_ROTATION:-100 MB}
+      LOG_RETENTION: ${LOG_RETENTION:-30 days}
+      LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
+      LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+    volumes:
+      - glean_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,9 +127,23 @@ services:
       - glean-network
     restart: unless-stopped
 
+  admin:
+    image: ghcr.io/leslieleung/glean-admin:latest
+    container_name: glean-admin
+    ports:
+      - "${ADMIN_PORT:-3001}:80"
+    depends_on:
+      - backend
+    networks:
+      - glean-network
+    restart: unless-stopped
+    profiles:
+      - admin
+
 volumes:
   postgres_data:
   redis_data:
+  glean_logs:
 
 networks:
   glean-network:

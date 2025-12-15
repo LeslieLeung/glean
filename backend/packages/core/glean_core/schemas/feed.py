@@ -83,3 +83,20 @@ class BatchDeleteSubscriptionsResponse(BaseModel):
 
     deleted_count: int
     failed_count: int
+
+
+class SubscriptionListResponse(BaseModel):
+    """Paginated subscription list response."""
+
+    items: list[SubscriptionResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class SubscriptionSyncResponse(BaseModel):
+    """Sync response for all subscriptions with ETag."""
+
+    items: list[SubscriptionResponse]
+    etag: str

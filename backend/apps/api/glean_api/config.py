@@ -7,6 +7,7 @@ for automatic environment variable loading and validation.
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,7 +36,9 @@ class Settings(BaseSettings):
     )
 
     # Application settings
-    version: str = "0.1.0"
+    # Version is injected via APP_VERSION env variable during Docker build
+    # or defaults to "dev" for local development
+    version: str = Field(default="dev", validation_alias="APP_VERSION")
     debug: bool = False
     secret_key: str = "change-me-in-production"
 

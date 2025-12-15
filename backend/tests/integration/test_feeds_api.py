@@ -14,8 +14,11 @@ class TestListSubscriptions:
 
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 0
+        assert isinstance(data, dict)
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) == 0
+        assert data["total"] == 0
 
     @pytest.mark.asyncio
     async def test_list_subscriptions(self, client: AsyncClient, auth_headers, test_subscription):
@@ -24,10 +27,13 @@ class TestListSubscriptions:
 
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) == 1
+        assert isinstance(data, dict)
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) == 1
+        assert data["total"] == 1
 
-        subscription = data[0]
+        subscription = data["items"][0]
         assert subscription["id"] == str(test_subscription.id)
         assert "feed" in subscription
         assert subscription["feed"]["url"] == "https://example.com/feed.xml"

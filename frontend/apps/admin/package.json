@@ -1,6 +1,6 @@
 {
   "name": "@glean/admin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@glean/api-client": "workspace:*",
+    "@glean/i18n": "workspace:*",
+    "@glean/logger": "workspace:*",
     "@glean/types": "workspace:*",
     "@glean/ui": "workspace:*",
     "@hookform/resolvers": "^5.0.0",

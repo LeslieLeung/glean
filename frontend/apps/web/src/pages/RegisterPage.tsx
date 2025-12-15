@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Rss, AlertCircle, Sparkles, Check } from 'lucide-react'
 import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glean/ui'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * Registration page.
@@ -10,6 +11,7 @@ import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glea
  * Provides user registration form with name, email, and password.
  */
 export default function RegisterPage() {
+  const { t } = useTranslation('auth')
   const navigate = useNavigate()
   const { register, isLoading, error, clearError } = useAuthStore()
 
@@ -26,17 +28,17 @@ export default function RegisterPage() {
 
     // Validation
     if (!name || !email || !password || !confirmPassword) {
-      setValidationError('Please fill in all fields')
+      setValidationError(t('validation.required'))
       return
     }
 
     if (password.length < 8) {
-      setValidationError('Password must be at least 8 characters')
+      setValidationError(t('validation.passwordTooShort'))
       return
     }
 
     if (password !== confirmPassword) {
-      setValidationError('Passwords do not match')
+      setValidationError(t('validation.passwordMismatch'))
       return
     }
 
@@ -48,13 +50,25 @@ export default function RegisterPage() {
     }
   }
 
-  const displayError = validationError || error
+  // Translate specific backend error messages
+  const translateError = (errorMsg: string | null): string | null => {
+    if (!errorMsg) return null
+    
+    // Handle specific backend error messages
+    if (errorMsg.includes('Registration is currently disabled by the administrator')) {
+      return t('errors.registrationDisabled')
+    }
+    
+    return errorMsg
+  }
+
+  const displayError = validationError || translateError(error)
 
   const features = [
-    'Subscribe to your favorite RSS feeds',
-    'Read distraction-free articles',
-    'Save articles for later',
-    'Organize with custom categories',
+    t('register.features.subscribe'),
+    t('register.features.read'),
+    t('register.features.save'),
+    t('register.features.organize'),
   ]
 
   return (
@@ -78,10 +92,10 @@ export default function RegisterPage() {
               </div>
             </div>
             <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
-              Create your account
+              {t('register.title')}
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Start your journey with Glean
+              {t('register.subtitle')}
             </p>
           </div>
 
@@ -92,7 +106,7 @@ export default function RegisterPage() {
               {displayError && (
                 <Alert variant="error">
                   <AlertCircle />
-                  <AlertTitle>Error</AlertTitle>
+                  <AlertTitle>{t('errors.registerFailed')}</AlertTitle>
                   <AlertDescription>{displayError}</AlertDescription>
                 </Alert>
               )}
@@ -100,14 +114,14 @@ export default function RegisterPage() {
               {/* Name field */}
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium text-foreground">
-                  Full Name
+                  {t('register.name')}
                 </Label>
                 <Input
                   id="name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="John Doe"
+                  placeholder={t('register.namePlaceholder')}
                   disabled={isLoading}
                   className="w-full"
                 />
@@ -116,7 +130,7 @@ export default function RegisterPage() {
               {/* Email field */}
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-sm font-medium text-foreground">
-                  Email
+                  {t('register.email')}
                 </Label>
                 <Input
                   id="email"
@@ -132,14 +146,14 @@ export default function RegisterPage() {
               {/* Password field */}
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-sm font-medium text-foreground">
-                  Password
+                  {t('register.password')}
                 </Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 8 characters"
+                  placeholder={t('register.passwordPlaceholder')}
                   disabled={isLoading}
                   className="w-full"
                 />
@@ -148,35 +162,35 @@ export default function RegisterPage() {
               {/* Confirm password field */}
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
-                  Confirm Password
+                  {t('register.confirmPassword')}
                 </Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter your password"
+                  placeholder={t('register.confirmPasswordPlaceholder')}
                   disabled={isLoading}
                   className="w-full"
                 />
               </div>
 
               {/* Submit button */}
-              <Button 
-                type="submit" 
-                disabled={isLoading} 
+              <Button
+                type="submit"
+                disabled={isLoading}
                 className="btn-glow w-full py-3 text-base font-semibold"
               >
-                {isLoading ? 'Creating account...' : 'Create account'}
+                {isLoading ? t('register.creating') : t('register.createAccount')}
               </Button>
             </form>
 
             {/* Login link */}
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
-                Already have an account?{' '}
+                {t('register.haveAccount')}{' '}
                 <Link to="/login" className="font-medium text-primary hover:text-primary/80 transition-colors">
-                  Sign in
+                  {t('register.signIn')}
                 </Link>
               </p>
             </div>
@@ -193,12 +207,11 @@ export default function RegisterPage() {
           <div className="relative">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
               <Sparkles className="h-4 w-4" />
-              Why Glean?
+              {t('register.whyGlean')}
             </div>
-            
+
             <h2 className="font-display text-3xl font-bold text-foreground mb-8">
-              Your personal knowledge<br />
-              management companion
+              {t('register.tagline')}
             </h2>
 
             <ul className="space-y-4">
@@ -219,13 +232,13 @@ export default function RegisterPage() {
             {/* Testimonial or additional info */}
             <div className="mt-12 rounded-xl border border-border/50 bg-card/50 p-6">
               <p className="font-reading text-lg italic text-foreground/70">
-                &quot;Glean has transformed how I consume online content. It&apos;s like having a personal librarian for the internet.&quot;
+                &quot;{t('register.testimonial.quote')}&quot;
               </p>
               <div className="mt-4 flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">Happy User</p>
-                  <p className="text-xs text-muted-foreground">Knowledge enthusiast</p>
+                  <p className="text-sm font-medium text-foreground">{t('register.testimonial.author')}</p>
+                  <p className="text-xs text-muted-foreground">{t('register.testimonial.role')}</p>
                 </div>
               </div>
             </div>

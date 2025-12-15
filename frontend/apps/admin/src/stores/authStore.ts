@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
+import { logger } from '@glean/logger'
+import { hashPassword } from '@glean/api-client'
 
 interface AdminUser {
   id: string
@@ -14,31 +16,35 @@ interface AdminUser {
 
 interface AuthState {
   token: string | null
+  refreshToken: string | null
   admin: AdminUser | null
   isAuthenticated: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
-  setToken: (token: string, admin: AdminUser) => void
+  setToken: (token: string, refreshToken: string, admin: AdminUser) => void
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       admin: null,
       isAuthenticated: false,
 
       login: async (username: string, password: string) => {
         try {
+          const hashedPassword = await hashPassword(password)
           const response = await axios.post('/api/admin/auth/login', {
             username,
-            password,
+            password: hashedPassword,
           })
 
-          const { access_token, admin } = response.data
+          const { access_token, refresh_token, admin } = response.data
 
           set({
             token: access_token,
+            refreshToken: refresh_token,
             admin,
             isAuthenticated: true,
           })
@@ -46,7 +52,7 @@ export const useAuthStore = create<AuthState>()(
           // Set default authorization header
           axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
         } catch (error) {
-          console.error('Login failed:', error)
+          logger.error('Login failed:', error)
           throw error
         }
       },
@@ -54,6 +60,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         set({
           token: null,
+          refreshToken: null,
           admin: null,
           isAuthenticated: false,
         })
@@ -62,9 +69,10 @@ export const useAuthStore = create<AuthState>()(
         delete axios.defaults.headers.common['Authorization']
       },
 
-      setToken: (token: string, admin: AdminUser) => {
+      setToken: (token: string, refreshToken: string, admin: AdminUser) => {
         set({
           token,
+          refreshToken,
           admin,
           isAuthenticated: true,
         })
@@ -76,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
       name: 'glean-admin-auth',
       partialize: (state) => ({
         token: state.token,
+        refreshToken: state.refreshToken,
         admin: state.admin,
         isAuthenticated: state.isAuthenticated,
       }),
@@ -92,7 +101,7 @@ if (storedAuth) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${state.token}`
     }
   } catch (error) {
-    console.error('Failed to parse stored auth:', error)
+    logger.error('Failed to parse stored auth:', error)
   }
 }
 

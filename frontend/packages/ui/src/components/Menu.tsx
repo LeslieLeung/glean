@@ -2,20 +2,17 @@
 
 import { Menu as MenuPrimitive } from "@base-ui-components/react/menu";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
-import { cn } from "../utils/cn";
+import { cn } from "../utils";
 
 const Menu = MenuPrimitive.Root;
 
 const MenuPortal = MenuPrimitive.Portal;
 
-const MenuTrigger = React.forwardRef<
-  HTMLButtonElement,
-  MenuPrimitive.Trigger.Props
->(function MenuTrigger(props, ref) {
-  return <MenuPrimitive.Trigger ref={ref} data-slot="menu-trigger" {...props} />;
-});
+function MenuTrigger(props: MenuPrimitive.Trigger.Props) {
+  return <MenuPrimitive.Trigger data-slot="menu-trigger" {...props} />;
+}
 
 function MenuPopup({
   children,
@@ -43,13 +40,13 @@ function MenuPopup({
       >
         <MenuPrimitive.Popup
           className={cn(
-            "relative flex min-w-40 origin-(--transform-origin) rounded-xl border border-border/50 bg-popover shadow-xl transition-[opacity,transform] duration-200 ease-out data-ending-style:pointer-events-none data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0",
+            "relative flex not-[class*='w-']:min-w-32 origin-(--transform-origin) rounded-lg border bg-popover bg-clip-padding shadow-lg transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-starting-style:scale-98 has-data-starting-style:opacity-0 dark:bg-clip-border dark:before:shadow-[0_-1px_--theme(--color-white/8%)]",
             className,
           )}
           data-slot="menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1.5">
+          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">
             {children}
           </div>
         </MenuPrimitive.Popup>
@@ -74,13 +71,10 @@ function MenuItem({
   return (
     <MenuPrimitive.Item
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-disabled:pointer-events-none data-disabled:opacity-50",
-        "data-highlighted:bg-accent data-highlighted:text-accent-foreground",
-        "data-[variant=destructive]:text-red-500 data-[variant=destructive]:data-highlighted:bg-red-500/10 data-[variant=destructive]:data-highlighted:text-red-500",
-        "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        inset && "ps-8",
+        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1 text-base outline-none data-disabled:pointer-events-none data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive data-[variant=destructive]:data-highlighted:bg-destructive/10 data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:text-sm [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
+      data-inset={inset}
       data-slot="menu-item"
       data-variant={variant}
       {...props}
@@ -161,7 +155,7 @@ function MenuGroupLabel({
 function MenuSeparator({ className, ...props }: MenuPrimitive.Separator.Props) {
   return (
     <MenuPrimitive.Separator
-      className={cn("my-1.5 h-px bg-border/50", className)}
+      className={cn("mx-2 my-1 h-px bg-border", className)}
       data-slot="menu-separator"
       {...props}
     />
@@ -172,7 +166,7 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
       className={cn(
-        "ms-auto text-muted-foreground/64 text-xs tracking-widest",
+        "ms-auto text-muted-foreground/72 text-xs tracking-widest",
         className,
       )}
       data-slot="menu-shortcut"
@@ -196,18 +190,15 @@ function MenuSubTrigger({
   return (
     <MenuPrimitive.SubmenuTrigger
       className={cn(
-        "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors",
-        "data-disabled:pointer-events-none data-disabled:opacity-50",
-        "data-highlighted:bg-accent data-highlighted:text-accent-foreground",
-        "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        inset && "ps-8",
+        "flex items-center gap-2 rounded-sm px-2 py-1 text-base outline-none data-disabled:pointer-events-none data-highlighted:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:text-sm [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
         className,
       )}
+      data-inset={inset}
       data-slot="menu-sub-trigger"
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ms-auto size-4" />
+      <ChevronRightIcon className="ms-auto" />
     </MenuPrimitive.SubmenuTrigger>
   );
 }
@@ -268,4 +259,3 @@ export {
   MenuSubPopup,
   MenuSubPopup as DropdownMenuSubContent,
 };
-
