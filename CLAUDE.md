@@ -456,6 +456,126 @@ When debugging frontend issues, use `chrome-devtools` MCP to help with:
 - Inspecting network requests and console messages
 - Interacting with page elements
 
+## CI Compliance
+
+Before submitting code, ensure it passes all CI checks. Run these commands locally to verify:
+
+### Quick Verification
+
+```bash
+# Backend: lint, format check, and type check
+cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright
+
+# Frontend: lint, type check, and build
+cd frontend && pnpm lint && pnpm typecheck && pnpm build
+```
+
+Or use the Makefile shortcuts:
+```bash
+make lint      # Run all linters (backend + frontend)
+make format    # Auto-fix formatting issues
+make test      # Run backend tests
+```
+
+### Backend Compliance
+
+**Ruff Linting Rules** (configured in `backend/pyproject.toml`):
+- Line length: **100 characters**
+- Target: Python 3.11
+- Enabled rules: `E` (pycodestyle), `F` (pyflakes), `I` (isort), `N` (pep8-naming), `W` (warnings), `UP` (pyupgrade), `B` (bugbear), `C4` (comprehensions), `SIM` (simplify)
+- Ignored: `E501` (line length - handled by formatter), `B008` (FastAPI `Query()` pattern)
+
+**Import Ordering** (isort via ruff):
+```python
+# Standard library
+import os
+from typing import Optional
+
+# Third-party
+from fastapi import APIRouter
+from sqlalchemy import select
+
+# First-party (workspace packages)
+from glean_core import get_logger
+from glean_database import models
+```
+
+**Pyright Type Checking**:
+- Mode: **strict**
+- All function signatures require type hints
+- Use `Mapped[T]` for SQLAlchemy columns
+- Prefix unused parameters with `_` (e.g., `_ctx`)
+
+**Common Backend Fixes**:
+```bash
+# Auto-fix linting issues
+cd backend && uv run ruff check --fix .
+
+# Auto-format code
+cd backend && uv run ruff format .
+```
+
+### Frontend Compliance
+
+**ESLint + Prettier** (configured in `frontend/eslint.config.js` and `.prettierrc`):
+- No semicolons
+- Single quotes
+- 2-space indentation
+- 100 character print width
+- Trailing commas (ES5 style)
+- Tailwind class sorting (via prettier-plugin-tailwindcss)
+
+**TypeScript**:
+- Strict mode enabled
+- Unused variables: error (prefix with `_` to ignore)
+- All exports should be typed
+
+**React-specific Rules**:
+- Use `react-refresh/only-export-components` for HMR compatibility
+- React hooks rules enforced
+
+**Common Frontend Fixes**:
+```bash
+# Auto-fix ESLint issues
+cd frontend && pnpm lint --fix
+
+# Auto-format with Prettier
+cd frontend && pnpm format
+```
+
+### CI Pipeline Summary
+
+| Check        | Backend Command                | Frontend Command   |
+| ------------ | ------------------------------ | ------------------ |
+| Linting      | `uv run ruff check .`          | `pnpm lint`        |
+| Format Check | `uv run ruff format --check .` | (included in lint) |
+| Type Check   | `uv run pyright`               | `pnpm typecheck`   |
+| Tests        | `uv run pytest`                | `pnpm test`        |
+| Build        | -                              | `pnpm build`       |
+
+### Pre-Commit Checklist
+
+Before committing changes:
+
+1. **Format code**: `make format`
+2. **Run linters**: `make lint`
+3. **Run tests** (if modifying logic): `make test`
+4. **Type check** (for complex changes):
+   - Backend: `cd backend && uv run pyright`
+   - Frontend: `cd frontend && pnpm typecheck`
+
+### Common CI Failures and Solutions
+
+| Error                              | Solution                              |
+| ---------------------------------- | ------------------------------------- |
+| `Ruff: F401 unused import`         | Remove the unused import              |
+| `Ruff: I001 import not sorted`     | Run `uv run ruff check --fix .`       |
+| `Pyright: missing type annotation` | Add type hints to function signatures |
+| `Pyright: unknown member type`     | Add type annotation or use `cast()`   |
+| `ESLint: no-unused-vars`           | Remove variable or prefix with `_`    |
+| `TypeScript: implicit any`         | Add explicit type annotation          |
+| `Prettier: formatting`             | Run `pnpm format`                     |
+
 ## Miscellaneous
 
 - This project uses monorepo structure - always check your current working directory
