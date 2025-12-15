@@ -94,10 +94,11 @@
     "basedOnInteractionCount": "Based on interaction count",
     "recentActivity": "Recent Activity",
     "lastModelTraining": "Last Model Training",
-    "interactionsLast7Days": "Interactions (Last 7 days)",
-    "modelAccuracy": "Model Accuracy",
-    "featureImportance": "Feature Importance",
-    "featureImportanceDesc": "What factors influence your recommendations",
+    "totalBookmarks": "Total Bookmarks",
+    "topSources": "Top Sources",
+    "topSourcesDesc": "Feeds with highest affinity",
+    "topAuthors": "Top Authors",
+    "topAuthorsDesc": "Authors with highest affinity",
     "rebuildConfirmTitle": "Rebuild Preference Model?",
     "rebuildConfirmDesc": "This will retrain your personal recommendation model using all your historical interactions. This process may take a few minutes to complete.",
     "cancel": "Cancel",
@@ -123,15 +124,6 @@
       "showScoreDesc": "Display recommendation scores on Smart list entries"
     },
     "rebuildHint": "Rebuild your preference model from all historical feedback",
-    "topSources": {
-      "title": "Top Sources",
-      "description": "Feeds with highest affinity",
-      "feed": "Feed {{id}}"
-    },
-    "topAuthors": {
-      "title": "Top Authors",
-      "description": "Authors with highest affinity"
-    },
     "empty": {
       "title": "No preference data yet",
       "description": "Start liking or disliking articles to build your preference model"

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
+import { useTranslation } from '@glean/i18n'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -15,6 +16,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, user, loadUser, isLoading } = useAuthStore()
   const location = useLocation()
+  const { t } = useTranslation('common')
 
   useEffect(() => {
     if (isAuthenticated && !user && !isLoading) {
@@ -29,7 +31,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <div className="text-gray-600">{t('actions.loading')}</div>
       </div>
     )
   }

@@ -1,38 +1,40 @@
 import { useStats } from '../hooks/useStats'
 import { Users, Rss, FileText, BookMarked, TrendingUp, Activity } from 'lucide-react'
 import { Skeleton } from '@glean/ui'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * Admin dashboard page.
  */
 export default function DashboardPage() {
+  const { t } = useTranslation('admin')
   const { data: stats, isLoading } = useStats()
 
   const statCards = [
     {
-      title: 'Total Users',
+      title: t('dashboard.cards.totalUsers'),
       value: stats?.total_users,
       icon: Users,
       color: 'text-primary-500',
       bgColor: 'bg-primary-50 dark:bg-primary-900/20',
     },
     {
-      title: 'Active Users',
+      title: t('dashboard.cards.activeUsers'),
       value: stats?.active_users,
       icon: Activity,
       color: 'text-green-500',
       bgColor: 'bg-green-50 dark:bg-green-900/20',
-      description: 'Last 7 days',
+      description: t('dashboard.cards.last7Days'),
     },
     {
-      title: 'Total Feeds',
+      title: t('dashboard.cards.totalFeeds'),
       value: stats?.total_feeds,
       icon: Rss,
       color: 'text-blue-500',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20',
     },
     {
-      title: 'Total Entries',
+      title: t('dashboard.cards.totalEntries'),
       value: stats?.total_entries,
       icon: FileText,
       color: 'text-purple-500',
@@ -58,8 +60,8 @@ export default function DashboardPage() {
     <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header */}
       <div className="border-b border-border bg-card px-8 py-6">
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">System overview and statistics</p>
+        <h1 className="text-2xl font-bold text-foreground">{t('dashboard.title')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* Content */}
@@ -107,7 +109,7 @@ export default function DashboardPage() {
         {/* Additional info */}
         {stats && (
           <div className="mt-6 rounded-xl border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">Today&apos;s Activity</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('dashboard.activity.title')}</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/20">
@@ -115,9 +117,9 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">
-                    {stats.new_users_today} new user{stats.new_users_today !== 1 ? 's' : ''}
+                    {t('dashboard.activity.newUsersToday', { count: stats.new_users_today })}
                   </p>
-                  <p className="text-xs text-muted-foreground">Registered today</p>
+                  <p className="text-xs text-muted-foreground">{t('dashboard.activity.registeredToday')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -126,9 +128,9 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">
-                    {stats.new_entries_today} new entr{stats.new_entries_today !== 1 ? 'ies' : 'y'}
+                    {t('dashboard.activity.newEntriesToday', { count: stats.new_entries_today })}
                   </p>
-                  <p className="text-xs text-muted-foreground">Added today</p>
+                  <p className="text-xs text-muted-foreground">{t('dashboard.activity.addedToday')}</p>
                 </div>
               </div>
             </div>

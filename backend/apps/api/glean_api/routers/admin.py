@@ -8,9 +8,12 @@ from datetime import UTC, datetime, timedelta
 from math import ceil
 from typing import Annotated
 
+from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from jose import jwt
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.schemas import EmbeddingConfigUpdateRequest
 from glean_core.schemas.admin import (
     AdminBatchEntryRequest,
     AdminBatchFeedRequest,
@@ -30,9 +33,14 @@ from glean_core.schemas.admin import (
     UserListResponse,
 )
 from glean_core.services import AdminService
+from glean_database.session import get_session
 
 from ..config import settings
-from ..dependencies import get_admin_service, get_current_admin
+from ..dependencies import (
+    get_admin_service,
+    get_current_admin,
+    get_redis_pool,
+)
 
 router = APIRouter()
 
@@ -63,23 +71,38 @@ async def admin_login(
             detail="Invalid username or password",
         )
 
-    # Create JWT token with admin claims
+    # Create JWT tokens with admin claims
     now = datetime.now(UTC)
-    expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    access_expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+    refresh_expire = now + timedelta(days=settings.jwt_refresh_token_expire_days)
 
     # Handle both enum (in-memory) and string (from database) cases
     role_value = admin.role.value if hasattr(admin.role, "value") else admin.role
 
-    payload = {
+    # Access token payload
+    access_payload = {
         "sub": admin.id,
         "username": admin.username,
         "role": role_value,
         "type": "admin",
-        "exp": int(expire.timestamp()),
+        "exp": int(access_expire.timestamp()),
         "iat": int(now.timestamp()),
     }
 
-    token = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    # Refresh token payload
+    refresh_payload = {
+        "sub": admin.id,
+        "type": "admin_refresh",
+        "exp": int(refresh_expire.timestamp()),
+        "iat": int(now.timestamp()),
+    }
+
+    access_token = jwt.encode(
+        access_payload, settings.secret_key, algorithm=settings.jwt_algorithm
+    )
+    refresh_token = jwt.encode(
+        refresh_payload, settings.secret_key, algorithm=settings.jwt_algorithm
+    )
 
     # Build response with explicit field values to avoid lazy loading issues
     admin_response = AdminUserResponse(
@@ -92,7 +115,115 @@ async def admin_login(
         updated_at=admin.updated_at,
     )
 
-    return AdminLoginResponse(access_token=token, token_type="bearer", admin=admin_response)
+    return AdminLoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        admin=admin_response,
+    )
+
+
+@router.post("/auth/refresh")
+async def admin_refresh_token(
+    request: dict[str, str],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+) -> dict[str, str]:
+    """
+    Refresh admin access token using refresh token.
+
+    Args:
+        request: Request body with refresh_token.
+        admin_service: Admin service instance.
+
+    Returns:
+        New access and refresh tokens.
+
+    Raises:
+        HTTPException: If refresh token is invalid.
+    """
+    try:
+        refresh_token = request.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="refresh_token is required",
+            )
+
+        # Verify refresh token
+        payload = jwt.decode(
+            refresh_token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+        )
+
+        # Check token type
+        if payload.get("type") != "admin_refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token type",
+            )
+
+        # Get admin ID from token
+        admin_id = payload.get("sub")
+        if not admin_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        # Verify admin still exists and is active
+        admin = await admin_service.get_admin_by_id(admin_id)
+        if not admin or not admin.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Admin not found or inactive",
+            )
+
+        # Generate new tokens
+        now = datetime.now(UTC)
+        access_expire = now + timedelta(
+            minutes=settings.jwt_access_token_expire_minutes
+        )
+        refresh_expire = now + timedelta(days=settings.jwt_refresh_token_expire_days)
+
+        # Handle both enum (in-memory) and string (from database) cases
+        role_value = admin.role.value if hasattr(admin.role, "value") else admin.role
+
+        # Access token payload
+        access_payload = {
+            "sub": admin.id,
+            "username": admin.username,
+            "role": role_value,
+            "type": "admin",
+            "exp": int(access_expire.timestamp()),
+            "iat": int(now.timestamp()),
+        }
+
+        # Refresh token payload
+        refresh_payload = {
+            "sub": admin.id,
+            "type": "admin_refresh",
+            "exp": int(refresh_expire.timestamp()),
+            "iat": int(now.timestamp()),
+        }
+
+        new_access_token = jwt.encode(
+            access_payload, settings.secret_key, algorithm=settings.jwt_algorithm
+        )
+        new_refresh_token = jwt.encode(
+            refresh_payload, settings.secret_key, algorithm=settings.jwt_algorithm
+        )
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid refresh token: {str(e)}",
+        ) from e
 
 
 @router.get("/me", response_model=AdminUserResponse)
@@ -497,3 +628,351 @@ async def batch_entry_operation(
     """
     count = await admin_service.batch_entry_operation(request.action, request.entry_ids)
     return {"affected": count}
+
+
+# =========================
+# Embedding configuration
+# =========================
+@router.get("/embedding/config")
+async def get_embedding_config(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """
+    Get current embedding configuration.
+
+    Returns typed config with defaults for unset fields.
+    """
+    from glean_core.schemas.config import EmbeddingConfig
+    from glean_core.schemas.config import (
+        EmbeddingConfigResponse as TypedEmbeddingConfigResponse,
+    )
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+    return TypedEmbeddingConfigResponse.from_config(config)
+
+
+@router.post("/embedding/test")
+async def test_embedding_provider(
+    request: EmbeddingConfigUpdateRequest,
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+):
+    """
+    Test embedding provider and infer dimension without saving configuration.
+
+    This endpoint allows the frontend to test the provider configuration
+    and display the inferred dimension to the user before saving.
+    """
+    from glean_vector.services.validation_service import EmbeddingValidationService
+
+    validation_service = EmbeddingValidationService()
+
+    # Infer dimension from provider
+    result = await validation_service.infer_dimension(
+        provider=request.provider or "",
+        model=request.model or "",
+        api_key=request.api_key,
+        base_url=request.base_url,
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=400,
+            detail=result.message,
+        )
+
+    return result
+
+
+@router.put("/embedding/config")
+async def update_embedding_config(
+    request: EmbeddingConfigUpdateRequest,
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
+):
+    """
+    Update embedding provider configuration.
+
+    If dimension is not provided, it will be auto-inferred from the provider.
+    If enabled and config changed, triggers validation and rebuild.
+    """
+    from glean_core.schemas.config import (
+        EmbeddingConfig,
+        VectorizationStatus,
+    )
+    from glean_core.schemas.config import (
+        EmbeddingConfigResponse as TypedEmbeddingConfigResponse,
+    )
+    from glean_core.services import TypedConfigService
+    from glean_vector.services.validation_service import EmbeddingValidationService
+
+    config_service = TypedConfigService(session)
+    current = await config_service.get(EmbeddingConfig)
+
+    # Build updates dict from request
+    updates = request.model_dump(exclude_unset=True)
+
+    # Auto-infer dimension if not provided and provider/model changed
+    provider_changed = "provider" in updates or "model" in updates
+    if provider_changed and "dimension" not in updates:
+        # Use new values or fall back to current
+        provider = updates.get("provider", current.provider)
+        model = updates.get("model", current.model)
+        api_key = updates.get("api_key", current.api_key)
+        base_url = updates.get("base_url", current.base_url)
+
+        # Infer dimension
+        validation_service = EmbeddingValidationService()
+        infer_result = await validation_service.infer_dimension(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+        )
+
+        if not infer_result.success:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to infer dimension: {infer_result.message}",
+            )
+
+        # Add inferred dimension to updates
+        inferred_dimension = infer_result.details.get("dimension")
+        updates["dimension"] = inferred_dimension
+
+    # Check if this is a config change that requires rebuild
+    config_changed = False
+    rebuild_fields = {"provider", "model", "dimension", "api_key", "base_url"}
+    for field in rebuild_fields:
+        if field in updates and getattr(current, field) != updates[field]:
+            config_changed = True
+            break
+
+    # Apply updates
+    updated = await config_service.update(EmbeddingConfig, **updates)
+
+    # If enabled and config changed, trigger rebuild
+    if updated.enabled and config_changed:
+        # Generate new version and trigger rebuild
+        await config_service.update_embedding_version()
+        await config_service.update(
+            EmbeddingConfig, status=VectorizationStatus.VALIDATING
+        )
+        await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+
+    return TypedEmbeddingConfigResponse.from_config(updated)
+
+
+@router.post("/embedding/enable")
+async def enable_embedding(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
+):
+    """
+    Enable vectorization.
+
+    Validates provider and Milvus connection, then triggers rebuild.
+    """
+    from glean_core.schemas.config import (
+        EmbeddingConfig,
+        VectorizationStatus,
+    )
+    from glean_core.schemas.config import (
+        EmbeddingConfigResponse as TypedEmbeddingConfigResponse,
+    )
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+
+    if config.enabled:
+        return TypedEmbeddingConfigResponse.from_config(config)
+
+    # Enable and set to validating
+    updated = await config_service.update(
+        EmbeddingConfig,
+        enabled=True,
+        status=VectorizationStatus.VALIDATING,
+    )
+
+    # Trigger validation and rebuild in background
+    await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+
+    return TypedEmbeddingConfigResponse.from_config(updated)
+
+
+@router.post("/embedding/disable")
+async def disable_embedding(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """
+    Disable vectorization.
+
+    Stops processing and sets status to DISABLED.
+    """
+    from glean_core.schemas.config import (
+        EmbeddingConfig,
+        VectorizationStatus,
+    )
+    from glean_core.schemas.config import (
+        EmbeddingConfigResponse as TypedEmbeddingConfigResponse,
+    )
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    updated = await config_service.update(
+        EmbeddingConfig,
+        enabled=False,
+        status=VectorizationStatus.DISABLED,
+        rebuild_id=None,
+        rebuild_started_at=None,
+    )
+
+    return TypedEmbeddingConfigResponse.from_config(updated)
+
+
+@router.post("/embedding/validate")
+async def validate_embedding_config(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """
+    Test provider and Milvus connection without saving.
+
+    Returns validation results.
+    """
+    from glean_core.schemas.config import EmbeddingConfig
+    from glean_core.services import TypedConfigService
+    from glean_vector.services import EmbeddingValidationService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+
+    validation_service = EmbeddingValidationService()
+    result = await validation_service.validate_full(config)
+
+    return {
+        "success": result.success,
+        "message": result.message,
+        "details": result.details,
+    }
+
+
+@router.post("/embedding/rebuild")
+async def trigger_embedding_rebuild(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
+) -> dict:
+    """
+    Manually trigger embedding rebuild.
+
+    Only works if vectorization is enabled.
+    """
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+
+    if not config.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vectorization is not enabled",
+        )
+
+    if config.status == VectorizationStatus.REBUILDING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rebuild already in progress",
+        )
+
+    # Generate new version and trigger rebuild
+    await config_service.update_embedding_version()
+    await config_service.update(EmbeddingConfig, status=VectorizationStatus.VALIDATING)
+    await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+
+    return {"message": "Rebuild triggered", "status": "validating"}
+
+
+@router.post("/embedding/cancel-rebuild")
+async def cancel_embedding_rebuild(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """
+    Cancel ongoing embedding rebuild.
+    """
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+
+    if config.status != VectorizationStatus.REBUILDING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No rebuild in progress",
+        )
+
+    # Set status back to IDLE (or ERROR if there was an error)
+    await config_service.update(
+        EmbeddingConfig,
+        status=VectorizationStatus.IDLE,
+        rebuild_id=None,
+        rebuild_started_at=None,
+    )
+
+    return {"message": "Rebuild cancelled", "status": "idle"}
+
+
+@router.get("/embedding/status")
+async def get_embedding_status(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+) -> dict:
+    """
+    Get embedding system status and rebuild progress.
+
+    If status is REBUILDING and all entries are processed (done + failed == total),
+    automatically updates status to IDLE.
+    """
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+    from glean_core.services import TypedConfigService
+
+    config_service = TypedConfigService(session)
+    config = await config_service.get(EmbeddingConfig)
+
+    # Get progress from entry counts
+    progress = await admin_service.get_embedding_progress()
+
+    # Auto-complete rebuild if all entries are processed
+    current_status = config.status
+    if config.status == VectorizationStatus.REBUILDING:
+        total = progress.get("total", 0)
+        done = progress.get("done", 0)
+        failed = progress.get("failed", 0)
+
+        # If all entries are processed (done + failed == total), mark as complete
+        if total > 0 and (done + failed) >= total:
+            await config_service.complete_rebuild()
+            current_status = VectorizationStatus.IDLE
+
+    return {
+        "enabled": config.enabled,
+        "status": current_status.value,
+        "has_error": current_status == VectorizationStatus.ERROR,
+        "error_message": config.last_error,
+        "error_count": config.error_count,
+        "rebuild_id": config.rebuild_id,
+        "rebuild_started_at": (
+            config.rebuild_started_at.isoformat() if config.rebuild_started_at else None
+        ),
+        "progress": progress,
+    }

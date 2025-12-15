@@ -76,8 +76,28 @@ export interface UpdateEntryStateRequest {
 /** Entry list response */
 export type EntryListResponse = PaginatedResponse<EntryWithState>
 
-/** Subscription list response */
-export type SubscriptionListResponse = Subscription[]
+/** Subscription list response (paginated) */
+export interface SubscriptionListResponse {
+  items: Subscription[]
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
+}
+
+/** Subscription sync response (all subscriptions with ETag) */
+export interface SubscriptionSyncResponse {
+  items: Subscription[]
+  etag: string
+}
+
+/** Subscription list params */
+export interface SubscriptionListParams {
+  page?: number
+  per_page?: number
+  folder_id?: string | null
+  search?: string
+}
 
 /** OPML import response */
 export interface OPMLImportResponse {

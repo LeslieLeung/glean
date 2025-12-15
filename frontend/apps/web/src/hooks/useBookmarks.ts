@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { bookmarkService, type BookmarkListParams } from '@glean/api-client'
+import { logger } from '@glean/logger'
 import type { Bookmark, CreateBookmarkRequest, UpdateBookmarkRequest } from '@glean/types'
 
 interface BookmarkPagination {
@@ -38,7 +39,7 @@ export function useBookmarks() {
         setFilters(finalParams)
       } catch (err) {
         setError('Failed to load bookmarks')
-        console.error('Failed to fetch bookmarks:', err)
+        logger.error('Failed to fetch bookmarks:', err)
       } finally {
         setLoading(false)
       }
@@ -54,7 +55,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to create bookmark')
-        console.error('Failed to create bookmark:', err)
+        logger.error('Failed to create bookmark:', err)
         return null
       }
     },
@@ -71,7 +72,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to update bookmark')
-        console.error('Failed to update bookmark:', err)
+        logger.error('Failed to update bookmark:', err)
         return null
       }
     },
@@ -86,7 +87,7 @@ export function useBookmarks() {
         return true
       } catch (err) {
         setError('Failed to delete bookmark')
-        console.error('Failed to delete bookmark:', err)
+        logger.error('Failed to delete bookmark:', err)
         return false
       }
     },
@@ -103,7 +104,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to add folder')
-        console.error('Failed to add folder to bookmark:', err)
+        logger.error('Failed to add folder to bookmark:', err)
         return null
       }
     },
@@ -120,7 +121,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to remove folder')
-        console.error('Failed to remove folder from bookmark:', err)
+        logger.error('Failed to remove folder from bookmark:', err)
         return null
       }
     },
@@ -137,7 +138,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to add tag')
-        console.error('Failed to add tag to bookmark:', err)
+        logger.error('Failed to add tag to bookmark:', err)
         return null
       }
     },
@@ -154,7 +155,7 @@ export function useBookmarks() {
         return bookmark
       } catch (err) {
         setError('Failed to remove tag')
-        console.error('Failed to remove tag from bookmark:', err)
+        logger.error('Failed to remove tag from bookmark:', err)
         return null
       }
     },

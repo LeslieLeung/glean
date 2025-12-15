@@ -1,13 +1,23 @@
+import fs from 'fs'
 import path from 'path'
 
 import react from '@vitejs/plugin-react-swc'
 import { defineConfig } from 'vite'
 import electron from 'vite-plugin-electron/simple'
 
+// Read version from root package.json
+const rootPackageJson = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf-8')
+)
+const appVersion = rootPackageJson.version
+
 export default defineConfig(({ mode }) => {
   const isElectron = mode === 'electron'
 
   return {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    },
     plugins: [
       react(),
       // Only enable electron plugin in electron mode

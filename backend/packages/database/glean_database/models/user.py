@@ -63,3 +63,6 @@ class User(Base, TimestampMixin):
     folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
     tags = relationship("Tag", back_populates="user", cascade="all, delete-orphan")
     bookmarks = relationship("Bookmark", back_populates="user", cascade="all, delete-orphan")
+    preference_stats = relationship(
+        "UserPreferenceStats", back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )

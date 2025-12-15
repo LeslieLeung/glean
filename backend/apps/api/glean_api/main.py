@@ -13,8 +13,16 @@ from arq.connections import ArqRedis, RedisSettings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from glean_core import init_logging, get_logger
 from .config import settings
-from .routers import admin, auth, bookmarks, entries, feeds, folders, tags
+from .middleware import LoggingMiddleware
+from .routers import admin, auth, bookmarks, entries, feeds, folders, preference, system, tags
+
+# Initialize logging system
+init_logging()
+
+# Get logger instance
+logger = get_logger(__name__)
 
 # Global Redis connection pool for task queue
 redis_pool: ArqRedis | None = None
@@ -53,21 +61,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     global redis_pool
 
-    print(f"Starting Glean API v{settings.version}")
+    logger.info(f"Starting Glean API v{settings.version}")
     init_database(settings.database_url)
 
     # Initialize Redis pool for task queue
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     redis_pool = await create_pool(redis_settings)
-    print("Redis pool initialized")
+    logger.info("Redis pool initialized")
 
     yield
 
     # Shutdown: Cleanup resources
     if redis_pool:
         await redis_pool.close()
-        print("Redis pool closed")
-    print("Shutting down Glean API")
+        logger.info("Redis pool closed")
+    logger.info("Shutting down Glean API")
 
 
 app = FastAPI(
@@ -88,15 +96,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configure logging middleware
+app.add_middleware(LoggingMiddleware)
+
 # Register API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(feeds.router, prefix="/api/feeds", tags=["Feeds"])
 app.include_router(entries.router, prefix="/api/entries", tags=["Entries"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-# M2 routers
+app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
 app.include_router(folders.router, prefix="/api/folders", tags=["Folders"])
 app.include_router(tags.router, prefix="/api/tags", tags=["Tags"])
-app.include_router(bookmarks.router, prefix="/api/bookmarks", tags=["Bookmarks"])
+app.include_router(preference.router, prefix="/api/preference", tags=["Preference"])
+app.include_router(system.router, prefix="/api/system", tags=["System"])
 
 
 @app.get("/api/health")

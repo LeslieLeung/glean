@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, Menu, dialog } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
+import { autoUpdater } from 'electron-updater'
 
 // __dirname polyfill for ES modules
 const __filename = fileURLToPath(import.meta.url)
@@ -37,6 +38,85 @@ let mainWindow: BrowserWindow | null = null
 let configWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+// Auto-updater configuration
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = true
+
+// Track update state
+let updateAvailable = false
+let updateDownloaded = false
+let downloadProgress = 0
+
+// Auto-updater event handlers
+autoUpdater.on('checking-for-update', () => {
+  console.log('[AutoUpdater] Checking for updates...')
+})
+
+autoUpdater.on('update-available', (info) => {
+  console.log('[AutoUpdater] Update available:', info.version)
+  updateAvailable = true
+  
+  // Notify renderer process
+  mainWindow?.webContents.send('update-available', {
+    version: info.version,
+    releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes
+  })
+})
+
+autoUpdater.on('update-not-available', () => {
+  console.log('[AutoUpdater] No updates available')
+  updateAvailable = false
+})
+
+autoUpdater.on('download-progress', (progress) => {
+  downloadProgress = progress.percent
+  console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}%`)
+  
+  // Notify renderer process
+  mainWindow?.webContents.send('update-download-progress', {
+    percent: progress.percent,
+    bytesPerSecond: progress.bytesPerSecond,
+    transferred: progress.transferred,
+    total: progress.total
+  })
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('[AutoUpdater] Update downloaded:', info.version)
+  updateDownloaded = true
+  downloadProgress = 100
+  
+  // Notify renderer process
+  mainWindow?.webContents.send('update-downloaded', {
+    version: info.version
+  })
+  
+  // Show dialog to user
+  dialog.showMessageBox(mainWindow!, {
+    type: 'info',
+    title: 'Update Ready',
+    message: `Version ${info.version} has been downloaded.`,
+    detail: 'The update will be installed when you restart the application.',
+    buttons: ['Restart Now', 'Later'],
+    defaultId: 0,
+    cancelId: 1
+  }).then(({ response }) => {
+    if (response === 0) {
+      autoUpdater.quitAndInstall()
+    }
+  })
+})
+
+autoUpdater.on('error', (error) => {
+  console.error('[AutoUpdater] Error:', error.message)
+  
+  // Notify renderer process
+  mainWindow?.webContents.send('update-error', {
+    message: error.message
+  })
+})
 
 // Create application menu
 function createApplicationMenu() {
@@ -326,6 +406,16 @@ app.whenReady().then(async () => {
     createConfigWindow()
   }
 
+  // Check for updates after a short delay (only in production)
+  if (!isDev) {
+    setTimeout(() => {
+      console.log('[Main] Checking for updates...')
+      autoUpdater.checkForUpdates().catch((err) => {
+        console.error('[Main] Failed to check for updates:', err)
+      })
+    }, 3000) // Wait 3 seconds after app starts
+  }
+
   app.on('activate', () => {
     // macOS: Recreate window when dock icon is clicked
     const windows = BrowserWindow.getAllWindows()
@@ -425,4 +515,59 @@ ipcMain.handle('clear-tokens', () => {
   store.delete('accessToken')
   store.delete('refreshToken')
   return true
+})
+
+// IPC handler: check for updates
+ipcMain.handle('check-for-updates', async () => {
+  if (isDev) {
+    console.log('[Main] Skipping update check in development mode')
+    return { available: false, isDev: true }
+  }
+  
+  try {
+    const result = await autoUpdater.checkForUpdates()
+    return {
+      available: updateAvailable,
+      version: result?.updateInfo?.version,
+      releaseDate: result?.updateInfo?.releaseDate
+    }
+  } catch (error) {
+    console.error('[Main] Update check failed:', error)
+    return { available: false, error: (error as Error).message }
+  }
+})
+
+// IPC handler: download update
+ipcMain.handle('download-update', async () => {
+  if (!updateAvailable) {
+    return { success: false, error: 'No update available' }
+  }
+  
+  try {
+    await autoUpdater.downloadUpdate()
+    return { success: true }
+  } catch (error) {
+    console.error('[Main] Update download failed:', error)
+    return { success: false, error: (error as Error).message }
+  }
+})
+
+// IPC handler: install update (quit and install)
+ipcMain.handle('install-update', () => {
+  if (!updateDownloaded) {
+    return { success: false, error: 'Update not downloaded' }
+  }
+  
+  autoUpdater.quitAndInstall()
+  return { success: true }
+})
+
+// IPC handler: get update status
+ipcMain.handle('get-update-status', () => {
+  return {
+    available: updateAvailable,
+    downloaded: updateDownloaded,
+    downloadProgress: downloadProgress,
+    currentVersion: app.getVersion()
+  }
 })

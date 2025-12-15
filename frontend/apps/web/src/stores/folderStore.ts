@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { folderService } from '@glean/api-client'
+import { logger } from '@glean/logger'
 import type { FolderTreeNode, FolderType, CreateFolderRequest, Folder } from '@glean/types'
 
 interface FolderState {
@@ -14,6 +15,7 @@ interface FolderState {
   deleteFolder: (id: string) => Promise<boolean>
   moveFolder: (id: string, parentId: string | null) => Promise<Folder | null>
   reorderFolders: (orders: { id: string; position: number }[]) => Promise<void>
+  reset: () => void
 }
 
 export const useFolderStore = create<FolderState>((set, get) => ({
@@ -41,7 +43,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       }
     } catch (err) {
       set({ error: 'Failed to load folders' })
-      console.error('Failed to fetch folders:', err)
+      logger.error('Failed to fetch folders:', err)
     } finally {
       set({ loading: false })
     }
@@ -55,7 +57,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       return folder
     } catch (err) {
       set({ error: 'Failed to create folder' })
-      console.error('Failed to create folder:', err)
+      logger.error('Failed to create folder:', err)
       return null
     }
   },
@@ -68,7 +70,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       return folder
     } catch (err) {
       set({ error: 'Failed to update folder' })
-      console.error('Failed to update folder:', err)
+      logger.error('Failed to update folder:', err)
       return null
     }
   },
@@ -81,7 +83,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       return true
     } catch (err) {
       set({ error: 'Failed to delete folder' })
-      console.error('Failed to delete folder:', err)
+      logger.error('Failed to delete folder:', err)
       return false
     }
   },
@@ -94,7 +96,7 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       return folder
     } catch (err) {
       set({ error: 'Failed to move folder' })
-      console.error('Failed to move folder:', err)
+      logger.error('Failed to move folder:', err)
       return null
     }
   },
@@ -106,8 +108,17 @@ export const useFolderStore = create<FolderState>((set, get) => ({
       await get().fetchFolders()
     } catch (err) {
       set({ error: 'Failed to reorder folders' })
-      console.error('Failed to reorder folders:', err)
+      logger.error('Failed to reorder folders:', err)
     }
+  },
+
+  reset: () => {
+    set({
+      feedFolders: [],
+      bookmarkFolders: [],
+      loading: false,
+      error: null,
+    })
   },
 }))
 

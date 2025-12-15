@@ -25,6 +25,8 @@
   "entries": {
     "loadError": "Failed to load entries",
     "noEntries": "No entries found",
+    "loadingMore": "Loading more...",
+    "noMoreEntries": "No more entries",
     "markAll": "Mark all as read",
     "marking": "Marking...",
     "markConfirm": "Mark all entries as read?",
@@ -41,7 +43,10 @@
   },
   "smart": {
     "title": "Smart",
-    "description": "Sorted by your preferences"
+    "description": "Sorted by your preferences",
+    "limitedMode": "Limited Smart Mode",
+    "enableVectorizationHint": "Enable vectorization for AI-powered recommendations based on content similarity.",
+    "goToSettings": "Go to Settings"
   },
   "empty": {
     "selectArticle": "Select an article",

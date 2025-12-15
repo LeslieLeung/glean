@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import UsersPage from './pages/UsersPage'
 import FeedsPage from './pages/FeedsPage'
 import EntriesPage from './pages/EntriesPage'
+import SettingsPage from './pages/SettingsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,7 +21,7 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -36,6 +37,8 @@ function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="feeds" element={<FeedsPage />} />
             <Route path="entries" element={<EntriesPage />} />
+            <Route path="embeddings" element={<SettingsPage />} />
+            <Route path="settings" element={<Navigate to="/embeddings" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -28,8 +28,9 @@
   "dialogs": {
     "addFeed": {
       "title": "Add Feed",
-      "url": "Feed URL",
-      "urlPlaceholder": "https://example.com/feed.xml",
+      "url": "Feed URL or Website URL",
+      "urlPlaceholder": "https://example.com/feed",
+      "urlDescription": "Enter a feed URL or website URL — we'll try to discover the feed automatically",
       "customTitle": "Custom Title (Optional)",
       "folder": "Folder (Optional)",
       "selectFolder": "Select a folder",

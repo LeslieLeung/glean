@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
 import { tokenStorage } from './tokenStorage'
+import { logger } from '@glean/logger'
 
 /**
  * API client for communicating with the Glean backend.
@@ -64,14 +65,32 @@ export class ApiClient {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
+      
+      // Log request in development mode
+      if (import.meta.env?.MODE !== 'production') {
+        logger.debug(`API Request: ${config.method?.toUpperCase()} ${config.url}`)
+      }
+      
       return config
     })
 
     // Response interceptor: Handle 401 errors with token refresh
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Log response in development mode
+        if (import.meta.env?.MODE !== 'production') {
+          logger.debug(`API Response: ${response.status} ${response.config.url}`)
+        }
+        return response
+      },
       async (error) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+        
+        // Log error (but not for 304 Not Modified, which is a normal caching response)
+        const status = error.response?.status
+        if (status !== 304) {
+          logger.error(`API Error: ${status || 'Network Error'} ${originalRequest?.url}`, error)
+        }
 
         // If error is not 401 or request already retried, reject
         if (error.response?.status !== 401 || originalRequest._retry) {
@@ -80,6 +99,7 @@ export class ApiClient {
 
         // Don't try to refresh if this is already a refresh request or auth request
         if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
+          logger.warn('Authentication failed, redirecting to login')
           await this.clearTokensAndRedirect()
           return Promise.reject(error)
         }
@@ -87,6 +107,7 @@ export class ApiClient {
         // Check if we have a refresh token
         const refreshToken = await tokenStorage.getRefreshToken()
         if (!refreshToken) {
+          logger.warn('No refresh token available, redirecting to login')
           await this.clearTokensAndRedirect()
           return Promise.reject(error)
         }
@@ -108,6 +129,7 @@ export class ApiClient {
 
         try {
           // Attempt to refresh the token
+          logger.info('Attempting to refresh authentication token')
           const response = await this.client.post<{ access_token: string; refresh_token: string }>(
             '/auth/refresh',
             { refresh_token: refreshToken }
@@ -126,9 +148,11 @@ export class ApiClient {
           this.processQueue(null, access_token)
 
           // Retry the original request
+          logger.info('Token refreshed successfully, retrying request')
           return this.client(originalRequest)
         } catch (refreshError) {
           // Refresh failed, clear tokens and redirect to login
+          logger.error('Token refresh failed', refreshError)
           this.processQueue(refreshError, null)
           await this.clearTokensAndRedirect()
           return Promise.reject(refreshError)
@@ -220,6 +244,7 @@ export class ApiClient {
    * Clear tokens and redirect to login page.
    */
   private async clearTokensAndRedirect(): Promise<void> {
+    logger.info('Clearing authentication tokens and redirecting to login')
     await tokenStorage.clearTokens()
     // Only redirect if not already on login page
     if (!window.location.pathname.includes('/login')) {
@@ -233,6 +258,23 @@ export class ApiClient {
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.client.get<T>(url, config)
     return response.data
+  }
+
+  /**
+   * Make a GET request and return both data and headers.
+   * Useful for ETag-based caching.
+   */
+  async getWithHeaders<T>(
+    url: string,
+    config?: AxiosRequestConfig
+  ): Promise<{ data: T; headers: Headers }> {
+    const response = await this.client.get<T>(url, config)
+    // Convert axios headers to standard Headers object
+    const headers = new Headers()
+    Object.entries(response.headers).forEach(([key, value]) => {
+      if (value) headers.set(key, String(value))
+    })
+    return { data: response.data, headers }
   }
 
   /**

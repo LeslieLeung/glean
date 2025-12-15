@@ -28,8 +28,9 @@
   "dialogs": {
     "addFeed": {
       "title": "添加订阅",
-      "url": "订阅地址",
-      "urlPlaceholder": "https://example.com/feed.xml",
+      "url": "订阅地址或网站地址",
+      "urlPlaceholder": "https://example.com/feed",
+      "urlDescription": "输入订阅地址或网站地址 — 我们将尝试自动发现订阅",
       "customTitle": "自定义标题（可选）",
       "folder": "文件夹（可选）",
       "selectFolder": "选择文件夹",

@@ -11,6 +11,8 @@ export class EntryService {
 
   /**
    * Get entries with filtering and pagination.
+   *
+   * @param params.view - View mode: "timeline" (default) or "smart" (sorted by preference score)
    */
   async getEntries(params?: {
     feed_id?: string
@@ -20,6 +22,7 @@ export class EntryService {
     read_later?: boolean
     page?: number
     per_page?: number
+    view?: 'timeline' | 'smart'
   }): Promise<EntryListResponse> {
     return this.client.get<EntryListResponse>('/entries', { params })
   }
@@ -46,5 +49,28 @@ export class EntryService {
       feed_id: feedId,
       folder_id: folderId,
     })
+  }
+
+  // M3: Preference signal endpoints
+
+  /**
+   * Mark entry as liked.
+   */
+  async likeEntry(entryId: string): Promise<EntryWithState> {
+    return this.client.post<EntryWithState>(`/entries/${entryId}/like`)
+  }
+
+  /**
+   * Mark entry as disliked.
+   */
+  async dislikeEntry(entryId: string): Promise<EntryWithState> {
+    return this.client.post<EntryWithState>(`/entries/${entryId}/dislike`)
+  }
+
+  /**
+   * Remove like/dislike reaction from entry.
+   */
+  async removeReaction(entryId: string): Promise<EntryWithState> {
+    return this.client.delete<EntryWithState>(`/entries/${entryId}/reaction`)
   }
 }

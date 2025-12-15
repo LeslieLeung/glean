@@ -1,6 +1,6 @@
 {
   "name": "@glean/web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Glean - Personal Knowledge Management and RSS Reader",
   "author": "Leslie Leung",
   "private": true,
@@ -31,6 +31,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.3.0",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.3.9",
     "highlight.js": "^11.11.1",
     "lightgallery": "^2.9.0",
     "lucide-react": "^0.336.0",

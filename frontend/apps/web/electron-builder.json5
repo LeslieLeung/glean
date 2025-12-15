@@ -13,6 +13,13 @@
     "!**/*.ts",
     "!**/*.map"
   ],
+  // GitHub Releases auto-update configuration
+  "publish": {
+    "provider": "github",
+    "owner": "LeslieLeung",
+    "repo": "glean",
+    "releaseType": "release"
+  },
   "win": {
     "target": [
       {

@@ -15,6 +15,7 @@ from .subscription import Subscription
 from .tag import Tag
 from .user import User
 from .user_entry import UserEntry
+from .user_preference_stats import UserPreferenceStats
 
 __all__ = [
     "Base",
@@ -36,4 +37,6 @@ __all__ = [
     "BookmarkFolder",
     "BookmarkTag",
     "UserEntryTag",
+    # M3 models
+    "UserPreferenceStats",
 ]

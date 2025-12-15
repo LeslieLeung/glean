@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { entryService } from '@glean/api-client'
-import type { UpdateEntryStateRequest } from '@glean/types'
+import type { UpdateEntryStateRequest, EntryWithState } from '@glean/types'
 import { subscriptionKeys } from './useSubscriptions'
 
 /**
@@ -24,6 +24,7 @@ export interface EntryFilters {
   read_later?: boolean
   page?: number
   per_page?: number
+  view?: 'timeline' | 'smart'
 }
 
 /**
@@ -33,6 +34,24 @@ export function useEntries(filters?: EntryFilters) {
   return useQuery({
     queryKey: entryKeys.list(filters || {}),
     queryFn: () => entryService.getEntries(filters),
+  })
+}
+
+/**
+ * Hook to fetch entries with infinite scroll support.
+ */
+export function useInfiniteEntries(filters?: Omit<EntryFilters, 'page'>) {
+  return useInfiniteQuery({
+    queryKey: entryKeys.list(filters || {}),
+    queryFn: ({ pageParam = 1 }) => 
+      entryService.getEntries({ ...filters, page: pageParam, per_page: 20 }),
+    getNextPageParam: (lastPage) => {
+      if (lastPage.page < lastPage.total_pages) {
+        return lastPage.page + 1
+      }
+      return undefined
+    },
+    initialPageParam: 1,
   })
 }
 
@@ -49,6 +68,10 @@ export function useEntry(entryId: string) {
 
 /**
  * Hook to update entry state.
+ * 
+ * Uses optimistic cache updates to prevent the entry list from refreshing
+ * and causing the currently selected entry to disappear from the list.
+ * Only invalidates subscription counts for accurate unread counts.
  */
 export function useUpdateEntryState() {
   const queryClient = useQueryClient()
@@ -57,14 +80,35 @@ export function useUpdateEntryState() {
     mutationFn: ({ entryId, data }: { entryId: string; data: UpdateEntryStateRequest }) =>
       entryService.updateEntryState(entryId, data),
     onSuccess: (updatedEntry, variables) => {
-      // Update the specific entry in cache
+      // Update the specific entry detail in cache
       queryClient.setQueryData(entryKeys.detail(variables.entryId), updatedEntry)
       
-      // Invalidate all entry lists to refetch with updated data
-      queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
+      // Update the entry in all cached lists directly (optimistic update)
+      // This prevents the list from refreshing and the entry from disappearing
+      queryClient.setQueriesData<{
+        pages: { items: EntryWithState[] }[]
+        pageParams: number[]
+      }>(
+        { queryKey: entryKeys.lists() },
+        (oldData) => {
+          if (!oldData) return oldData
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page) => ({
+              ...page,
+              items: page.items.map((item) =>
+                item.id === variables.entryId
+                  ? { ...item, ...updatedEntry }
+                  : item
+              ),
+            })),
+          }
+        }
+      )
       
-      // Invalidate subscriptions to update unread counts
-      queryClient.invalidateQueries({ queryKey: subscriptionKeys.lists() })
+      // Invalidate subscription queries to update unread counts
+      // This is needed for accurate sidebar counts
+      queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
   })
 }
@@ -80,8 +124,8 @@ export function useMarkAllRead() {
       entryService.markAllRead(feedId, folderId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
-      // Invalidate subscriptions to update unread counts
-      queryClient.invalidateQueries({ queryKey: subscriptionKeys.lists() })
+      // Invalidate all subscription queries to update unread counts (including sync)
+      queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
   })
 }

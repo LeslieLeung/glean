@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Rss, AlertCircle, Sparkles } from 'lucide-react'
 import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glean/ui'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * Login page.
@@ -10,6 +11,7 @@ import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glea
  * Provides user authentication form with email and password.
  */
 export default function LoginPage() {
+  const { t } = useTranslation('auth')
   const navigate = useNavigate()
   const location = useLocation()
   const { login, isLoading, error, clearError } = useAuthStore()
@@ -18,7 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [validationError, setValidationError] = useState('')
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/reader'
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/reader?view=smart&tab=unread'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,7 +28,7 @@ export default function LoginPage() {
     clearError()
 
     if (!email || !password) {
-      setValidationError('Please fill in all fields')
+      setValidationError(t('validation.required'))
       return
     }
 
@@ -69,11 +71,11 @@ export default function LoginPage() {
             </div>
           </div>
           <h1 className="font-display text-4xl font-bold tracking-tight text-foreground">
-            Welcome back
+            {t('login.title')}
           </h1>
           <p className="mt-3 flex items-center justify-center gap-2 text-muted-foreground">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span>Sign in to continue to Glean</span>
+            <span>{t('login.subtitle')}</span>
           </p>
         </div>
 
@@ -84,7 +86,7 @@ export default function LoginPage() {
             {displayError && (
               <Alert variant="error">
                 <AlertCircle />
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>{t('errors.loginFailed')}</AlertTitle>
                 <AlertDescription>{displayError}</AlertDescription>
               </Alert>
             )}
@@ -92,7 +94,7 @@ export default function LoginPage() {
             {/* Email field */}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-foreground">
-                Email
+                {t('login.email')}
               </Label>
               <Input
                 id="email"
@@ -108,26 +110,26 @@ export default function LoginPage() {
             {/* Password field */}
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium text-foreground">
-                Password
+                {t('login.password')}
               </Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder={t('login.password')}
                 disabled={isLoading}
                 className="w-full transition-all duration-200"
               />
             </div>
 
             {/* Submit button */}
-            <Button 
-              type="submit" 
-              disabled={isLoading} 
+            <Button
+              type="submit"
+              disabled={isLoading}
               className="btn-glow w-full py-3 text-base font-semibold transition-all duration-300"
             >
-              {isLoading ? 'Signing in...' : 'Sign in'}
+              {isLoading ? t('login.signingIn') : t('login.signIn')}
             </Button>
           </form>
 
@@ -138,14 +140,14 @@ export default function LoginPage() {
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">New to Glean?</span>
+                <span className="bg-card px-2 text-muted-foreground">{t('login.noAccount')}</span>
               </div>
             </div>
-            <Link 
-              to="/register" 
+            <Link
+              to="/register"
               className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
             >
-              Create an account
+              {t('register.createAccount')}
               <span aria-hidden="true">→</span>
             </Link>
           </div>

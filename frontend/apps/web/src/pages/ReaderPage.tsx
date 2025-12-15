@@ -1,25 +1,28 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useEntries, useEntry, useUpdateEntryState, useMarkAllRead } from '../hooks/useEntries'
+import { useInfiniteEntries, useEntry, useUpdateEntryState, useMarkAllRead } from '../hooks/useEntries'
+import { useVectorizationStatus } from '../hooks/useVectorizationStatus'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { useAuthStore } from '../stores/authStore'
+import { useUIStore } from '../stores/uiStore'
+import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import {
   Heart,
   CheckCheck,
   Clock,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   AlertCircle,
   Inbox,
   ThumbsDown,
   Timer,
+  Sparkles,
+  Info,
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast } from 'date-fns'
 import { stripHtmlTags } from '../lib/html'
 import {
-  Button,
+  buttonVariants,
   Alert,
   AlertTitle,
   AlertDescription,
@@ -63,22 +66,53 @@ function useIsMobile(breakpoint = 768) {
  * Main reading interface with entry list, filters, and reading pane.
  */
 export default function ReaderPage() {
+  const { t } = useTranslation('reader')
   const [searchParams] = useSearchParams()
   const selectedFeedId = searchParams.get('feed') || undefined
   const selectedFolderId = searchParams.get('folder') || undefined
   const entryIdFromUrl = searchParams.get('entry') || null
+  const viewParam = searchParams.get('view') || undefined
+  const tabParam = searchParams.get('tab') as FilterType | null
+  const isSmartView = viewParam === 'smart'
   const { user } = useAuthStore()
+  const { showPreferenceScore } = useUIStore()
   
-  const [filterType, setFilterType] = useState<FilterType>('all')
+  // Check vectorization status for Smart view
+  const { data: vectorizationStatus } = useVectorizationStatus()
+  const isVectorizationEnabled = vectorizationStatus?.enabled && vectorizationStatus?.status === 'idle'
+  
+  // Initialize filterType from URL parameter or default to 'unread'
+  const [filterType, setFilterType] = useState<FilterType>(() => {
+    if (tabParam && ['all', 'unread', 'liked', 'read-later'].includes(tabParam)) {
+      return tabParam
+    }
+    return 'unread'
+  })
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(entryIdFromUrl)
-  const [currentPage, setCurrentPage] = useState(1)
+  
+  // Store the original position data of the selected entry when it was first clicked
+  // This ensures the entry stays in its original position even after like/dislike/bookmark actions
+  const selectedEntryOriginalDataRef = useRef<{
+    id: string
+    preferenceScore: number | null
+    publishedAt: string | null
+  } | null>(null)
+  
+  // Track previous view state for animations
+  const prevViewRef = useRef<{
+    feedId: string | undefined
+    folderId: string | undefined
+    isSmartView: boolean
+  }>({ feedId: selectedFeedId, folderId: selectedFolderId, isSmartView })
   const [entriesWidth, setEntriesWidth] = useState(() => {
     const saved = localStorage.getItem('glean:entriesWidth')
     return saved !== null ? Number(saved) : 360
   })
   const [isFullscreen, setIsFullscreen] = useState(false)
   const isMobile = useIsMobile()
+  const entryListRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const updateMutation = useUpdateEntryState()
   const getFilterParams = () => {
@@ -98,23 +132,24 @@ export default function ReaderPage() {
     data: entriesData,
     isLoading,
     error,
-  } = useEntries({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteEntries({
     feed_id: selectedFeedId,
     folder_id: selectedFolderId,
     ...getFilterParams(),
-    page: currentPage,
-    per_page: 20,
+    view: isSmartView ? 'smart' : 'timeline',
   })
 
-  const rawEntries = entriesData?.items || []
-  const totalPages = entriesData?.total_pages || 1
+  const rawEntries = entriesData?.pages.flatMap(page => page.items) || []
   
   // Fetch selected entry separately to keep it visible even when filtered out of list
   const { data: selectedEntry, isLoading: isLoadingEntry } = useEntry(selectedEntryId || '')
 
   // Merge selected entry into the list if it's not already there
   // This ensures the currently viewed article doesn't disappear from the list
-  // when marked as read while viewing in the "unread" tab
+  // when marked as read while viewing in the "unread" tab or Smart view
   // However, for explicit filters like "liked" and "read-later", we should show the real filtered results
   const entries = (() => {
     if (!selectedEntry || !selectedEntryId) return rawEntries
@@ -127,27 +162,58 @@ export default function ReaderPage() {
       return rawEntries
     }
     
+    // For Smart view, keep the selected entry visible even if marked as read
+    // This prevents the article from disappearing while the user is reading it
+    // (Only applies when there's an actively selected entry)
+    
     // Don't merge if the selected entry is from a different feed than the one being viewed
     // (when viewing a specific feed, not all feeds or a folder)
     if (selectedFeedId && selectedEntry.feed_id !== selectedFeedId) {
       return rawEntries
     }
     
-    // Don't merge if we're viewing a folder and the entry is not in the current list
-    // (the backend already filtered by folder, so if it's not in rawEntries, it's not in the folder)
-    if (selectedFolderId) {
-      return rawEntries
-    }
+    // For folder views, we still want to keep the selected entry visible
+    // even if it's been marked as read and filtered out
+    // The backend has already filtered by folder, so we know this entry belongs to the folder
+    // if we have it in selectedEntry (it was in the list when user clicked it)
     
-    // Insert selected entry at its original position or at the top
-    // Find the right position based on published_at
-    const selectedDate = selectedEntry.published_at ? new Date(selectedEntry.published_at) : new Date(0)
-    let insertIdx = rawEntries.findIndex((e) => {
-      const entryDate = e.published_at ? new Date(e.published_at) : new Date(0)
-      return entryDate < selectedDate
-    })
-    if (insertIdx === -1) insertIdx = rawEntries.length
-    return [...rawEntries.slice(0, insertIdx), selectedEntry, ...rawEntries.slice(insertIdx)]
+    // Insert selected entry at its ORIGINAL position based on sorting rules
+    // Use the saved original data to ensure the position doesn't change after like/dislike/bookmark
+    // In Smart view, entries are sorted by preference score (descending)
+    // In timeline view, entries are sorted by published_at (descending)
+    const originalData = selectedEntryOriginalDataRef.current
+    
+    // Merge the original preference_score back into the entry to ensure it displays correctly
+    // This is needed because the single entry API may not return preference_score
+    const entryWithOriginalScore = originalData?.id === selectedEntryId
+      ? { ...selectedEntry, preference_score: originalData.preferenceScore ?? selectedEntry.preference_score }
+      : selectedEntry
+    
+    if (isSmartView) {
+      // For Smart view, insert based on ORIGINAL preference_score to maintain correct order
+      // Use the saved original score, not the current score (which may have changed after like/dislike)
+      const selectedScore = originalData?.id === selectedEntryId 
+        ? (originalData.preferenceScore ?? -1)
+        : (selectedEntry.preference_score ?? -1)
+      let insertIdx = rawEntries.findIndex((e) => {
+        const entryScore = e.preference_score ?? -1
+        return entryScore < selectedScore
+      })
+      if (insertIdx === -1) insertIdx = rawEntries.length
+      return [...rawEntries.slice(0, insertIdx), entryWithOriginalScore, ...rawEntries.slice(insertIdx)]
+    } else {
+      // For timeline view, insert based on ORIGINAL published_at to maintain chronological order
+      const publishedAt = originalData?.id === selectedEntryId
+        ? originalData.publishedAt
+        : selectedEntry.published_at
+      const selectedDate = publishedAt ? new Date(publishedAt) : new Date(0)
+      let insertIdx = rawEntries.findIndex((e) => {
+        const entryDate = e.published_at ? new Date(e.published_at) : new Date(0)
+        return entryDate < selectedDate
+      })
+      if (insertIdx === -1) insertIdx = rawEntries.length
+      return [...rawEntries.slice(0, insertIdx), entryWithOriginalScore, ...rawEntries.slice(insertIdx)]
+    }
   })()
 
   // Handle filter change with slide direction
@@ -160,15 +226,104 @@ export default function ReaderPage() {
     
     setSlideDirection(direction)
     setFilterType(newFilter)
-    setCurrentPage(1)
     
     // Reset slide direction after animation completes
     setTimeout(() => setSlideDirection(null), 250)
   }
 
+  // Infinite scroll: use Intersection Observer to detect when load-more element is visible
+  useEffect(() => {
+    const loadMoreElement = loadMoreRef.current
+    const container = entryListRef.current
+    
+    if (!loadMoreElement || !container) return
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries
+        // Only fetch if the element is intersecting, has next page, and not already fetching
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      {
+        root: container,
+        rootMargin: '100px', // Trigger 100px before reaching the element
+        threshold: 0.1,
+      }
+    )
+    
+    observer.observe(loadMoreElement)
+    
+    return () => {
+      observer.disconnect()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // Reset filter when switching to smart view (default to unread)
+  useEffect(() => {
+    const prev = prevViewRef.current
+    
+    // When entering smart view, default to 'unread' filter
+    if (isSmartView && !prev.isSmartView) {
+      setFilterType('unread')
+    }
+    // When leaving smart view, reset to 'all' filter
+    else if (!isSmartView && prev.isSmartView) {
+      setFilterType('all')
+    }
+  }, [isSmartView])
+
+  // Trigger animation on view change (Smart <-> Feed/Folder/All)
+  // Also reset selected entry when switching views to prevent stale entries
+  useEffect(() => {
+    const prev = prevViewRef.current
+    const viewChanged = 
+      prev.feedId !== selectedFeedId || 
+      prev.folderId !== selectedFolderId || 
+      prev.isSmartView !== isSmartView
+
+    if (viewChanged) {
+      // Clear selected entry when switching views
+      // This prevents showing an entry from a different feed/folder in the new view
+      // Only clear if the change is not due to URL entry parameter
+      if (!entryIdFromUrl) {
+        setSelectedEntryId(null)
+        selectedEntryOriginalDataRef.current = null
+      }
+      
+      // Determine slide direction based on view change
+      // Smart view slides from left, others slide from right
+      if (isSmartView && !prev.isSmartView) {
+        setSlideDirection('left')
+      } else if (!isSmartView && prev.isSmartView) {
+        setSlideDirection('right')
+      } else {
+        // Feed to feed change - use right direction
+        setSlideDirection('right')
+      }
+
+      // Update ref
+      prevViewRef.current = { feedId: selectedFeedId, folderId: selectedFolderId, isSmartView }
+
+      // Reset slide direction after animation
+      setTimeout(() => setSlideDirection(null), 300)
+    }
+  }, [selectedFeedId, selectedFolderId, isSmartView, entryIdFromUrl])
+
   // Handle entry selection - automatically mark as read
   const handleSelectEntry = async (entry: EntryWithState) => {
     setSelectedEntryId(entry.id)
+    
+    // Save the original position data when first selecting an entry
+    // This ensures the entry stays in place even after like/dislike/bookmark actions
+    if (selectedEntryOriginalDataRef.current?.id !== entry.id) {
+      selectedEntryOriginalDataRef.current = {
+        id: entry.id,
+        preferenceScore: entry.preference_score,
+        publishedAt: entry.published_at,
+      }
+    }
     
     // Auto-mark as read when selecting an unread entry
     if (!entry.is_read) {
@@ -200,44 +355,85 @@ export default function ReaderPage() {
           >
             {/* Filters */}
             <div className="border-b border-border bg-card p-3">
-              <div className="flex items-center gap-2">
-                {/* Filter tabs */}
-                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg bg-muted/50 p-1">
-                  <FilterTab
-                    active={filterType === 'all'}
-                    onClick={() => handleFilterChange('all')}
-                    icon={<Inbox className="h-3.5 w-3.5" />}
-                    label="All"
-                  />
-                  <FilterTab
-                    active={filterType === 'unread'}
-                    onClick={() => handleFilterChange('unread')}
-                    icon={<div className="h-2 w-2 rounded-full bg-current" />}
-                    label="Unread"
-                  />
-                  <FilterTab
-                    active={filterType === 'liked'}
-                    onClick={() => handleFilterChange('liked')}
-                    icon={<Heart className="h-3.5 w-3.5" />}
-                    label="Liked"
-                  />
-                  <FilterTab
-                    active={filterType === 'read-later'}
-                    onClick={() => handleFilterChange('read-later')}
-                    icon={<Clock className="h-3.5 w-3.5" />}
-                    label="Later"
-                  />
+              {isSmartView ? (
+                /* Smart view header + filters */
+                <div className="space-y-2">
+                  {/* Smart Header */}
+                  <div className="flex min-w-0 items-center gap-2 rounded-lg bg-primary/5 px-3 py-1.5 animate-fade-in">
+                    <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                    <span className="text-sm font-medium text-primary">{t('smart.title')}</span>
+                    <span className="text-xs text-muted-foreground">{t('smart.description')}</span>
+                  </div>
+                  {/* Filter tabs for Smart view */}
+                  <div className="@container flex min-w-0 items-center gap-1 rounded-lg bg-muted/50 p-1">
+                    <FilterTab
+                      active={filterType === 'unread'}
+                      onClick={() => handleFilterChange('unread')}
+                      icon={<div className="h-2 w-2 rounded-full bg-current" />}
+                      label={t('filters.unread')}
+                    />
+                    <FilterTab
+                      active={filterType === 'all'}
+                      onClick={() => handleFilterChange('all')}
+                      icon={<Inbox className="h-3.5 w-3.5" />}
+                      label={t('filters.all')}
+                    />
+                  </div>
                 </div>
+              ) : (
+                /* Regular view filters */
+                <div className="flex items-center gap-2">
+                  {/* Filter tabs */}
+                  <div className="@container flex min-w-0 flex-1 items-center gap-1 rounded-lg bg-muted/50 p-1">
+                    <FilterTab
+                      active={filterType === 'all'}
+                      onClick={() => handleFilterChange('all')}
+                      icon={<Inbox className="h-3.5 w-3.5" />}
+                      label={t('filters.all')}
+                    />
+                    <FilterTab
+                      active={filterType === 'unread'}
+                      onClick={() => handleFilterChange('unread')}
+                      icon={<div className="h-2 w-2 rounded-full bg-current" />}
+                      label={t('filters.unread')}
+                    />
+                    <FilterTab
+                      active={filterType === 'liked'}
+                      onClick={() => handleFilterChange('liked')}
+                      icon={<Heart className="h-3.5 w-3.5" />}
+                      label={t('filters.liked')}
+                    />
+                    <FilterTab
+                      active={filterType === 'read-later'}
+                      onClick={() => handleFilterChange('read-later')}
+                      icon={<Clock className="h-3.5 w-3.5" />}
+                      label={t('filters.readLater')}
+                    />
+                  </div>
 
-                {/* Mark all read button */}
-                <MarkAllReadButton feedId={selectedFeedId} folderId={selectedFolderId} />
-              </div>
+                  {/* Mark all read button */}
+                  <MarkAllReadButton feedId={selectedFeedId} folderId={selectedFolderId} />
+                </div>
+              )}
             </div>
 
+            {/* Smart view banner when vectorization is disabled */}
+            {isSmartView && !isVectorizationEnabled && (
+              <div className="border-b border-border bg-muted/30 px-3 py-2">
+                <div className="flex items-start gap-2 text-sm">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-foreground">{t('smart.limitedMode')}</p>
+                    <p className="text-muted-foreground">{t('smart.enableVectorizationHint')}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Entry list */}
-            <div className="flex-1 overflow-y-auto">
+            <div ref={entryListRef} className="flex-1 overflow-y-auto">
               <div
-                key={`${selectedFeedId || 'all'}-${selectedFolderId || 'none'}-${filterType}`}
+                key={`${selectedFeedId || 'all'}-${selectedFolderId || 'none'}-${filterType}-${viewParam || 'timeline'}`}
                 className={`feed-content-transition ${
                   slideDirection === 'right'
                     ? 'animate-slide-from-right'
@@ -258,7 +454,7 @@ export default function ReaderPage() {
                   <div className="p-4">
                     <Alert variant="error">
                       <AlertCircle />
-                      <AlertTitle>Failed to load entries</AlertTitle>
+                      <AlertTitle>{t('entries.loadError')}</AlertTitle>
                       <AlertDescription>{(error as Error).message}</AlertDescription>
                     </Alert>
                   </div>
@@ -269,9 +465,9 @@ export default function ReaderPage() {
                     <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                       <Inbox className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <p className="text-muted-foreground">No entries found</p>
+                    <p className="text-muted-foreground">{t('entries.noEntries')}</p>
                     <p className="mt-1 text-xs text-muted-foreground/60">
-                      Try changing the filter or adding more feeds
+                      {t('empty.tryChangingFilter')}
                     </p>
                   </div>
                 )}
@@ -286,42 +482,32 @@ export default function ReaderPage() {
                       style={{ animationDelay: `${index * 0.03}s` }}
                       showFeedInfo={!selectedFeedId}
                       showReadLaterRemaining={filterType === 'read-later' && (user?.settings?.show_read_later_remaining ?? true)}
+                      showPreferenceScore={isSmartView && showPreferenceScore}
                     />
                   ))}
                 </div>
+
+                {/* Intersection observer target for infinite scroll */}
+                {hasNextPage && !isFetchingNextPage && entries.length > 0 && (
+                  <div ref={loadMoreRef} className="h-4" />
+                )}
+
+                {/* Loading more indicator */}
+                {isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">{t('entries.loadingMore')}</span>
+                  </div>
+                )}
+
+                {/* End of list indicator */}
+                {!hasNextPage && entries.length > 0 && (
+                  <div className="flex items-center justify-center py-6">
+                    <span className="text-sm text-muted-foreground">{t('entries.noMoreEntries')}</span>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-border bg-card px-4 py-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="text-muted-foreground"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span>Prev</span>
-                </Button>
-
-                <span className="text-sm text-muted-foreground">
-                  {currentPage} / {totalPages}
-                </span>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="text-muted-foreground"
-                >
-                  <span>Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
             {/* Resize handle - desktop only, positioned inside container */}
             {!isMobile && (
               <ResizeHandle
@@ -340,7 +526,10 @@ export default function ReaderPage() {
           ) : selectedEntry ? (
             <ArticleReader
               entry={selectedEntry}
-              onClose={() => setSelectedEntryId(null)}
+              onClose={() => {
+                setSelectedEntryId(null)
+                selectedEntryOriginalDataRef.current = null
+              }}
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
               showFullscreenButton={!isMobile}
@@ -352,9 +541,9 @@ export default function ReaderPage() {
                 <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
                   <BookOpen className="h-10 w-10 text-muted-foreground" />
                 </div>
-                <h3 className="font-display text-lg font-semibold text-foreground">Select an article</h3>
+                <h3 className="font-display text-lg font-semibold text-foreground">{t('empty.selectArticle')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Choose an article from the list to start reading
+                  {t('empty.selectArticleDescription')}
                 </p>
               </div>
             </div>
@@ -448,6 +637,7 @@ function EntryListItem({
   style,
   showFeedInfo = false,
   showReadLaterRemaining = false,
+  showPreferenceScore = false,
 }: {
   entry: EntryWithState
   isSelected: boolean
@@ -455,6 +645,7 @@ function EntryListItem({
   style?: React.CSSProperties
   showFeedInfo?: boolean
   showReadLaterRemaining?: boolean
+  showPreferenceScore?: boolean
 }) {
   const remainingTime = showReadLaterRemaining ? formatRemainingTime(entry.read_later_until) : null
   return (
@@ -532,6 +723,21 @@ function EntryListItem({
               )}
 
               <div className="ml-auto flex items-center gap-1.5">
+                {/* M3: Preference score badge */}
+                {showPreferenceScore && entry.preference_score !== null && entry.preference_score !== undefined && (
+                  <span
+                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
+                      entry.preference_score >= 70
+                        ? 'bg-green-500/10 text-green-500'
+                        : entry.preference_score >= 50
+                          ? 'bg-amber-500/10 text-amber-500'
+                          : 'bg-muted text-muted-foreground'
+                    }`}
+                    title={`Preference score: ${entry.preference_score.toFixed(0)}%`}
+                  >
+                    {entry.preference_score.toFixed(0)}%
+                  </span>
+                )}
                 {entry.is_liked === true && (
                   <Heart className="h-3.5 w-3.5 fill-current text-red-500" />
                 )}
@@ -543,8 +749,8 @@ function EntryListItem({
                 )}
                 {remainingTime && (
                   <span className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
-                    remainingTime === 'Expired' 
-                      ? 'bg-destructive/10 text-destructive' 
+                    remainingTime === 'Expired'
+                      ? 'bg-destructive/10 text-destructive'
                       : 'bg-primary/10 text-primary'
                   }`}>
                     <Timer className="h-2.5 w-2.5" />
@@ -575,7 +781,7 @@ function FilterTab({
   return (
     <button
       onClick={onClick}
-      className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-xs font-medium transition-all duration-200 ${
+      className={`flex min-w-0 flex-1 items-center justify-center overflow-hidden rounded-md px-2 py-1.5 text-xs font-medium transition-all duration-200 ${
         active
           ? 'bg-background text-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground'
@@ -584,12 +790,15 @@ function FilterTab({
       <span className={`shrink-0 transition-colors duration-200 ${active ? 'text-primary' : ''}`}>
         {icon}
       </span>
-      <span className="truncate">{label}</span>
+      <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 @[20rem]:ml-1.5 @[20rem]:max-w-full @[20rem]:opacity-100">
+        {label}
+      </span>
     </button>
   )
 }
 
 function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: string }) {
+  const { t } = useTranslation('reader')
   const markAllMutation = useMarkAllRead()
   const [showConfirm, setShowConfirm] = useState(false)
 
@@ -599,9 +808,9 @@ function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: s
   }
 
   const getScopeText = () => {
-    if (feedId) return 'entries in this feed'
-    if (folderId) return 'entries in this folder'
-    return 'entries'
+    if (feedId) return t('entries.scope.feed')
+    if (folderId) return t('entries.scope.folder')
+    return t('entries.scope.all')
   }
 
   return (
@@ -609,7 +818,7 @@ function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: s
       <button
         onClick={() => setShowConfirm(true)}
         disabled={markAllMutation.isPending}
-        title="Mark all as read"
+        title={t('entries.markAll')}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
       >
         <CheckCheck className="h-4 w-4" />
@@ -619,25 +828,25 @@ function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: s
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark all entries as read?</AlertDialogTitle>
+            <AlertDialogTitle>{t('entries.markConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will mark all {getScopeText()} as read. This action cannot be undone.
+              {t('entries.markConfirmDescription', { scope: getScopeText() })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('actions.close')}</AlertDialogClose>
             <AlertDialogClose
-              render={<Button />}
+              className={buttonVariants()}
               onClick={handleMarkAll}
               disabled={markAllMutation.isPending}
             >
               {markAllMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Marking...</span>
+                  <span>{t('entries.marking')}</span>
                 </>
               ) : (
-                'Mark as Read'
+                t('entries.markAll')
               )}
             </AlertDialogClose>
           </AlertDialogFooter>

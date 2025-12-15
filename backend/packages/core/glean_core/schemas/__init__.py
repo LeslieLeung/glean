@@ -17,7 +17,9 @@ from .feed import (
     BatchDeleteSubscriptionsResponse,
     DiscoverFeedRequest,
     FeedResponse,
+    SubscriptionListResponse,
     SubscriptionResponse,
+    SubscriptionSyncResponse,
     UpdateSubscriptionRequest,
 )
 from .folder import (
@@ -38,6 +40,18 @@ from .tag import (
     TagWithCountsResponse,
 )
 from .user import UserResponse, UserUpdate
+from .config import (
+    EmbeddingConfig,
+    EmbeddingConfigResponse,
+    EmbeddingConfigUpdateRequest,
+    EmbeddingRebuildProgress,
+    PreferenceConfig,
+    RateLimitConfig,
+    ScoreConfig,
+    ValidationResult,
+    VectorizationStatus,
+    VectorizationStatusResponse,
+)
 
 __all__ = [
     # Auth
@@ -51,6 +65,8 @@ __all__ = [
     # Feed
     "FeedResponse",
     "SubscriptionResponse",
+    "SubscriptionListResponse",
+    "SubscriptionSyncResponse",
     "DiscoverFeedRequest",
     "UpdateSubscriptionRequest",
     "BatchDeleteSubscriptionsRequest",
@@ -81,4 +97,15 @@ __all__ = [
     "TagWithCountsResponse",
     "TagListResponse",
     "TagBatchRequest",
+    # Config
+    "EmbeddingConfig",
+    "EmbeddingConfigResponse",
+    "EmbeddingConfigUpdateRequest",
+    "EmbeddingRebuildProgress",
+    "PreferenceConfig",
+    "RateLimitConfig",
+    "ScoreConfig",
+    "ValidationResult",
+    "VectorizationStatus",
+    "VectorizationStatusResponse",
 ]

@@ -93,6 +93,9 @@ export interface EntryWithState extends Entry {
   // Feed info for display in aggregated views
   feed_title: string | null
   feed_icon_url: string | null
+  // M3: Preference score
+  preference_score: number | null  // 0-100 preference score
+  debug_info: ScoreDebugInfo | null  // Debug information (if debug mode enabled)
 }
 
 // M2: Folder types
@@ -225,4 +228,30 @@ export interface CreateBookmarkRequest {
 export interface UpdateBookmarkRequest {
   title?: string
   excerpt?: string
+}
+
+// M3: Preference types
+export interface ScoreDebugInfo {
+  positive_sim: number  // Similarity to positive preferences [-1, 1]
+  negative_sim: number  // Similarity to negative preferences [-1, 1]
+  confidence: number  // Model confidence [0, 1]
+  source_boost: number  // Boost from source affinity
+  author_boost: number  // Boost from author affinity
+}
+
+export interface PreferenceStats {
+  total_likes: number
+  total_dislikes: number
+  total_bookmarks: number
+  preference_strength: 'weak' | 'moderate' | 'strong'
+  top_sources: Array<{
+    feed_id: string
+    feed_title: string
+    affinity_score: number
+  }>
+  top_authors: Array<{
+    name: string
+    affinity_score: number
+  }>
+  model_updated_at: string | null
 }

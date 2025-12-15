@@ -38,6 +38,8 @@ class EntryResponse(BaseModel):
     read_at: datetime | None = None
     is_bookmarked: bool = False
     bookmark_id: str | None = None
+    # Preference score for recommendations (M3)
+    preference_score: float | None = None
     # Feed info for display in aggregated views
     feed_title: str | None = None
     feed_icon_url: str | None = None
@@ -50,7 +52,7 @@ class EntryListResponse(BaseModel):
     total: int
     page: int
     per_page: int
-    has_more: bool
+    total_pages: int
 
 
 class UpdateEntryStateRequest(BaseModel):

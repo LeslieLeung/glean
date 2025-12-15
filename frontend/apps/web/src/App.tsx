@@ -3,6 +3,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
 import { Rss } from 'lucide-react'
 import { useAuthStore } from './stores/authStore'
+import { useTranslation } from '@glean/i18n'
 
 // Lazy load pages
 import { lazy, Suspense, useEffect, useState } from 'react'
@@ -14,11 +15,15 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'))
 // M2 pages
 const BookmarksPage = lazy(() => import('./pages/BookmarksPage'))
+// M3 pages
+const PreferencePage = lazy(() => import('./pages/PreferencePage'))
 
 /**
  * Loading spinner component with branding
  */
 function LoadingSpinner() {
+  const { t } = useTranslation('common')
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
@@ -28,7 +33,7 @@ function LoadingSpinner() {
             <Rss className="h-8 w-8 text-primary-foreground" />
           </div>
         </div>
-        <div className="text-sm font-medium text-muted-foreground">Loading...</div>
+        <div className="text-sm font-medium text-muted-foreground">{t('actions.loading')}</div>
       </div>
     </div>
   )
@@ -71,10 +76,11 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/reader" replace />} />
+          <Route index element={<Navigate to="/reader?view=smart&tab=unread" replace />} />
           <Route path="reader" element={<ReaderPage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="bookmarks" element={<BookmarksPage />} />
+          <Route path="preference" element={<PreferencePage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

@@ -3,9 +3,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
 import { useUpdateEntryState, entryKeys } from '../hooks/useEntries'
 import { bookmarkService } from '@glean/api-client'
+import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import {
-  Heart,
   CheckCheck,
   Clock,
   Archive,
@@ -13,7 +13,6 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  ThumbsDown,
   X,
   ChevronLeft,
 } from 'lucide-react'
@@ -21,6 +20,7 @@ import { format } from 'date-fns'
 import { processHtmlContent } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ArticleOutline } from './ArticleOutline'
+import { PreferenceButtons } from './EntryActions/PreferenceButtons'
 
 /**
  * Hook to track animation state for action buttons
@@ -137,6 +137,7 @@ export function ArticleReader({
   showFullscreenButton = true,
   hideReadStatus = false,
 }: ArticleReaderProps) {
+  const { t } = useTranslation('reader')
   const queryClient = useQueryClient()
   const updateMutation = useUpdateEntryState()
   const contentRef = useContentRenderer(entry.content || entry.summary || undefined)
@@ -152,8 +153,6 @@ export function ArticleReader({
   }, [entry.id])
   
   // Animation triggers for action buttons
-  const likeAnimation = useAnimationTrigger(entry.is_liked === true, 'action-btn-heart-active')
-  const dislikeAnimation = useAnimationTrigger(entry.is_liked === false, 'action-btn-dislike-active')
   const readLaterAnimation = useAnimationTrigger(entry.read_later, 'action-btn-clock-active')
   const bookmarkAnimation = useAnimationTrigger(entry.is_bookmarked, 'action-btn-archive-active')
   const readAnimation = useAnimationTrigger(entry.is_read, 'action-btn-check')
@@ -162,24 +161,6 @@ export function ArticleReader({
     await updateMutation.mutateAsync({
       entryId: entry.id,
       data: { is_read: !entry.is_read },
-    })
-  }
-
-  const handleLike = async () => {
-    // If already liked, remove like (set to null). Otherwise, set to liked (true)
-    const newValue = entry.is_liked === true ? null : true
-    await updateMutation.mutateAsync({
-      entryId: entry.id,
-      data: { is_liked: newValue },
-    })
-  }
-
-  const handleDislike = async () => {
-    // If already disliked, remove dislike (set to null). Otherwise, set to disliked (false)
-    const newValue = entry.is_liked === false ? null : false
-    await updateMutation.mutateAsync({
-      entryId: entry.id,
-      data: { is_liked: newValue },
     })
   }
 
@@ -250,7 +231,7 @@ export function ArticleReader({
                   variant="ghost"
                   size="icon"
                   onClick={onToggleFullscreen}
-                  title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                  title={isFullscreen ? t('actions.exitFullscreen') : t('actions.fullscreen')}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
@@ -261,7 +242,7 @@ export function ArticleReader({
                   variant="ghost"
                   size="icon"
                   onClick={onClose}
-                  title="Close"
+                  title={t('actions.close')}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-5 w-5" />
@@ -289,7 +270,7 @@ export function ArticleReader({
               className="action-btn action-btn-external text-muted-foreground"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Open Original</span>
+              <span>{t('actions.openOriginal')}</span>
             </Button>
 
             {!hideReadStatus && (
@@ -300,29 +281,11 @@ export function ArticleReader({
                 className={`action-btn ${readAnimation} ${entry.is_read ? 'text-muted-foreground' : 'text-primary'}`}
               >
                 <CheckCheck className="h-4 w-4" />
-                <span>{entry.is_read ? 'Mark Unread' : 'Mark Read'}</span>
+                <span>{entry.is_read ? t('actions.markUnread') : t('actions.markRead')}</span>
               </Button>
             )}
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLike}
-              className={`action-btn ${likeAnimation} ${entry.is_liked === true ? 'text-red-500' : 'text-muted-foreground'}`}
-            >
-              <Heart className={`h-4 w-4 ${entry.is_liked === true ? 'fill-current' : ''}`} />
-              <span>{entry.is_liked === true ? 'Liked' : 'Like'}</span>
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleDislike}
-              className={`action-btn ${dislikeAnimation} ${entry.is_liked === false ? 'text-foreground' : 'text-muted-foreground'}`}
-            >
-              <ThumbsDown className={`h-4 w-4 ${entry.is_liked === false ? 'fill-current' : ''}`} />
-              <span>{entry.is_liked === false ? 'Disliked' : 'Dislike'}</span>
-            </Button>
+            <PreferenceButtons entry={entry} />
 
             <Button
               variant="ghost"
@@ -331,7 +294,7 @@ export function ArticleReader({
               className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
             >
               <Clock className="h-4 w-4" />
-              <span>{entry.read_later ? 'Saved for Later' : 'Read Later'}</span>
+              <span>{entry.read_later ? t('actions.savedForLater') : t('actions.readLater')}</span>
             </Button>
 
             <Button
@@ -346,7 +309,7 @@ export function ArticleReader({
               ) : (
                 <Archive className="h-4 w-4" />
               )}
-              <span>{entry.is_bookmarked ? 'Archived' : 'Archive'}</span>
+              <span>{entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}</span>
             </Button>
           </div>
         </div>
@@ -374,18 +337,18 @@ export function ArticleReader({
             {entry.content ? (
               <article
                 ref={contentRef}
-                className="prose prose-invert prose-lg font-reading prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-blockquote:border-primary prose-blockquote:text-foreground/80 prose-code:text-foreground prose-pre:bg-muted max-w-none"
+                className="prose prose-lg font-reading max-w-none"
                 dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.content) }}
               />
             ) : entry.summary ? (
               <article
                 ref={contentRef}
-                className="prose prose-invert prose-lg font-reading prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 max-w-none"
+                className="prose prose-lg font-reading max-w-none"
                 dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.summary) }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="italic text-muted-foreground">No content available</p>
+                <p className="italic text-muted-foreground">{t('article.noContent')}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -395,7 +358,7 @@ export function ArticleReader({
                   )}
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View Original Article
+                  {t('article.viewOriginal')}
                 </Button>
               </div>
             )}
@@ -404,7 +367,7 @@ export function ArticleReader({
 
         {/* Desktop Outline - Sidebar that only takes space when there are headings */}
         {!isMobile && (entry.content || entry.summary) && (
-          <div className={`hidden 2xl:block ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
+          <div className={`hidden xl:flex flex-col ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
             <ArticleOutline
               contentRef={contentRef}
               scrollContainerRef={scrollContainerRef}
@@ -437,7 +400,7 @@ export function ArticleReader({
               className="action-btn action-btn-mobile action-btn-external flex flex-col items-center gap-0.5 px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
             >
               <ExternalLink className="h-5 w-5" />
-              <span className="text-[10px]">Open</span>
+              <span className="text-[10px]">{t('actions.open')}</span>
             </button>
 
             {!hideReadStatus && (
@@ -448,29 +411,11 @@ export function ArticleReader({
                 }`}
               >
                 <CheckCheck className="h-5 w-5" />
-                <span className="text-[10px]">{entry.is_read ? 'Unread' : 'Read'}</span>
+                <span className="text-[10px]">{entry.is_read ? t('actions.markUnread').slice(5) : t('actions.markRead').slice(5)}</span>
               </button>
             )}
 
-            <button
-              onClick={handleLike}
-              className={`action-btn action-btn-mobile ${likeAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
-                entry.is_liked === true ? 'text-red-500' : 'text-muted-foreground'
-              }`}
-            >
-              <Heart className={`h-5 w-5 ${entry.is_liked === true ? 'fill-current' : ''}`} />
-              <span className="text-[10px]">Like</span>
-            </button>
-
-            <button
-              onClick={handleDislike}
-              className={`action-btn action-btn-mobile ${dislikeAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
-                entry.is_liked === false ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              <ThumbsDown className={`h-5 w-5 ${entry.is_liked === false ? 'fill-current' : ''}`} />
-              <span className="text-[10px]">Dislike</span>
-            </button>
+            <PreferenceButtons entry={entry} mobileStyle />
 
             <button
               onClick={handleToggleReadLater}
@@ -479,7 +424,7 @@ export function ArticleReader({
               }`}
             >
               <Clock className="h-5 w-5" />
-              <span className="text-[10px]">Later</span>
+              <span className="text-[10px]">{t('filters.readLater')}</span>
             </button>
 
             <button
@@ -494,7 +439,7 @@ export function ArticleReader({
               ) : (
                 <Archive className="h-5 w-5" />
               )}
-              <span className="text-[10px]">{entry.is_bookmarked ? 'Archived' : 'Archive'}</span>
+              <span className="text-[10px]">{entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}</span>
             </button>
           </div>
         </div>

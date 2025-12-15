@@ -94,10 +94,11 @@
     "basedOnInteractionCount": "基于交互数量",
     "recentActivity": "最近活动",
     "lastModelTraining": "上次模型训练",
-    "interactionsLast7Days": "交互数（最近 7 天）",
-    "modelAccuracy": "模型准确度",
-    "featureImportance": "特征重要性",
-    "featureImportanceDesc": "影响您推荐的因素",
+    "totalBookmarks": "总收藏数",
+    "topSources": "最受喜爱来源",
+    "topSourcesDesc": "亲和度最高的订阅源",
+    "topAuthors": "最受喜爱作者",
+    "topAuthorsDesc": "亲和度最高的作者",
     "rebuildConfirmTitle": "重建偏好模型？",
     "rebuildConfirmDesc": "这将使用您所有的历史交互重新训练您的个人推荐模型。此过程可能需要几分钟才能完成。",
     "cancel": "取消",
@@ -123,15 +124,6 @@
       "showScoreDesc": "在智能列表条目上显示推荐分数"
     },
     "rebuildHint": "从所有历史反馈重建偏好模型",
-    "topSources": {
-      "title": "最高亲和来源",
-      "description": "亲和度最高的订阅",
-      "feed": "订阅 {{id}}"
-    },
-    "topAuthors": {
-      "title": "最高亲和作者",
-      "description": "亲和度最高的作者"
-    },
     "empty": {
       "title": "暂无偏好数据",
       "description": "开始点赞或点踩文章以训练偏好模型"

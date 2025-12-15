@@ -4,17 +4,17 @@ Cleanup tasks.
 Background tasks for cleaning up expired data.
 """
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import and_, update
 from sqlalchemy.engine import CursorResult
 
+from glean_core import get_logger
 from glean_database.models import UserEntry
 from glean_database.session import get_session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def cleanup_read_later(ctx: dict[str, Any]) -> dict[str, int]:
@@ -33,7 +33,7 @@ async def cleanup_read_later(ctx: dict[str, Any]) -> dict[str, int]:
     Returns:
         Dictionary with cleanup statistics.
     """
-    print("[cleanup_read_later] Starting read-later cleanup")
+    logger.info("[cleanup_read_later] Starting read-later cleanup")
 
     cleaned_count = 0
     async for session in get_session():
@@ -56,7 +56,7 @@ async def cleanup_read_later(ctx: dict[str, Any]) -> dict[str, int]:
             await session.commit()
 
             cleaned_count = result.rowcount or 0
-            print(f"[cleanup_read_later] Cleaned up {cleaned_count} expired read-later entries")
+            logger.info(f"[cleanup_read_later] Cleaned up {cleaned_count} expired read-later entries")
 
         except Exception as e:
             logger.error(f"[cleanup_read_later] Error during cleanup: {e}")
@@ -78,5 +78,5 @@ async def scheduled_cleanup(ctx: dict[str, Any]) -> dict[str, int]:
     Returns:
         Dictionary with cleanup statistics.
     """
-    print("[scheduled_cleanup] Running scheduled cleanup (hourly)")
+    logger.info("[scheduled_cleanup] Running scheduled cleanup (hourly)")
     return await cleanup_read_later(ctx)

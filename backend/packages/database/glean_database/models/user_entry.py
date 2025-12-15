@@ -6,7 +6,7 @@ This module defines the UserEntry model for user-specific entry state.
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, generate_uuid
@@ -19,6 +19,9 @@ class UserEntry(Base, TimestampMixin):
     Tracks read status, likes, and other user-specific data
     for each entry a user has interacted with.
 
+    Note: Preference scores are calculated in real-time via Milvus vector search,
+    not stored in this table.
+
     Attributes:
         id: Unique record identifier (UUID).
         user_id: User reference.
@@ -26,7 +29,6 @@ class UserEntry(Base, TimestampMixin):
         is_read: Whether user has read the entry.
         is_liked: User's like status (True/False/None).
         read_later: Whether marked for later reading.
-        preference_score: Computed preference score for recommendations.
         read_at: Timestamp when marked as read.
         liked_at: Timestamp when liked/disliked.
     """
@@ -57,9 +59,6 @@ class UserEntry(Base, TimestampMixin):
 
     # Read later expiration (M2)
     read_later_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Recommendation data
-    preference_score: Mapped[float | None] = mapped_column(Float)
 
     # Timestamps
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { tagService } from '@glean/api-client'
+import { logger } from '@glean/logger'
 import type { TagWithCounts, CreateTagRequest, UpdateTagRequest, Tag } from '@glean/types'
 
 export function useTags() {
@@ -15,7 +16,7 @@ export function useTags() {
       setTags(response.tags)
     } catch (err) {
       setError('Failed to load tags')
-      console.error('Failed to fetch tags:', err)
+      logger.error('Failed to fetch tags:', err)
     } finally {
       setLoading(false)
     }
@@ -29,7 +30,7 @@ export function useTags() {
         return tag
       } catch (err) {
         setError('Failed to create tag')
-        console.error('Failed to create tag:', err)
+        logger.error('Failed to create tag:', err)
         return null
       }
     },
@@ -44,7 +45,7 @@ export function useTags() {
         return tag
       } catch (err) {
         setError('Failed to update tag')
-        console.error('Failed to update tag:', err)
+        logger.error('Failed to update tag:', err)
         return null
       }
     },
@@ -59,7 +60,7 @@ export function useTags() {
         return true
       } catch (err) {
         setError('Failed to delete tag')
-        console.error('Failed to delete tag:', err)
+        logger.error('Failed to delete tag:', err)
         return false
       }
     },

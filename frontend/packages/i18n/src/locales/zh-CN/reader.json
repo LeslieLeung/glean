@@ -25,6 +25,8 @@
   "entries": {
     "loadError": "加载条目失败",
     "noEntries": "没有找到条目",
+    "loadingMore": "加载更多...",
+    "noMoreEntries": "没有更多内容了",
     "markAll": "全部标记为已读",
     "marking": "标记中...",
     "markConfirm": "将所有条目标记为已读？",
@@ -41,7 +43,10 @@
   },
   "smart": {
     "title": "智能列表",
-    "description": "按您的偏好排序"
+    "description": "按您的偏好排序",
+    "limitedMode": "简化智能模式",
+    "enableVectorizationHint": "启用向量化后，可获得基于内容相似度的 AI 推荐。",
+    "goToSettings": "前往设置"
   },
   "empty": {
     "selectArticle": "选择文章",

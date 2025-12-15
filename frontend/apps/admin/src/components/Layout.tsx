@@ -1,7 +1,20 @@
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { LogOut, LayoutDashboard, Users, Rss, FileText } from 'lucide-react'
-import { Button, Badge } from '@glean/ui'
+import { LogOut, LayoutDashboard, Users, Rss, FileText, SlidersHorizontal } from 'lucide-react'
+import {
+  Button,
+  Badge,
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogClose
+} from '@glean/ui'
+import { useState } from 'react'
+import { useTranslation } from '@glean/i18n'
 
 /**
  * Admin layout component.
@@ -9,35 +22,48 @@ import { Button, Badge } from '@glean/ui'
  * Provides navigation sidebar and header for admin pages.
  */
 export function Layout() {
+  const { t } = useTranslation(['admin', 'common'])
   const { admin, logout } = useAuthStore()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const handleLogout = () => {
+    // Clear auth state
     logout()
+
+    // Clear all React Query cache
+    queryClient.clear()
+
     navigate('/login')
   }
 
   const navItems = [
     {
       path: '/dashboard',
-      label: 'Dashboard',
+      label: t('admin:layout.nav.dashboard'),
       icon: LayoutDashboard,
     },
     {
       path: '/users',
-      label: 'Users',
+      label: t('admin:layout.nav.users'),
       icon: Users,
     },
     {
       path: '/feeds',
-      label: 'Feeds',
+      label: t('admin:layout.nav.feeds'),
       icon: Rss,
     },
     {
       path: '/entries',
-      label: 'Entries',
+      label: t('admin:layout.nav.entries'),
       icon: FileText,
+    },
+    {
+      path: '/embeddings',
+      label: t('admin:layout.nav.embeddings'),
+      icon: SlidersHorizontal,
     },
   ]
 
@@ -54,7 +80,7 @@ export function Layout() {
             <div>
               <span className="font-display text-xl font-bold text-foreground">Glean</span>
               <Badge variant="secondary" className="ml-2 text-xs">
-                Admin
+              {t('admin:layout.badge')}
               </Badge>
             </div>
           </Link>
@@ -95,13 +121,13 @@ export function Layout() {
             <p className="mt-1 text-xs text-muted-foreground capitalize">{admin?.role}</p>
           </div>
           <Button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             variant="outline"
             className="w-full justify-start gap-2"
             size="sm"
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {t('admin:layout.logout.button')}
           </Button>
         </div>
       </aside>
@@ -110,6 +136,29 @@ export function Layout() {
       <main className="flex flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+
+      {/* Logout confirmation dialog */}
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('admin:layout.logout.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('admin:layout.logout.description')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="ghost" />}>
+              {t('common:actions.cancel')}
+            </AlertDialogClose>
+            <AlertDialogClose
+              render={<Button variant="destructive" />}
+              onClick={handleLogout}
+            >
+              {t('admin:layout.logout.button')}
+            </AlertDialogClose>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </div>
   )
 }

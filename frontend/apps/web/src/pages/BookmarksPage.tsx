@@ -4,6 +4,7 @@ import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
 import { useEntry } from '../hooks/useEntries'
+import { useTranslation } from '@glean/i18n'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { stripHtmlTags } from '../lib/html'
 import type { Bookmark, FolderTreeNode, TagWithCounts } from '@glean/types'
@@ -44,6 +45,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogClose,
+  buttonVariants,
   Menu,
   MenuTrigger,
   MenuPopup,
@@ -78,6 +80,7 @@ function useIsMobile(breakpoint = 768) {
  * Displays bookmarked content with folder and tag filtering.
  */
 export default function BookmarksPage() {
+  const { t } = useTranslation('bookmarks')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const isMobile = useIsMobile()
@@ -203,13 +206,13 @@ export default function BookmarksPage() {
             {/* Header */}
             <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
           <div className={`flex gap-3 ${selectedEntryId ? 'flex-col' : 'flex-col md:flex-row md:items-center md:justify-between md:gap-4'}`}>
-            <h1 className="font-display text-xl font-bold text-foreground shrink-0">Bookmarks</h1>
+            <h1 className="font-display text-xl font-bold text-foreground shrink-0">{t('title')}</h1>
             <div className={`flex min-w-0 flex-1 gap-2 ${selectedEntryId ? 'flex-col' : 'flex-col sm:flex-row sm:items-center sm:justify-end sm:gap-3'}`}>
               <div className={`relative ${selectedEntryId ? 'w-full' : 'w-full sm:w-64'}`}>
                 <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="text"
-                  placeholder="Search bookmarks..."
+                  placeholder={t('placeholders.searchBookmarks')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full [&_input]:pl-9"
@@ -217,7 +220,7 @@ export default function BookmarksPage() {
               </div>
               <Button onClick={() => setShowCreateBookmark(true)} className={`shrink-0 whitespace-nowrap ${selectedEntryId ? 'w-full' : 'w-full sm:w-auto'}`}>
                 <Plus className="h-4 w-4" />
-                Add Bookmark
+                {t('actions.addBookmark')}
               </Button>
             </div>
           </div>
@@ -225,7 +228,7 @@ export default function BookmarksPage() {
           {/* Active filters */}
           {(selectedFolder || selectedTag || searchQuery) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Filters:</span>
+              <span className="text-xs text-muted-foreground">{t('filters.label')}</span>
               {selectedFolder && (
                 <Badge variant="secondary" className="gap-1">
                   <FolderOpen className="h-3 w-3" />
@@ -283,9 +286,9 @@ export default function BookmarksPage() {
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <BookmarkIcon className="h-8 w-8 text-muted-foreground" />
               </div>
-              <p className="text-muted-foreground">No bookmarks found</p>
+              <p className="text-muted-foreground">{t('empty.noBookmarks')}</p>
               <p className="mt-1 text-xs text-muted-foreground/60">
-                Save articles or add external URLs to build your collection
+                {t('empty.noBookmarksDescription')}
               </p>
               <Button
                 variant="outline"
@@ -293,7 +296,7 @@ export default function BookmarksPage() {
                 onClick={() => setShowCreateBookmark(true)}
               >
                 <Plus className="h-4 w-4" />
-                Add Your First Bookmark
+                {t('empty.addFirstBookmark')}
               </Button>
             </div>
           ) : (
@@ -329,7 +332,7 @@ export default function BookmarksPage() {
         {pages > 1 && (
           <div className="flex items-center justify-between border-t border-border bg-card px-6 py-4">
             <span className="text-sm text-muted-foreground">
-              Showing {bookmarks.length} of {total} bookmarks
+              {t('pagination.showing', { count: bookmarks.length, total })}
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -339,7 +342,7 @@ export default function BookmarksPage() {
                 disabled={page === 1}
               >
                 <ChevronLeft className="h-4 w-4" />
-                Previous
+                {t('pagination.previous')}
               </Button>
               <span className="text-sm text-muted-foreground">
                 {page} / {pages}
@@ -350,7 +353,7 @@ export default function BookmarksPage() {
                 onClick={() => handlePageChange(page + 1)}
                 disabled={page === pages}
               >
-                Next
+                {t('pagination.next')}
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -385,25 +388,25 @@ export default function BookmarksPage() {
       <AlertDialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Bookmark?</AlertDialogTitle>
+            <AlertDialogTitle>{t('actions.removeBookmark')}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The bookmark will be permanently deleted.
+              {t('delete.confirm')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('common.cancel')}</AlertDialogClose>
             <AlertDialogClose
-              render={<Button variant="destructive" />}
+              className={buttonVariants({ variant: 'destructive' })}
               onClick={handleDeleteConfirm}
               disabled={isDeleting}
             >
               {isDeleting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Deleting...
+                  {t('delete.deleting')}
                 </>
               ) : (
-                'Delete'
+                t('delete.delete')
               )}
             </AlertDialogClose>
           </AlertDialogFooter>
@@ -434,16 +437,16 @@ export default function BookmarksPage() {
                 <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
                   <BookOpen className="h-10 w-10 text-muted-foreground" />
                 </div>
-                <h3 className="font-display text-lg font-semibold text-foreground">Article not found</h3>
+                <h3 className="font-display text-lg font-semibold text-foreground">{t('emptyState.articleNotFound')}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  The article may have been removed or is no longer available.
+                  {t('emptyState.articleNotFoundDescription')}
                 </p>
                 <Button
                   variant="ghost"
                   className="mt-4"
                   onClick={() => setSelectedEntryId(null)}
                 >
-                  Close
+                  {t('emptyState.close')}
                 </Button>
               </div>
             </div>
@@ -479,6 +482,7 @@ function BookmarkCard({
   onCreateTag,
   style,
 }: BookmarkCardProps) {
+  const { t } = useTranslation('bookmarks')
   const [tagSearch, setTagSearch] = useState('')
   const [isCreatingTag, setIsCreatingTag] = useState(false)
 
@@ -576,7 +580,7 @@ function BookmarkCard({
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search or create tag..."
+                  placeholder={t('placeholders.searchTag')}
                   value={tagSearch}
                   onChange={(e) => setTagSearch(e.target.value)}
                   className="h-8 w-full rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus-visible:!shadow-none"
@@ -597,7 +601,7 @@ function BookmarkCard({
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredTags.length === 0 && !tagSearch.trim() && (
                 <div className="px-2 py-3 text-center text-xs text-muted-foreground">
-                  No tags yet. Type to create one.
+                  {t('tags.noTagsYet')}
                 </div>
               )}
 
@@ -642,12 +646,12 @@ function BookmarkCard({
                     {isCreatingTag ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating...
+                        {t('tags.creating')}
                       </>
                     ) : (
                       <>
                         <Plus className="h-4 w-4" />
-                        Create &quot;{tagSearch.trim()}&quot;
+                        {t('tags.create', { name: tagSearch.trim() })}
                       </>
                     )}
                   </MenuItem>
@@ -663,7 +667,7 @@ function BookmarkCard({
         <div className="flex items-center gap-2">
           <span>{format(new Date(bookmark.created_at), 'MMM d, yyyy')}</span>
           {bookmark.entry_id && (
-            <span className="flex items-center gap-1 text-primary/70" title="Saved from feed">
+            <span className="flex items-center gap-1 text-primary/70" title={t('common.savedFromFeed')}>
               <FileText className="h-3 w-3" />
             </span>
           )}
@@ -675,7 +679,7 @@ function BookmarkCard({
               onEdit()
             }}
             className="rounded p-1 hover:bg-accent hover:text-foreground"
-            title="Edit"
+            title={t('common.edit')}
           >
             <Edit3 className="h-4 w-4" />
           </button>
@@ -686,7 +690,7 @@ function BookmarkCard({
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
               className="rounded p-1 hover:bg-accent hover:text-foreground"
-              title="Open external link"
+              title={t('common.openExternalLink')}
             >
               <ExternalLink className="h-4 w-4" />
             </a>
@@ -697,7 +701,7 @@ function BookmarkCard({
               onDelete()
             }}
             className="rounded p-1 text-destructive hover:bg-destructive/10"
-            title="Delete"
+            title={t('common.delete')}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -735,6 +739,7 @@ interface CreateBookmarkDialogProps {
 }
 
 function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps) {
+  const { t } = useTranslation('bookmarks')
   const { createBookmark } = useBookmarkStore()
   const { bookmarkFolders } = useFolderStore()
   const { tags } = useTagStore()
@@ -750,7 +755,7 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!url && !title) {
-      setError('Please provide a URL or title')
+      setError(t('dialogs.createBookmark.error.urlOrTitleRequired'))
       return
     }
 
@@ -773,7 +778,7 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
       setSelectedTags([])
       onOpenChange(false)
     } catch (err) {
-      setError('Failed to create bookmark')
+      setError(t('dialogs.createBookmark.error.failedToCreate'))
       console.error('Failed to create bookmark:', err)
     } finally {
       setIsSubmitting(false)
@@ -797,16 +802,16 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
       <DialogPopup className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Bookmark</DialogTitle>
+            <DialogTitle>{t('dialogs.createBookmark.title')}</DialogTitle>
             <DialogDescription>
-              Save a URL or create a note for later reading.
+              {t('dialogs.createBookmark.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 px-6 py-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">
-                URL
+                {t('dialogs.createBookmark.url')}
               </label>
               <Input
                 type="url"
@@ -818,11 +823,11 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">
-                Title
+                {t('dialogs.createBookmark.title')}
               </label>
               <Input
                 type="text"
-                placeholder="Article title"
+                placeholder={t('placeholders.articleTitle')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -830,10 +835,10 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-foreground">
-                Notes
+                {t('dialogs.createBookmark.notes')}
               </label>
               <textarea
-                placeholder="Add a note..."
+                placeholder={t('placeholders.addNote')}
                 value={excerpt}
                 onChange={(e) => setExcerpt(e.target.value)}
                 className="h-24 w-full resize-none overflow-y-auto rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/64 focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/24"
@@ -844,7 +849,7 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
             {bookmarkFolders.length > 0 && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  Folders
+                  {t('dialogs.createBookmark.folders')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {bookmarkFolders.map((folder) => (
@@ -870,7 +875,7 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
             {tags.length > 0 && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
-                  Tags
+                  {t('dialogs.createBookmark.tags')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {tags.map((tag) => (
@@ -901,17 +906,17 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
           </div>
 
           <DialogFooter>
-            <DialogClose render={<Button type="button" variant="ghost" />}>
-              Cancel
+            <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+              {t('dialogs.createBookmark.cancel')}
             </DialogClose>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving...
+                  {t('dialogs.createBookmark.saving')}
                 </>
               ) : (
-                'Save Bookmark'
+                t('dialogs.createBookmark.save')
               )}
             </Button>
           </DialogFooter>
@@ -940,6 +945,7 @@ interface EditBookmarkDialogProps {
 }
 
 function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDialogProps) {
+  const { t } = useTranslation('bookmarks')
   const { updateBookmark, addFolder, removeFolder, addTag, removeTag } = useBookmarkStore()
   const { createFolder } = useFolderStore()
   const { createTag } = useTagStore()
@@ -973,7 +979,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
   const handleSave = async () => {
     if (!bookmark) return
     if (!title.trim()) {
-      setError('Title is required')
+      setError(t('dialogs.editBookmark.error.titleRequired'))
       return
     }
 
@@ -1013,7 +1019,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
 
       onClose()
     } catch (err) {
-      setError('Failed to update bookmark')
+      setError(t('dialogs.editBookmark.error.failedToUpdate'))
       console.error('Failed to update bookmark:', err)
     } finally {
       setIsSubmitting(false)
@@ -1100,9 +1106,9 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
     <Dialog open={!!bookmark} onOpenChange={(open) => !open && onClose()}>
       <DialogPopup className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit Bookmark</DialogTitle>
+          <DialogTitle>{t('dialogs.editBookmark.title')}</DialogTitle>
           <DialogDescription>
-            Update bookmark details, folders, and tags.
+            {t('dialogs.editBookmark.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -1110,11 +1116,11 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
           {/* Title */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Title
+              {t('dialogs.editBookmark.title')}
             </label>
             <Input
               type="text"
-              placeholder="Bookmark title"
+              placeholder={t('placeholders.bookmarkTitle')}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -1123,10 +1129,10 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
           {/* Excerpt / Notes */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Notes
+              {t('dialogs.editBookmark.notes')}
             </label>
             <textarea
-              placeholder="Add notes..."
+              placeholder={t('placeholders.bookmarkNotes')}
               value={excerpt}
               onChange={(e) => setExcerpt(e.target.value)}
               className="h-24 w-full resize-none overflow-y-auto rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/64 focus:border-ring focus:outline-none focus:ring-[3px] focus:ring-ring/24"
@@ -1140,7 +1146,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
                 {bookmark.entry_id ? (
                   <span className="flex items-center gap-1.5">
                     <FileText className="h-3.5 w-3.5" />
-                    Saved from feed
+                    {t('dialogs.editBookmark.source.savedFromFeed')}
                   </span>
                 ) : bookmark.url ? (
                   <span className="flex items-center gap-1.5">
@@ -1155,7 +1161,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
                     </a>
                   </span>
                 ) : (
-                  'No source'
+                  t('dialogs.editBookmark.source.noSource')
                 )}
               </p>
             </div>
@@ -1164,7 +1170,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
           {/* Folders */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Folders
+              {t('dialogs.editBookmark.folders')}
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
               {/* Selected folders */}
@@ -1204,7 +1210,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="text"
-                        placeholder="Search or create folder..."
+                        placeholder={t('placeholders.searchFolder')}
                         value={folderSearch}
                         onChange={(e) => setFolderSearch(e.target.value)}
                         className="h-8 w-full rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus-visible:!shadow-none"
@@ -1284,7 +1290,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
           {/* Tags */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Tags
+              {t('dialogs.editBookmark.tags')}
             </label>
             <div className="flex flex-wrap items-center gap-1.5">
               {/* Selected tags */}
@@ -1329,7 +1335,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                       <input
                         type="text"
-                        placeholder="Search or create tag..."
+                        placeholder={t('placeholders.searchTag')}
                         value={tagSearch}
                         onChange={(e) => setTagSearch(e.target.value)}
                         className="h-8 w-full rounded-md border border-input bg-transparent pl-8 pr-3 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus-visible:!shadow-none"
@@ -1414,17 +1420,17 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
         </div>
 
         <DialogFooter>
-          <DialogClose render={<Button type="button" variant="ghost" />}>
-            Cancel
+          <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+            {t('dialogs.editBookmark.cancel')}
           </DialogClose>
           <Button onClick={handleSave} disabled={isSubmitting}>
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
+                {t('dialogs.editBookmark.saving')}
               </>
             ) : (
-              'Save Changes'
+              t('dialogs.editBookmark.save')
             )}
           </Button>
         </DialogFooter>
