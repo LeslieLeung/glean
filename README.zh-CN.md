@@ -39,60 +39,73 @@
 ### 一键部署
 
 ```bash
-# 下载并启动 Glean
+# 下载 docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+
+# 启动 Glean（完整部署，包含 Milvus）
 docker compose up -d
-
-# 访问 http://localhost
-```
-
-就这么简单！打开 http://localhost 即可开始使用 Glean。
-
-### 带管理后台部署
-
-如需额外的管理功能（用户管理、统计数据）：
-
-```bash
-# 下载完整部署配置
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
-
-# 首次启动时创建管理员账号
-CREATE_ADMIN=true docker compose up -d
-
-# 查看日志获取管理员凭据（请妥善保存！）
-docker compose logs backend | grep -A5 "Admin Account Created"
 
 # 访问：
 # - Web 应用: http://localhost
 # - 管理后台: http://localhost:3001
 ```
 
-### 手动创建管理员账号
+**精简部署**（不包含 Milvus，如果不需要 Phase 3 功能）：
 
 ```bash
-# 生成随机密码
+# 下载精简版
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
+
+# 启动 Glean
+docker compose up -d
+```
+
+### 创建管理员账号
+
+首次启动后，创建管理员账号以访问管理后台：
+
+```bash
+# 生成随机密码（推荐）
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 
-# 或指定凭据
+# 或指定自定义凭据
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
+```
+
+也可以在首次启动时使用环境变量创建管理员：
+
+```bash
+# 在 .env 中设置管理员凭据
+CREATE_ADMIN=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=YourSecurePassword123!
+
+# 启动服务
+docker compose up -d
+
+# 查看日志确认
+docker compose logs backend | grep "Admin Account Created"
 ```
 
 ## 配置说明
 
-复制 `.env.example` 为 `.env` 并自定义：
+对于生产环境，使用环境变量自定义部署。下载示例文件：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
 ```
 
-主要配置项：
+**重要配置项（需修改）：**
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `SECRET_KEY` | JWT 签名密钥 | **生产环境必须修改！** |
-| `POSTGRES_PASSWORD` | 数据库密码 | `glean` |
-| `WEB_PORT` | Web 界面端口 | `80` |
-| `ADMIN_PORT` | 管理后台端口 | `3001` |
+| 变量                | 说明             | 默认值                              |
+| ------------------- | ---------------- | ----------------------------------- |
+| `SECRET_KEY`        | JWT 签名密钥     | **生产环境必须修改！**              |
+| `POSTGRES_PASSWORD` | 数据库密码       | `glean`（**生产环境必须修改！**）   |
+| `WEB_PORT`          | Web 界面端口     | `80`                                |
+| `ADMIN_PORT`        | 管理后台端口     | `3001`                              |
+| `CREATE_ADMIN`      | 自动创建管理员   | `false`（首次启动设为 `true`）      |
+
+所有配置选项请参见 [.env.example](.env.example)。
 
 ## Docker 镜像
 
@@ -104,12 +117,20 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 支持架构：`linux/amd64`、`linux/arm64`
 
-## 部署选项
+## 部署
 
-| 部署方式 | 说明 | 命令 |
-|----------|------|------|
-| **精简版** | 仅 Web 应用（无管理后台） | `docker compose up -d` |
-| **完整版** | Web + 管理后台 | `docker compose -f docker-compose.full.yml up -d` |
+默认部署包含所有服务（完整版）：
+- **Web 应用**（端口 80）- 主用户界面
+- **管理后台**（端口 3001）- 用户管理和系统监控
+- **后端 API** - FastAPI 服务器
+- **Worker** - 后台任务处理器（订阅源抓取、清理）
+- **PostgreSQL** - 数据库
+- **Redis** - 任务队列
+- **Milvus** - 向量数据库，用于智能推荐和偏好学习（Phase 3）
+
+**精简部署**（不包含 Milvus）也可使用 `docker-compose.lite.yml`。
+
+详细的部署说明和配置请参见 [DEPLOY.zh-CN.md](DEPLOY.zh-CN.md)。
 
 ## 技术栈
 
@@ -164,7 +185,7 @@ make dev-all
 ## 文档
 
 - **[开发指南](./DEVELOPMENT.md)** - 搭建开发环境
-- **[部署指南](./deploy/README.md)** - 生产环境部署详情
+- **[部署指南](./DEPLOY.zh-CN.md)** - 生产环境部署详情
 
 ## 参与贡献
 

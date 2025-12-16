@@ -45,7 +45,15 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id"),
     )
-    op.add_column("entries", sa.Column("embedding_status", sa.String(length=20), nullable=False))
+    op.add_column(
+        "entries",
+        sa.Column(
+            "embedding_status",
+            sa.String(length=20),
+            nullable=False,
+            server_default="pending",
+        ),
+    )
     op.add_column("entries", sa.Column("embedding_error", sa.Text(), nullable=True))
     op.add_column("entries", sa.Column("embedding_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("entries", sa.Column("word_count", sa.Integer(), nullable=True))

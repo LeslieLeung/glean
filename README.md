@@ -39,60 +39,73 @@ A self-hosted RSS reader and personal knowledge management tool.
 ### One-Command Deployment
 
 ```bash
-# Download and start Glean
+# Download docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+
+# Start Glean (full deployment with Milvus)
 docker compose up -d
-
-# Access at http://localhost
-```
-
-That's it! Open http://localhost to start using Glean.
-
-### With Admin Dashboard
-
-For additional admin features (user management, statistics):
-
-```bash
-# Download full deployment config
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.full.yml -o docker-compose.yml
-
-# Create admin account on first startup
-CREATE_ADMIN=true docker compose up -d
-
-# Check logs for admin credentials (save them!)
-docker compose logs backend | grep -A5 "Admin Account Created"
 
 # Access:
 # - Web App: http://localhost
 # - Admin Dashboard: http://localhost:3001
 ```
 
-### Create Admin Account Manually
+**Lite Deployment** (without Milvus, if you don't need Phase 3 features):
 
 ```bash
-# Generate random password
+# Download lite version
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
+
+# Start Glean
+docker compose up -d
+```
+
+### Create Admin Account
+
+After first startup, create an admin account to access the dashboard:
+
+```bash
+# Generate random password (recommended)
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 
-# Or specify credentials
+# Or specify custom credentials
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
+```
+
+Alternatively, create admin on first startup using environment variables:
+
+```bash
+# Set admin credentials in .env
+CREATE_ADMIN=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=YourSecurePassword123!
+
+# Start services
+docker compose up -d
+
+# Check logs to confirm
+docker compose logs backend | grep "Admin Account Created"
 ```
 
 ## Configuration
 
-Copy `.env.example` to `.env` and customize:
+For production, customize your deployment with environment variables. Download the example file:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
 ```
 
-Key settings:
+**Important settings to change:**
 
-| Variable            | Description          | Default                   |
-| ------------------- | -------------------- | ------------------------- |
-| `SECRET_KEY`        | JWT signing key      | **Change in production!** |
-| `POSTGRES_PASSWORD` | Database password    | `glean`                   |
-| `WEB_PORT`          | Web interface port   | `80`                      |
-| `ADMIN_PORT`        | Admin dashboard port | `3001`                    |
+| Variable            | Description          | Default                              |
+| ------------------- | -------------------- | ------------------------------------ |
+| `SECRET_KEY`        | JWT signing key      | **Must change in production!**       |
+| `POSTGRES_PASSWORD` | Database password    | `glean` (**Change in production!**)  |
+| `WEB_PORT`          | Web interface port   | `80`                                 |
+| `ADMIN_PORT`        | Admin dashboard port | `3001`                               |
+| `CREATE_ADMIN`      | Auto-create admin    | `false` (set `true` for first start) |
+
+For all configuration options, see [.env.example](.env.example).
 
 ## Docker Images
 
@@ -104,12 +117,20 @@ Pre-built images are available on GitHub Container Registry:
 
 Supported architectures: `linux/amd64`, `linux/arm64`
 
-## Deployment Options
+## Deployment
 
-| Deployment | Description             | Command                                           |
-| ---------- | ----------------------- | ------------------------------------------------- |
-| **Lite**   | Web app only (no admin) | `docker compose up -d`                            |
-| **Full**   | Web + Admin dashboard   | `docker compose -f docker-compose.full.yml up -d` |
+The default deployment includes all services (full version):
+- **Web App** (port 80) - Main user interface
+- **Admin Dashboard** (port 3001) - User management and system monitoring
+- **Backend API** - FastAPI server
+- **Worker** - Background task processor (feed fetching, cleanup)
+- **PostgreSQL** - Database
+- **Redis** - Task queue
+- **Milvus** - Vector database for smart recommendations and preference learning (Phase 3)
+
+**Lite deployment** (without Milvus) is also available using `docker-compose.lite.yml`.
+
+For detailed deployment instructions and configuration, see [DEPLOY.md](DEPLOY.md).
 
 ## Tech Stack
 
