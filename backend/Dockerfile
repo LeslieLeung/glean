@@ -1,7 +1,7 @@
 # Backend Dockerfile for Glean API and Worker
 # Supports both API server and background worker modes
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Build arguments
 ARG TARGETPLATFORM
