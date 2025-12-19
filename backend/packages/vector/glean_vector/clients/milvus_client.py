@@ -348,6 +348,50 @@ class MilvusClient:
         collection.load()
         return collection
 
+    def _is_collection_not_found_error(self, e: MilvusException) -> bool:
+        """
+        Check if the exception is a "collection not found" error.
+
+        This can happen when the collection was dropped and recreated by another task
+        (e.g., during model rebuild), leaving stale Collection object references.
+
+        Args:
+            e: MilvusException to check
+
+        Returns:
+            True if this is a collection not found error
+        """
+        # Milvus error code 100 = collection not found
+        return e.code == 100 or "collection not found" in str(e).lower()
+
+    def _refresh_entries_collection(self) -> None:
+        """
+        Refresh the entries collection reference.
+
+        This reloads the Collection object to get the current internal ID
+        after a potential drop/recreate by another task.
+        """
+        self.connect()
+        if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
+            self._entries_collection = Collection(self.config.entries_collection)
+            self._entries_collection.load()  # type: ignore[unused-coroutine]
+        else:
+            self._entries_collection = None
+
+    def _refresh_prefs_collection(self) -> None:
+        """
+        Refresh the preferences collection reference.
+
+        This reloads the Collection object to get the current internal ID
+        after a potential drop/recreate by another task.
+        """
+        self.connect()
+        if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
+            self._prefs_collection = Collection(self.config.prefs_collection)
+            self._prefs_collection.load()  # type: ignore[unused-coroutine]
+        else:
+            self._prefs_collection = None
+
     async def insert_entry_embedding(
         self,
         entry_id: str,
@@ -392,7 +436,21 @@ class MilvusClient:
             [author or ""],
         ]
 
-        self._entries_collection.insert(data)
+        try:
+            self._entries_collection.insert(data)
+        except MilvusException as e:
+            # Collection may have been dropped and recreated by another task (rebuild)
+            # Refresh the collection reference and retry once
+            if self._is_collection_not_found_error(e):
+                self._refresh_entries_collection()
+                if not self._entries_collection:
+                    raise RuntimeError(
+                        "Entries collection does not exist. "
+                        "It may have been dropped during a rebuild."
+                    ) from e
+                self._entries_collection.insert(data)
+            else:
+                raise
 
     async def get_entry_embedding(self, entry_id: str) -> list[float] | None:
         """
@@ -517,7 +575,8 @@ class MilvusClient:
         pref_id = f"{user_id}_{vector_type}"
 
         # Delete existing if present
-        self._prefs_collection.delete(expr=f'id == "{self._escape_string(pref_id)}"')  # type: ignore[unused-coroutine]
+        with suppress(MilvusException):
+            self._prefs_collection.delete(expr=f'id == "{self._escape_string(pref_id)}"')  # type: ignore[unused-coroutine]
 
         # Insert new
         data = [
@@ -529,7 +588,21 @@ class MilvusClient:
             [updated_at],
         ]
 
-        self._prefs_collection.insert(data)
+        try:
+            self._prefs_collection.insert(data)
+        except MilvusException as e:
+            # Collection may have been dropped and recreated by another task (rebuild)
+            # Refresh the collection reference and retry once
+            if self._is_collection_not_found_error(e):
+                self._refresh_prefs_collection()
+                if not self._prefs_collection:
+                    raise RuntimeError(
+                        "Preferences collection does not exist. "
+                        "It may have been dropped during a rebuild."
+                    ) from e
+                self._prefs_collection.insert(data)
+            else:
+                raise
 
     async def get_user_preferences(self, user_id: str) -> dict[str, dict[str, Any]]:
         """

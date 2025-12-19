@@ -48,6 +48,11 @@ async def rebuild_embeddings(
             EmbeddingConfigSchema,
             status=VectorizationStatus.REBUILDING,
         )
+        # Commit status change BEFORE modifying Milvus to prevent inconsistent state
+        # If recreate_collections succeeds but later operations fail,
+        # we need the REBUILDING status to be persisted so that retries work correctly
+        await session.commit()
+
         # Load config
         if config is None:
             scs = SystemConfigService(session)
@@ -72,10 +77,12 @@ async def rebuild_embeddings(
 
         # Recreate Milvus collections (drop + create) for new model
         # This also drops user_preferences collection, so we need to rebuild them
+        # NOTE: This is a point of no return - if this succeeds, old embeddings are gone.
+        # The REBUILDING status is already committed, so retries will work correctly.
         await milvus_client.recreate_collections(dimension, settings.provider, settings.model)
         logger.info(f"Recreated Milvus collections with dimension={dimension}")
 
-        # Mark all entries pending for new model
+        # Mark all entries pending for new model (new transaction)
         await session.execute(
             update(Entry).values(
                 embedding_status="pending",

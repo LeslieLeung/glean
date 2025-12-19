@@ -137,9 +137,13 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
             return {"success": success, "entry_id": entry_id}
 
         except Exception as e:
-            logger.error(f"Failed to generate embedding for entry {entry_id}: {e}")
+            error_msg = str(e)
+            logger.error(
+                f"Failed to generate embedding for entry {entry_id}: {error_msg}",
+                exc_info=True,  # Include full traceback
+            )
             await _handle_embedding_error(session, e)
-            return {"success": False, "entry_id": entry_id, "error": str(e)}
+            return {"success": False, "entry_id": entry_id, "error": error_msg}
 
         finally:
             await embedding_client.close()

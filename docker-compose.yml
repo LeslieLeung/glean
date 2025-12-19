@@ -64,6 +64,9 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
+      # Milvus configuration (for vector embeddings)
+      MILVUS_HOST: milvus
+      MILVUS_PORT: ${MILVUS_PORT:-19530}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-api.log}
@@ -96,6 +99,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      # Milvus configuration
+      MILVUS_HOST: milvus
+      MILVUS_PORT: ${MILVUS_PORT:-19530}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-worker.log}
@@ -112,6 +118,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      # Note: Milvus is NOT a hard dependency - worker will gracefully handle its absence
+      # and skip embedding/preference tasks while continuing RSS feed fetching and other tasks
     networks:
       - glean-network
     restart: unless-stopped
