@@ -6,6 +6,7 @@ and managing async database sessions.
 """
 
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -46,9 +47,22 @@ def init_database(database_url: str) -> None:
     )
 
 
+@asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    Get an async database session.
+    Get an async database session as a context manager.
+
+    Works with both FastAPI Depends() and manual 'async with' usage.
+    Automatically commits on success or rolls back on exception.
+
+    Usage:
+        # FastAPI
+        session: Annotated[AsyncSession, Depends(get_session)]
+
+        # Workers
+        async with get_session() as session:
+            # do work
+            return result  # commit happens automatically
 
     Yields:
         AsyncSession instance with automatic commit/rollback handling.

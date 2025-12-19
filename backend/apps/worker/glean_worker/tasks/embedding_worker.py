@@ -106,7 +106,7 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
     if not milvus_client:
         return {"success": False, "entry_id": entry_id, "error": "Milvus unavailable"}
 
-    async for session in get_session():
+    async with get_session() as session:
         # Check if vectorization is enabled
         is_enabled, config = await _check_vectorization_enabled(session)
         if not is_enabled:
@@ -143,12 +143,10 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
                 exc_info=True,  # Include full traceback
             )
             await _handle_embedding_error(session, e)
-            return {"success": False, "entry_id": entry_id, "error": error_msg}
+            raise
 
         finally:
             await embedding_client.close()
-
-    return {"success": False, "entry_id": entry_id, "error": "No database session"}
 
 
 async def batch_generate_embeddings(ctx: dict[str, Any], limit: int = 100) -> dict[str, int | str]:
@@ -166,7 +164,7 @@ async def batch_generate_embeddings(ctx: dict[str, Any], limit: int = 100) -> di
     if not milvus_client:
         return {"processed": 0, "failed": 0, "error": "Milvus unavailable"}
 
-    async for session in get_session():
+    async with get_session() as session:
         # Check if vectorization is enabled
         is_enabled, config = await _check_vectorization_enabled(session)
         if not is_enabled:
@@ -199,12 +197,10 @@ async def batch_generate_embeddings(ctx: dict[str, Any], limit: int = 100) -> di
         except Exception as e:
             logger.error(f"Failed to batch generate embeddings: {e}")
             await _handle_embedding_error(session, e)
-            return {"processed": 0, "failed": 0, "error": str(e)}
+            raise
 
         finally:
             await embedding_client.close()
-
-    return {"processed": 0, "failed": 0}
 
 
 async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[str, int | str]:
@@ -222,7 +218,7 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
     if not milvus_client:
         return {"processed": 0, "failed": 0, "error": "Milvus unavailable"}
 
-    async for session in get_session():
+    async with get_session() as session:
         # Check if vectorization is enabled
         is_enabled, config = await _check_vectorization_enabled(session)
         if not is_enabled:
@@ -254,12 +250,10 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
         except Exception as e:
             logger.error(f"Failed to retry failed embeddings: {e}")
             await _handle_embedding_error(session, e)
-            return {"processed": 0, "failed": 0, "error": str(e)}
+            raise
 
         finally:
             await embedding_client.close()
-
-    return {"processed": 0, "failed": 0}
 
 
 async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -271,7 +265,7 @@ async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]
     milvus_client: MilvusClient | None = ctx.get("milvus_client")
     redis = ctx.get("redis")
 
-    async for session in get_session():
+    async with get_session() as session:
         config_service = TypedConfigService(session)
         config = await config_service.get(EmbeddingConfig)
 
@@ -317,5 +311,3 @@ async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]
             await redis.enqueue_job("rebuild_embeddings")
 
         return {"success": True, "message": "Validation passed, rebuild queued"}
-
-    return {"success": False, "error": "No database session"}

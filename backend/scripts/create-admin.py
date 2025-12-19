@@ -68,7 +68,7 @@ async def create_admin(username: str, password: str, role: str) -> bool:
         return False
 
     # Create admin
-    async for session in get_session():
+    async with get_session() as session:
         service = AdminService(session)
 
         try:
@@ -81,7 +81,6 @@ async def create_admin(username: str, password: str, role: str) -> bool:
             print(f"   ID: {admin.id}")
             return True
         except Exception as e:
-            await session.rollback()
             error_msg = str(e)
             if "duplicate key" in error_msg or "already exists" in error_msg:
                 print(f"⚠️  Admin user '{username}' already exists.")
@@ -90,8 +89,6 @@ async def create_admin(username: str, password: str, role: str) -> bool:
             else:
                 print(f"❌ Error creating admin user: {e}")
                 raise
-
-    return False
 
 
 def main():

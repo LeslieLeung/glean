@@ -131,13 +131,13 @@ def unescape_html(text: str) -> str:
 
 
 async def fetch_bookmark_metadata_task(
-    ctx: dict[str, Any], bookmark_id: str
+    _ctx: dict[str, Any], bookmark_id: str
 ) -> dict[str, str | None]:
     """
     Fetch webpage metadata (title and description) for a bookmark.
 
     Args:
-        ctx: Worker context.
+        _ctx: Worker context (unused).
         bookmark_id: Bookmark identifier.
 
     Returns:
@@ -145,7 +145,7 @@ async def fetch_bookmark_metadata_task(
     """
     print(f"[fetch_bookmark_metadata] Starting fetch for bookmark_id: {bookmark_id}")
 
-    async for session in get_session():
+    async with get_session() as session:
         try:
             # Get bookmark from database
             stmt = select(Bookmark).where(Bookmark.id == bookmark_id)
@@ -213,7 +213,6 @@ async def fetch_bookmark_metadata_task(
                 print(f"[fetch_bookmark_metadata] Updated excerpt for bookmark {bookmark_id}")
 
             if updated:
-                await session.commit()
                 print(f"[fetch_bookmark_metadata] SUCCESS: Updated bookmark {bookmark_id}")
             else:
                 print(f"[fetch_bookmark_metadata] No updates needed for bookmark {bookmark_id}")
@@ -241,6 +240,4 @@ async def fetch_bookmark_metadata_task(
                 f"[fetch_bookmark_metadata] ERROR: Failed to fetch metadata for "
                 f"{bookmark_id}: {type(e).__name__}: {str(e)}"
             )
-            return {"status": "error", "message": str(e)}
-
-    return {"status": "error", "message": "No database session"}
+            raise

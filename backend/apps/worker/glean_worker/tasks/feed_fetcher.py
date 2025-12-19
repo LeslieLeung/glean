@@ -40,7 +40,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
         Dictionary with fetch results.
     """
     print(f"[fetch_feed_task] Starting fetch for feed_id: {feed_id}")
-    async for session in get_session():
+    async with get_session() as session:
         try:
             # Get feed from database
             stmt = select(Feed).where(Feed.id == feed_id)
@@ -61,7 +61,6 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 # Not modified (304)
                 print(f"[fetch_feed_task] Feed not modified (304): {feed.url}")
                 feed.last_fetched_at = datetime.now(UTC)
-                await session.commit()
                 return {"status": "not_modified", "new_entries": 0}
 
             print("[fetch_feed_task] Feed content received, parsing...")
@@ -143,8 +142,6 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             # Schedule next fetch (15 minutes from now)
             feed.next_fetch_at = datetime.now(UTC) + timedelta(minutes=15)
 
-            await session.commit()
-
             print(
                 f"[fetch_feed_task] SUCCESS: Feed {feed.url} - {new_entries} new entries out of {len(parsed_feed.entries)} total"
             )
@@ -181,14 +178,10 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 print(
                     f"[fetch_feed_task] Scheduling retry in {retry_minutes} minutes (error count: {feed.error_count})"
                 )
-                await session.commit()
 
             # Retry the task
             print("[fetch_feed_task] Retrying task in 5 minutes...")
             raise Retry(defer=timedelta(minutes=5)) from None
-
-    # This should never be reached since get_session() always yields
-    return {"status": "error", "message": "No database session"}
 
 
 async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
@@ -202,7 +195,7 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
         Dictionary with fetch statistics.
     """
     print("[fetch_all_feeds] Starting to fetch all active feeds")
-    async for session in get_session():
+    async with get_session() as session:
         # Get all active feeds that are due for fetching
         now = datetime.now(UTC)
         stmt = select(Feed).where(
@@ -221,9 +214,6 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
 
         print(f"[fetch_all_feeds] Queued {len(feeds)} feeds for fetching")
         return {"feeds_queued": len(feeds)}
-
-    # This should never be reached since get_session() always yields
-    return {"feeds_queued": 0}
 
 
 async def scheduled_fetch(ctx: dict[str, Any]) -> dict[str, int]:

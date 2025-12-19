@@ -14,10 +14,9 @@ from glean_database.session import init_database, get_session
 
 async def check():
     init_database('$DATABASE_URL')
-    async for session in get_session():
+    async with get_session() as session:
         await session.execute(text('SELECT 1'))
         return True
-    return False
 
 asyncio.run(check())
 " 2>&1; then

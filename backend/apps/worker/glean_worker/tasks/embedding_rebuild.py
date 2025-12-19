@@ -41,7 +41,7 @@ async def rebuild_embeddings(
     if not redis:
         return {"success": False, "error": "Redis unavailable"}
 
-    async for session in get_session():
+    async with get_session() as session:
         # Update status to REBUILDING so embedding tasks can proceed
         config_service = TypedConfigService(session)
         await config_service.update(
@@ -121,5 +121,3 @@ async def rebuild_embeddings(
             "queued_preferences": len(user_ids),
             "dimension": dimension,
         }
-
-    return {"success": False, "error": "No database session"}

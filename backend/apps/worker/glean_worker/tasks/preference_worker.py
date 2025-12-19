@@ -92,7 +92,7 @@ async def update_user_preference(
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
 
-    async for session in get_session():
+    async with get_session() as session:
         try:
             # Check if vectorization is enabled and get config from database
             # Raises Retry for temporary unavailability, ValueError for permanent disable
@@ -121,10 +121,7 @@ async def update_user_preference(
             signal_type=signal_type,
         )
 
-        # Session will auto-commit when exiting get_session() context
-        break
-
-    return {"success": True, "user_id": user_id, "signal_type": signal_type}
+        return {"success": True, "user_id": user_id, "signal_type": signal_type}
 
 
 async def rebuild_user_preference(
@@ -151,7 +148,7 @@ async def rebuild_user_preference(
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
 
-    async for session in get_session():
+    async with get_session() as session:
         try:
             # Check if vectorization is enabled and get config from database
             # Raises Retry for temporary unavailability, ValueError for permanent disable
@@ -176,7 +173,4 @@ async def rebuild_user_preference(
 
         await preference_service.rebuild_from_history(user_id=user_id)
 
-        # Session will auto-commit when exiting get_session() context
-        break
-
-    return {"success": True, "user_id": user_id}
+        return {"success": True, "user_id": user_id}

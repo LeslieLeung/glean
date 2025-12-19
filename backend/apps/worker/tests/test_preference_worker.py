@@ -161,7 +161,7 @@ class TestUpdateUserPreference:
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
-            mock_get_session.return_value.__aiter__.return_value = [mock_session]
+            mock_get_session.return_value.__aenter__.return_value = mock_session
 
             mock_service = AsyncMock()
             mock_service.get.return_value = mock_config
@@ -191,7 +191,7 @@ class TestUpdateUserPreference:
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
-            mock_get_session.return_value.__aiter__.return_value = [mock_session]
+            mock_get_session.return_value.__aenter__.return_value = mock_session
 
             mock_service = AsyncMock()
             mock_service.get.return_value = mock_config
@@ -229,7 +229,7 @@ class TestRebuildUserPreference:
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
-            mock_get_session.return_value.__aiter__.return_value = [mock_session]
+            mock_get_session.return_value.__aenter__.return_value = mock_session
 
             mock_service = AsyncMock()
             mock_service.get.return_value = mock_config
@@ -257,7 +257,7 @@ class TestRebuildUserPreference:
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
-            mock_get_session.return_value.__aiter__.return_value = [mock_session]
+            mock_get_session.return_value.__aenter__.return_value = mock_session
 
             mock_service = AsyncMock()
             mock_service.get.return_value = mock_config

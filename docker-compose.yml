@@ -81,6 +81,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      milvus:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 10s
@@ -118,8 +120,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-      # Note: Milvus is NOT a hard dependency - worker will gracefully handle its absence
-      # and skip embedding/preference tasks while continuing RSS feed fetching and other tasks
+      milvus:
+        condition: service_healthy
     networks:
       - glean-network
     restart: unless-stopped
