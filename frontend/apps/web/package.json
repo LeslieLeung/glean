@@ -38,7 +38,7 @@
     "electron-updater": "^6.3.9",
     "highlight.js": "^11.11.1",
     "lightgallery": "^2.9.0",
-    "lucide-react": "^0.561.0",
+    "lucide-react": "^0.562.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.50.0",
