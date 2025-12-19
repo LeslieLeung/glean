@@ -16,7 +16,7 @@
     "clean": "rm -rf node_modules .turbo"
   },
   "dependencies": {
-    "i18next": "^23.7.0",
+    "i18next": "^25.0.0",
     "i18next-browser-languagedetector": "^8.0.0",
     "react-i18next": "^14.0.0",
     "date-fns": "^4.0.0"
