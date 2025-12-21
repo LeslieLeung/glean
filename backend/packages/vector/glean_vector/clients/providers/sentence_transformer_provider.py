@@ -220,7 +220,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
                 # Verify and update dimension
                 if self._model is not None:
-                    test_embedding = self._model.encode(
+                    test_embedding = self._model.encode(  # type: ignore[reportUnknownMemberType]
                         "test", convert_to_numpy=True, normalize_embeddings=self.normalize
                     )
                 else:

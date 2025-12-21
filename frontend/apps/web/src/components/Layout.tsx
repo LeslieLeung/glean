@@ -149,7 +149,7 @@ export function Layout() {
       fetchFolders('bookmark')
       fetchTags()
     }
-  }, [user?.id, queryClient, fetchFolders, fetchTags])
+  }, [user?.id, user, queryClient, fetchFolders, fetchTags])
 
   // Handle sidebar resize
   useEffect(() => {

@@ -249,6 +249,7 @@ export default function SettingsPage() {
     const enabledChanged = form.enabled !== undefined && form.enabled !== config?.enabled
     
     // Extract enabled from form - it should only be handled by enable/disable endpoints
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { enabled: _enabled, ...configUpdates } = form
     
     // First, save configuration (without enabled field)

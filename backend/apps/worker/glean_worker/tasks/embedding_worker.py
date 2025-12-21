@@ -325,8 +325,7 @@ async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]
 
         # Rebuild needed: either collections don't exist or model changed
         logger.info(
-            f"Rebuild required: {reason or 'collections do not exist'}. "
-            "Triggering rebuild..."
+            f"Rebuild required: {reason or 'collections do not exist'}. Triggering rebuild..."
         )
 
         if redis:

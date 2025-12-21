@@ -54,7 +54,7 @@ class VolcEngineProvider(EmbeddingProvider):
                 if self.max_retries:
                     client_kwargs["max_retries"] = self.max_retries
 
-                self._client = Ark(**client_kwargs)
+                self._client = Ark(**client_kwargs)  # type: ignore[reportUnknownArgumentType]
 
             except ImportError as e:
                 raise ImportError(

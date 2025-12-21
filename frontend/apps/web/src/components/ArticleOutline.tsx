@@ -134,9 +134,12 @@ function useActiveHeading(
       observer.observe(heading.element)
     })
 
+    // Capture current ref value for cleanup
+    const visibleHeadings = visibleHeadingsRef.current
+
     return () => {
       observer.disconnect()
-      visibleHeadingsRef.current.clear()
+      visibleHeadings.clear()
     }
   }, [headings, scrollContainerRef, isScrollingToHeading, activeId])
 
