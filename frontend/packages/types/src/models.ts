@@ -7,8 +7,8 @@
 
 /** User settings */
 export interface UserSettings {
-  read_later_days?: number  // Days until read later items expire (0 = never)
-  show_read_later_remaining?: boolean  // Show remaining time in read later list
+  read_later_days?: number // Days until read later items expire (0 = never)
+  show_read_later_remaining?: boolean // Show remaining time in read later list
 }
 
 /** User account information */
@@ -84,9 +84,9 @@ export interface Entry {
 /** Entry with user state */
 export interface EntryWithState extends Entry {
   is_read: boolean
-  is_liked: boolean | null  // true = liked, false = disliked, null = no feedback
+  is_liked: boolean | null // true = liked, false = disliked, null = no feedback
   read_later: boolean
-  read_later_until: string | null  // ISO date string when read later expires
+  read_later_until: string | null // ISO date string when read later expires
   read_at: string | null
   is_bookmarked: boolean
   bookmark_id: string | null
@@ -94,8 +94,8 @@ export interface EntryWithState extends Entry {
   feed_title: string | null
   feed_icon_url: string | null
   // M3: Preference score
-  preference_score: number | null  // 0-100 preference score
-  debug_info: ScoreDebugInfo | null  // Debug information (if debug mode enabled)
+  preference_score: number | null // 0-100 preference score
+  debug_info: ScoreDebugInfo | null // Debug information (if debug mode enabled)
 }
 
 // M2: Folder types
@@ -232,11 +232,11 @@ export interface UpdateBookmarkRequest {
 
 // M3: Preference types
 export interface ScoreDebugInfo {
-  positive_sim: number  // Similarity to positive preferences [-1, 1]
-  negative_sim: number  // Similarity to negative preferences [-1, 1]
-  confidence: number  // Model confidence [0, 1]
-  source_boost: number  // Boost from source affinity
-  author_boost: number  // Boost from author affinity
+  positive_sim: number // Similarity to positive preferences [-1, 1]
+  negative_sim: number // Similarity to negative preferences [-1, 1]
+  confidence: number // Model confidence [0, 1]
+  source_boost: number // Boost from source affinity
+  author_boost: number // Boost from author affinity
 }
 
 export interface PreferenceStats {

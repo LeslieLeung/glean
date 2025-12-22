@@ -36,6 +36,7 @@ frontend/
 This project uses [COSS UI](https://coss.com/ui/) for components.
 
 To add a new component:
+
 1. Visit `https://coss.com/ui/r/{component-name}.json`
 2. Copy to `frontend/packages/ui/src/components/`
 3. Export from `frontend/packages/ui/src/components/index.ts`
@@ -80,6 +81,7 @@ The same pattern applies to `DialogClose`.
 - Import order: React → third-party → workspace packages → relative
 
 **ESLint + Prettier** (configured in `frontend/eslint.config.js` and `.prettierrc`):
+
 - No semicolons
 - Single quotes
 - 2-space indentation
@@ -88,11 +90,13 @@ The same pattern applies to `DialogClose`.
 - Tailwind class sorting (via prettier-plugin-tailwindcss)
 
 **TypeScript**:
+
 - Strict mode enabled
 - Unused variables: error (prefix with `_` to ignore)
 - All exports should be typed
 
 **React-specific Rules**:
+
 - Use `react-refresh/only-export-components` for HMR compatibility
 - React hooks rules enforced
 
@@ -224,14 +228,15 @@ Always use CSS variables, never hard-coded colors:
 
 ```tsx
 // Correct
-className="bg-primary text-primary-foreground"
-className="text-muted-foreground hover:text-foreground"
+className = 'bg-primary text-primary-foreground'
+className = 'text-muted-foreground hover:text-foreground'
 
 // Incorrect
-className="bg-amber-500 text-slate-900"
+className = 'bg-amber-500 text-slate-900'
 ```
 
 Key semantic colors:
+
 - `--primary`: Amber accent
 - `--secondary`: Teal accent
 - `--background` / `--foreground`: Main page colors
@@ -282,6 +287,7 @@ cd frontend/apps/web && pnpm test
 ## MCP Tools
 
 When debugging frontend issues, use `chrome-devtools` MCP to help with:
+
 - Taking snapshots and screenshots
 - Inspecting network requests and console messages
 - Interacting with page elements

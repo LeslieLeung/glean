@@ -68,7 +68,10 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
 
           <div className="space-y-4 px-6 py-4">
             <div>
-              <Label htmlFor="tag-name" className="mb-1.5 block text-sm font-medium text-foreground">
+              <Label
+                htmlFor="tag-name"
+                className="text-foreground mb-1.5 block text-sm font-medium"
+              >
                 {t('common.tagName')}
               </Label>
               <Input
@@ -82,7 +85,7 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
             </div>
 
             <div>
-              <Label className="mb-1.5 block text-sm font-medium text-foreground">Color</Label>
+              <Label className="text-foreground mb-1.5 block text-sm font-medium">Color</Label>
               <div className="flex flex-wrap gap-2">
                 {TAG_COLOR_PALETTE.map((c) => (
                   <button
@@ -90,7 +93,7 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
                     type="button"
                     onClick={() => setColor(c)}
                     className={`h-7 w-7 rounded-lg transition-transform hover:scale-110 ${
-                      color === c ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
+                      color === c ? 'ring-primary ring-offset-background ring-2 ring-offset-2' : ''
                     }`}
                     style={{ backgroundColor: c }}
                     title={c}
@@ -99,8 +102,8 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
                 <button
                   type="button"
                   onClick={() => setColor(null)}
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground transition-transform hover:scale-110 ${
-                    color === null ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''
+                  className={`border-border text-muted-foreground flex h-7 w-7 items-center justify-center rounded-lg border-2 border-dashed transition-transform hover:scale-110 ${
+                    color === null ? 'ring-primary ring-offset-background ring-2 ring-offset-2' : ''
                   }`}
                   title="No color"
                 >
@@ -109,7 +112,7 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
               </div>
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-destructive text-sm">{error}</p>}
           </div>
 
           <DialogFooter>
@@ -132,4 +135,3 @@ export function CreateTagDialog({ open, onOpenChange, onSubmit }: CreateTagDialo
     </Dialog>
   )
 }
-

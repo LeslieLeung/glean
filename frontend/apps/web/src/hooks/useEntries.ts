@@ -43,7 +43,7 @@ export function useEntries(filters?: EntryFilters) {
 export function useInfiniteEntries(filters?: Omit<EntryFilters, 'page'>) {
   return useInfiniteQuery({
     queryKey: entryKeys.list(filters || {}),
-    queryFn: ({ pageParam = 1 }) => 
+    queryFn: ({ pageParam = 1 }) =>
       entryService.getEntries({ ...filters, page: pageParam, per_page: 20 }),
     getNextPageParam: (lastPage) => {
       if (lastPage.page < lastPage.total_pages) {
@@ -68,7 +68,7 @@ export function useEntry(entryId: string) {
 
 /**
  * Hook to update entry state.
- * 
+ *
  * Uses optimistic cache updates to prevent the entry list from refreshing
  * and causing the currently selected entry to disappear from the list.
  * Only invalidates subscription counts for accurate unread counts.
@@ -82,30 +82,25 @@ export function useUpdateEntryState() {
     onSuccess: (updatedEntry, variables) => {
       // Update the specific entry detail in cache
       queryClient.setQueryData(entryKeys.detail(variables.entryId), updatedEntry)
-      
+
       // Update the entry in all cached lists directly (optimistic update)
       // This prevents the list from refreshing and the entry from disappearing
       queryClient.setQueriesData<{
         pages: { items: EntryWithState[] }[]
         pageParams: number[]
-      }>(
-        { queryKey: entryKeys.lists() },
-        (oldData) => {
-          if (!oldData) return oldData
-          return {
-            ...oldData,
-            pages: oldData.pages.map((page) => ({
-              ...page,
-              items: page.items.map((item) =>
-                item.id === variables.entryId
-                  ? { ...item, ...updatedEntry }
-                  : item
-              ),
-            })),
-          }
+      }>({ queryKey: entryKeys.lists() }, (oldData) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page) => ({
+            ...page,
+            items: page.items.map((item) =>
+              item.id === variables.entryId ? { ...item, ...updatedEntry } : item
+            ),
+          })),
         }
-      )
-      
+      })
+
       // Invalidate subscription queries to update unread counts
       // This is needed for accurate sidebar counts
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })

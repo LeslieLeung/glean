@@ -118,9 +118,11 @@ async def parse_feed(content: str, url: str) -> ParsedFeed:
     Raises:
         ValueError: If feed parsing fails.
     """
-    data = feedparser.parse(content)
+    data: FeedParserDict = feedparser.parse(content)  # type: ignore[reportUnknownMemberType]
 
-    if data.get("bozo", False) and not data.get("entries"):
+    bozo: bool = bool(data.get("bozo", False))  # type: ignore[reportUnknownMemberType]
+    entries: Any = data.get("entries")  # type: ignore[reportUnknownMemberType]
+    if bozo and not entries:
         # Feed has errors and no entries
         raise ValueError(f"Failed to parse feed: {data.get('bozo_exception', 'Unknown error')}")
 

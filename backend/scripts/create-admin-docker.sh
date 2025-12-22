@@ -24,4 +24,3 @@ if uv run python scripts/create-admin.py --username "$USERNAME" --password "$PAS
     echo "  Please save these credentials securely!"
     echo "=============================================="
 fi
-

@@ -43,5 +43,3 @@ export function useIsVectorizationEnabled() {
   const { data } = useVectorizationStatus()
   return data?.enabled ?? false
 }
-
-

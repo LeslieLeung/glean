@@ -1,0 +1,67 @@
+repos:
+  # General hooks for all files
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: check-yaml
+        name: Check YAML syntax
+        args: [--unsafe]  # Allow custom YAML tags used in docker-compose
+        exclude: pnpm-lock.yaml
+      - id: check-json
+        name: Check JSON syntax
+      - id: check-toml
+        name: Check TOML syntax
+      - id: check-added-large-files
+        name: Check for large files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: check-case-conflict
+        name: Check for case conflicts
+      - id: mixed-line-ending
+        name: Check mixed line endings
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        name: Protect main branch
+        args: [--branch, main, --branch, master]
+      - id: detect-private-key
+        name: Detect private keys
+
+  # Backend: Python formatting and linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.10
+    hooks:
+      # Run the formatter
+      - id: ruff-format
+        name: ruff format (backend)
+        files: ^backend/
+      # Run the linter
+      - id: ruff
+        name: ruff check (backend)
+        args: [--fix]
+        files: ^backend/
+
+  # Backend: Python type checking
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright (backend)
+        entry: bash -c 'cd backend && uv run pyright'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+  # Frontend: ESLint and Prettier
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: ESLint (frontend)
+        entry: bash -c 'cd frontend && pnpm lint && pnpm typecheck'
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false

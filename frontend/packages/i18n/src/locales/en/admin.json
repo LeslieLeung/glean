@@ -36,6 +36,7 @@
       "subtitle": "Configure vectorization for AI-powered recommendations.",
       "config": "Configuration",
       "enabled": "Enable Vectorization",
+      "enabledDesc": "Turn on AI-powered recommendations using vector embeddings.",
       "provider": "Provider",
       "model": "Model",
       "dimension": "Dimension",
@@ -218,4 +219,3 @@
     "loading": "Loading..."
   }
 }
-

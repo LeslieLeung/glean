@@ -193,7 +193,7 @@ class EmbeddingValidationService:
 
             try:
                 # Test connection
-                connections.connect(
+                connections.connect(  # type: ignore[reportUnknownMemberType]
                     alias="validation",
                     host=milvus_config.host,
                     port=str(milvus_config.port),
@@ -202,10 +202,10 @@ class EmbeddingValidationService:
                 )
 
                 # Check if collections exist (read-only)
-                entries_exists = utility.has_collection(
+                entries_exists: bool = utility.has_collection(  # type: ignore[reportUnknownVariableType]
                     milvus_config.entries_collection, using="validation"
                 )
-                prefs_exists = utility.has_collection(
+                prefs_exists: bool = utility.has_collection(  # type: ignore[reportUnknownVariableType]
                     milvus_config.prefs_collection, using="validation"
                 )
 

@@ -32,7 +32,7 @@ elif app_dir.name == "app":
 
 from glean_core.services import AdminService  # noqa: E402
 from glean_database.models.admin import AdminRole  # noqa: E402
-from glean_database.session import get_session, init_database  # noqa: E402
+from glean_database.session import get_session_context, init_database  # noqa: E402
 
 
 def hash_password_sha256(password: str) -> str:
@@ -68,7 +68,7 @@ async def create_admin(username: str, password: str, role: str) -> bool:
         return False
 
     # Create admin
-    async with get_session() as session:
+    async with get_session_context() as session:
         service = AdminService(session)
 
         try:

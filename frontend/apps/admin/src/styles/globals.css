@@ -65,35 +65,35 @@
 :root {
   --background: 220 20% 10%;
     --foreground: 45 30% 96%;
-  
+
     --primary: 38 92% 50%;
     --primary-foreground: 220 20% 10%;
-  
+
     --secondary: 174 72% 40%;
     --secondary-foreground: 220 20% 10%;
-  
+
     --muted: 220 15% 18%;
     --muted-foreground: 220 10% 60%;
-  
+
     --card: 220 18% 13%;
     --card-foreground: 45 30% 96%;
-  
+
     --accent: 220 15% 20%;
     --accent-foreground: 45 30% 96%;
-  
+
     --border: 220 15% 20%;
     --input: 220 15% 22%;
-  
+
     --ring: 38 92% 50%;
-  
+
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-  
+
     --popover: 220 18% 15%;
     --popover-foreground: 45 30% 96%;
-  
+
     --radius-lg: 0.75rem;
-  
+
     /* Info/Warning/Success for alerts */
     --info: 199 89% 48%;
   --info-foreground: 199 89% 30%;
@@ -102,43 +102,43 @@
     --warning: 38 92% 50%;
   --warning-foreground: 38 92% 32%;
   }
-  
+
   /* Light theme alternative */
   [data-theme="light"] {
     --background: 45 30% 97%;
     --foreground: 220 20% 15%;
-  
+
     --primary: 38 92% 45%;
     --primary-foreground: 45 30% 98%;
-  
+
     --secondary: 174 72% 35%;
     --secondary-foreground: 45 30% 98%;
-  
+
     --muted: 45 20% 92%;
     --muted-foreground: 220 10% 40%;
-  
+
     --card: 0 0% 100%;
     --card-foreground: 220 20% 15%;
-  
+
     --accent: 45 30% 94%;
     --accent-foreground: 220 20% 15%;
-  
+
     --border: 45 15% 85%;
     --input: 45 15% 90%;
-  
+
     --ring: 38 92% 45%;
-  
+
     --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
-  
+
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 15%;
-  
+
     --info: 199 89% 40%;
     --success: 142 76% 30%;
     --warning: 38 92% 45%;
   }
-  
+
   /* Base styles */
   html {
     scroll-behavior: smooth;
@@ -153,65 +153,65 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
   }
-  
+
   /* Custom scrollbar for dark theme - auto-hide */
   * {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
     transition: scrollbar-color 0.3s ease;
   }
-  
+
   *:hover {
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
-  
+
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
+
   ::-webkit-scrollbar-track {
     background: transparent;
     border-radius: 4px;
   }
-  
+
   ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 4px;
     transition: background 0.3s ease;
   }
-  
+
   *:hover::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
   }
-  
+
   *:hover::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
-  
+
   /* Show scrollbar while actively scrolling */
   .is-scrolling::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
   }
-  
+
   /* Typography enhancements */
   .font-display {
     font-family: 'DM Sans', system-ui, sans-serif;
     font-weight: 700;
     letter-spacing: -0.02em;
   }
-  
+
   .font-reading {
     font-family: 'Crimson Pro', Georgia, serif;
   }
-  
+
   /* Prose customization for reading pane */
   .prose {
     font-family: 'Crimson Pro', Georgia, serif;
     font-size: 1.125rem;
     line-height: 1.75;
   }
-  
+
   .prose h1,
   .prose h2,
   .prose h3,
@@ -220,144 +220,144 @@ body {
     font-weight: 600;
     color: hsl(var(--foreground));
   }
-  
+
   .prose a {
     color: hsl(var(--primary));
     text-decoration: underline;
     text-underline-offset: 2px;
     transition: color 0.2s ease;
   }
-  
+
   .prose a:hover {
     color: hsl(var(--primary) / 0.8);
   }
-  
+
   .prose blockquote {
     border-left-color: hsl(var(--primary));
     background: hsl(var(--muted) / 0.3);
     border-radius: 0 0.5rem 0.5rem 0;
     padding: 1rem 1.5rem;
   }
-  
+
   .prose code {
     background: hsl(var(--muted));
     border-radius: 0.25rem;
     padding: 0.125rem 0.375rem;
     font-size: 0.875em;
   }
-  
+
   .prose pre {
     background: hsl(var(--muted));
     border: 1px solid hsl(var(--border));
     border-radius: 0.5rem;
   }
-  
+
   .prose img {
     border-radius: 0.75rem;
     box-shadow: 0 4px 20px -4px hsl(0 0% 0% / 0.3);
   }
-  
+
   /* Animated background pattern */
   .bg-pattern {
     background-image:
       radial-gradient(circle at 25% 25%, hsl(var(--primary) / 0.03) 0%, transparent 50%),
       radial-gradient(circle at 75% 75%, hsl(var(--secondary) / 0.03) 0%, transparent 50%);
   }
-  
+
   /* Glass morphism effect */
   .glass {
     background: hsl(var(--card) / 0.7);
     backdrop-filter: blur(16px);
     border: 1px solid hsl(var(--border) / 0.5);
   }
-  
+
   /* Animation utilities */
   @keyframes fadeIn {
     from {
       opacity: 0;
       transform: translateY(8px);
     }
-  
+
     to {
       opacity: 1;
       transform: translateY(0);
     }
   }
-  
+
   @keyframes slideIn {
     from {
       opacity: 0;
       transform: translateX(-8px);
     }
-  
+
     to {
       opacity: 1;
       transform: translateX(0);
     }
   }
-  
+
   @keyframes pulse-glow {
-  
+
     0%,
     100% {
       box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
     }
-  
+
     50% {
       box-shadow: 0 0 20px 4px hsl(var(--primary) / 0.2);
     }
   }
-  
+
   .animate-fadeIn {
     animation: fadeIn 0.4s ease-out forwards;
   }
-  
+
   .animate-slideIn {
     animation: slideIn 0.3s ease-out forwards;
   }
-  
+
   .animate-pulse-glow {
     animation: pulse-glow 2s ease-in-out infinite;
   }
-  
+
   /* Stagger animations for lists */
   .stagger-children>* {
     opacity: 0;
     animation: fadeIn 0.4s ease-out forwards;
   }
-  
+
   .stagger-children>*:nth-child(1) {
     animation-delay: 0.05s;
   }
-  
+
   .stagger-children>*:nth-child(2) {
     animation-delay: 0.1s;
   }
-  
+
   .stagger-children>*:nth-child(3) {
     animation-delay: 0.15s;
   }
-  
+
   .stagger-children>*:nth-child(4) {
     animation-delay: 0.2s;
   }
-  
+
   .stagger-children>*:nth-child(5) {
     animation-delay: 0.25s;
   }
-  
+
   .stagger-children>*:nth-child(6) {
     animation-delay: 0.3s;
   }
-  
+
   .stagger-children>*:nth-child(7) {
     animation-delay: 0.35s;
   }
-  
+
   .stagger-children>*:nth-child(8) {
     animation-delay: 0.4s;
   }
-  
+
   /* Focus ring customization */
   *:focus-visible {
     outline: none;
@@ -368,33 +368,33 @@ body {
   .input-container input:focus-visible {
     box-shadow: none;
   }
-  
+
   /* Selection color */
   ::selection {
     background: hsl(var(--primary) / 0.3);
     color: hsl(var(--foreground));
   }
-  
+
   /* Button hover glow effect */
   .btn-glow:hover {
     box-shadow: 0 0 20px -5px hsl(var(--primary));
   }
-  
+
   /* Card hover effect */
   .card-hover {
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  
+
   .card-hover:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 30px -8px hsl(0 0% 0% / 0.3);
   }
-  
+
   /* ==========================================================================
      Custom Highlight.js Theme - Glean Amber Dark
      A warm dark theme with amber accents for code syntax highlighting
      ========================================================================== */
-  
+
   .hljs {
     background: hsl(220 20% 12%);
     color: hsl(45 20% 85%);
@@ -405,14 +405,14 @@ body {
     line-height: 1.6;
     overflow-x: auto;
   }
-  
+
   /* Comments - subtle muted foreground */
   .hljs-comment,
   .hljs-quote {
     color: hsl(220 10% 50%);
     font-style: italic;
   }
-  
+
   /* Keywords, built-ins - Amber primary */
   .hljs-keyword,
   .hljs-selector-tag,
@@ -421,7 +421,7 @@ body {
     color: hsl(38 92% 60%);
     font-weight: 500;
   }
-  
+
   /* Strings - Teal secondary */
   .hljs-string,
   .hljs-attr,
@@ -432,7 +432,7 @@ body {
   .hljs-template-variable {
     color: hsl(174 72% 55%);
   }
-  
+
   /* Numbers, constants - Soft pink */
   .hljs-number,
   .hljs-literal,
@@ -441,7 +441,7 @@ body {
   .hljs-params {
     color: hsl(340 70% 70%);
   }
-  
+
   /* Functions - Bright amber */
   .hljs-title,
   .hljs-title.function_,
@@ -449,88 +449,88 @@ body {
     color: hsl(38 95% 65%);
     font-weight: 600;
   }
-  
+
   /* Tags, attributes - Light blue */
   .hljs-tag,
   .hljs-attribute {
     color: hsl(199 85% 65%);
   }
-  
+
   /* Properties, selectors */
   .hljs-property,
   .hljs-selector-attr,
   .hljs-selector-pseudo {
     color: hsl(280 60% 70%);
   }
-  
+
   /* Operators, punctuation */
   .hljs-operator,
   .hljs-punctuation {
     color: hsl(45 20% 70%);
   }
-  
+
   /* Meta, preprocessor */
   .hljs-meta,
   .hljs-meta .hljs-keyword {
     color: hsl(38 70% 50%);
   }
-  
+
   /* Additions - green */
   .hljs-addition {
     color: hsl(142 76% 50%);
     background-color: hsl(142 76% 20% / 0.2);
   }
-  
+
   /* Deletions - red */
   .hljs-deletion {
     color: hsl(0 72% 60%);
     background-color: hsl(0 72% 20% / 0.2);
   }
-  
+
   /* Emphasis */
   .hljs-emphasis {
     font-style: italic;
   }
-  
+
   /* Strong */
   .hljs-strong {
     font-weight: bold;
   }
-  
+
   /* Links */
   .hljs-link {
     color: hsl(174 72% 55%);
     text-decoration: underline;
   }
-  
+
   /* Symbol, bullet */
   .hljs-symbol,
   .hljs-bullet {
     color: hsl(38 92% 60%);
   }
-  
+
   /* Class, function parameter names */
   .hljs-class .hljs-title,
   .hljs-title.class_ {
     color: hsl(45 90% 70%);
   }
-  
+
   /* Docstrings and annotations */
   .hljs-doctag {
     color: hsl(174 72% 55%);
     font-weight: 500;
   }
-  
+
   /* Subst - inline expressions */
   .hljs-subst {
     color: hsl(45 20% 85%);
   }
-  
+
   /* Formula - math expressions */
   .hljs-formula {
     color: hsl(280 60% 70%);
   }
-  
+
   /* Code block with line numbers styling */
   .hljs-ln-numbers {
     user-select: none;
@@ -540,7 +540,7 @@ body {
     padding-right: 0.75rem;
     margin-right: 0.75rem;
   }
-  
+
   /* Prose code block enhancements */
   .prose pre {
     background: hsl(220 20% 12%) !important;
@@ -549,13 +549,13 @@ body {
       inset 0 1px 0 hsl(220 15% 15%),
       0 4px 16px -4px hsl(0 0% 0% / 0.4);
   }
-  
+
   .prose pre code {
     background: transparent;
     padding: 0;
     font-size: 0.875rem;
   }
-  
+
   /* Inline code styling */
   .prose :not(pre)>code {
     background: hsl(220 15% 18%);
@@ -565,43 +565,43 @@ body {
     font-size: 0.85em;
     font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   }
-  
+
   /* Code block container in prose */
   .prose pre::-webkit-scrollbar {
     height: 6px;
   }
-  
+
   .prose pre::-webkit-scrollbar-track {
     background: hsl(220 15% 15%);
     border-radius: 3px;
   }
-  
+
   .prose pre::-webkit-scrollbar-thumb {
     background: hsl(220 10% 30%);
     border-radius: 3px;
   }
-  
+
   .prose pre::-webkit-scrollbar-thumb:hover {
     background: hsl(220 10% 40%);
   }
-  
+
   /* ==========================================================================
      Light Theme - Highlight.js Overrides
      A clean light theme with good contrast for code readability
      ========================================================================== */
-  
+
   [data-theme="light"] .hljs {
     background: hsl(220 15% 95%);
     color: hsl(220 25% 20%);
   }
-  
+
   /* Comments - visible gray */
   [data-theme="light"] .hljs-comment,
   [data-theme="light"] .hljs-quote {
     color: hsl(220 10% 45%);
     font-style: italic;
   }
-  
+
   /* Keywords, built-ins - Deep blue */
   [data-theme="light"] .hljs-keyword,
   [data-theme="light"] .hljs-selector-tag,
@@ -610,7 +610,7 @@ body {
     color: hsl(230 80% 45%);
     font-weight: 500;
   }
-  
+
   /* Strings - Teal */
   [data-theme="light"] .hljs-string,
   [data-theme="light"] .hljs-attr,
@@ -621,7 +621,7 @@ body {
   [data-theme="light"] .hljs-template-variable {
     color: hsl(174 80% 28%);
   }
-  
+
   /* Numbers, constants - Magenta */
   [data-theme="light"] .hljs-number,
   [data-theme="light"] .hljs-literal,
@@ -630,7 +630,7 @@ body {
   [data-theme="light"] .hljs-params {
     color: hsl(330 70% 40%);
   }
-  
+
   /* Functions - Orange */
   [data-theme="light"] .hljs-title,
   [data-theme="light"] .hljs-title.function_,
@@ -638,99 +638,99 @@ body {
     color: hsl(25 90% 40%);
     font-weight: 600;
   }
-  
+
   /* Tags, attributes - Blue */
   [data-theme="light"] .hljs-tag,
   [data-theme="light"] .hljs-attribute {
     color: hsl(200 85% 38%);
   }
-  
+
   /* Properties, selectors - Purple */
   [data-theme="light"] .hljs-property,
   [data-theme="light"] .hljs-selector-attr,
   [data-theme="light"] .hljs-selector-pseudo {
     color: hsl(270 60% 45%);
   }
-  
+
   /* Operators, punctuation */
   [data-theme="light"] .hljs-operator,
   [data-theme="light"] .hljs-punctuation {
     color: hsl(220 20% 35%);
   }
-  
+
   /* Meta, preprocessor */
   [data-theme="light"] .hljs-meta,
   [data-theme="light"] .hljs-meta .hljs-keyword {
     color: hsl(200 70% 40%);
   }
-  
+
   /* Additions - green */
   [data-theme="light"] .hljs-addition {
     color: hsl(142 76% 25%);
     background-color: hsl(142 50% 88%);
   }
-  
+
   /* Deletions - red */
   [data-theme="light"] .hljs-deletion {
     color: hsl(0 72% 40%);
     background-color: hsl(0 50% 92%);
   }
-  
+
   /* Class, function parameter names */
   [data-theme="light"] .hljs-class .hljs-title,
   [data-theme="light"] .hljs-title.class_ {
     color: hsl(35 90% 38%);
   }
-  
+
   /* Docstrings and annotations */
   [data-theme="light"] .hljs-doctag {
     color: hsl(174 72% 30%);
     font-weight: 500;
   }
-  
+
   /* Line numbers styling for light theme */
   [data-theme="light"] .hljs-ln-numbers {
     color: hsl(220 10% 55%);
   }
-  
+
   /* Prose code block enhancements for light theme */
   [data-theme="light"] .prose pre {
     background: hsl(220 15% 95%) !important;
     border: none;
     box-shadow: 0 2px 8px -2px hsl(0 0% 0% / 0.08);
   }
-  
+
   /* Inline code styling for light theme */
   [data-theme="light"] .prose :not(pre)>code {
     background: hsl(220 15% 92%);
     color: hsl(230 80% 45%);
   }
-  
+
   /* Light theme scrollbar - auto-hide */
   [data-theme="light"] * {
     scrollbar-color: transparent transparent;
   }
-  
+
   [data-theme="light"] *:hover {
     scrollbar-color: hsl(220 10% 75%) transparent;
   }
-  
+
   [data-theme="light"] ::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   [data-theme="light"] ::-webkit-scrollbar-thumb {
     background: transparent;
   }
-  
+
   [data-theme="light"] *:hover::-webkit-scrollbar-thumb {
     background: hsl(220 10% 75%);
   }
-  
+
   [data-theme="light"] *:hover::-webkit-scrollbar-thumb:hover {
     background: hsl(220 10% 60%);
   }
-  
+
   /* Light theme card hover effect */
   [data-theme="light"] .card-hover:hover {
     box-shadow: 0 8px 30px -8px hsl(0 0% 0% / 0.15);

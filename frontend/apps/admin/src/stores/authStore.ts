@@ -104,4 +104,3 @@ if (storedAuth) {
     logger.error('Failed to parse stored auth:', error)
   }
 }
-

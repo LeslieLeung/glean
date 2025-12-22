@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
-from glean_database.session import get_session
+from glean_database.session import get_session_context
 from glean_rss import fetch_feed, parse_feed
 
 
@@ -40,7 +40,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
         Dictionary with fetch results.
     """
     print(f"[fetch_feed_task] Starting fetch for feed_id: {feed_id}")
-    async with get_session() as session:
+    async with get_session_context() as session:
         try:
             # Get feed from database
             stmt = select(Feed).where(Feed.id == feed_id)
@@ -195,7 +195,7 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
         Dictionary with fetch statistics.
     """
     print("[fetch_all_feeds] Starting to fetch all active feeds")
-    async with get_session() as session:
+    async with get_session_context() as session:
         # Get all active feeds that are due for fetching
         now = datetime.now(UTC)
         stmt = select(Feed).where(

@@ -1,6 +1,26 @@
 import { useState } from 'react'
 import { useFeeds, useResetFeedError, useUpdateFeed, useDeleteFeed } from '../hooks/useFeeds'
-import { Button, buttonVariants, Input, Badge, Skeleton, Dialog, DialogTrigger, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogPanel, AlertDialog, AlertDialogPopup, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogClose } from '@glean/ui'
+import {
+  Button,
+  buttonVariants,
+  Input,
+  Badge,
+  Skeleton,
+  Dialog,
+  DialogTrigger,
+  DialogPopup,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogPanel,
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogClose,
+} from '@glean/ui'
 import {
   Search,
   Play,
@@ -105,11 +125,11 @@ export default function FeedsPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>
-              <div className="rounded-lg bg-destructive/10 p-4">
-                <p className="text-sm font-medium text-destructive">
+              <div className="bg-destructive/10 rounded-lg p-4">
+                <p className="text-destructive text-sm font-medium">
                   {t('admin:feeds.feedErrorMessageLabel')}
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                <p className="text-muted-foreground mt-2 text-sm whitespace-pre-wrap">
                   {errorMessage || t('admin:feeds.noErrorMessage')}
                 </p>
               </div>
@@ -144,13 +164,11 @@ export default function FeedsPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
+      <div className="border-border bg-card border-b px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t('admin:feeds.title')}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('admin:feeds.subtitle')}
-            </p>
+            <h1 className="text-foreground text-2xl font-bold">{t('admin:feeds.title')}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t('admin:feeds.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -162,7 +180,7 @@ export default function FeedsPage() {
           {/* Search */}
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2" />
               <Input
                 type="text"
                 value={searchInput}
@@ -189,7 +207,7 @@ export default function FeedsPage() {
 
           {/* Status filter */}
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Filter className="text-muted-foreground h-4 w-4" />
             <div className="flex gap-1">
               {statusFilters.map((filter) => (
                 <Button
@@ -209,32 +227,32 @@ export default function FeedsPage() {
         </div>
 
         {/* Feeds table */}
-        <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-border bg-card rounded-xl border shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="border-border bg-muted/50 border-b">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.feed')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.status')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.subscribers')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.lastFetched')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.created')}
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-right text-xs font-semibold tracking-wider uppercase">
                     {t('admin:feeds.table.actions')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-border divide-y">
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
@@ -265,18 +283,18 @@ export default function FeedsPage() {
                   ))
                 ) : data && data.items.length > 0 ? (
                   data.items.map((feed) => (
-                    <tr key={feed.id} className="transition-colors hover:bg-muted/50">
+                    <tr key={feed.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="truncate text-sm font-medium text-foreground">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-foreground truncate text-sm font-medium">
                               {feed.title}
                             </p>
                             <a
                               href={feed.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="mt-1 flex items-center gap-1 truncate text-xs text-muted-foreground hover:text-primary"
+                              className="text-muted-foreground hover:text-primary mt-1 flex items-center gap-1 truncate text-xs"
                             >
                               {feed.url}
                               <ExternalLink className="h-3 w-3 flex-shrink-0" />
@@ -288,17 +306,17 @@ export default function FeedsPage() {
                         {getStatusBadge(feed.status, feed.error_count, feed.fetch_error_message)}
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">{feed.subscriber_count}</p>
+                        <p className="text-muted-foreground text-sm">{feed.subscriber_count}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           {feed.last_fetched_at
                             ? format(new Date(feed.last_fetched_at), 'MMM d, yyyy HH:mm')
                             : t('admin:feeds.neverFetched')}
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           {format(new Date(feed.created_at), 'MMM d, yyyy')}
                         </p>
                       </td>
@@ -357,7 +375,7 @@ export default function FeedsPage() {
                 ) : (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         {search || statusFilter !== 'all'
                           ? t('admin:feeds.emptyFiltered')
                           : t('admin:feeds.empty')}
@@ -371,9 +389,13 @@ export default function FeedsPage() {
 
           {/* Pagination */}
           {data && data.total_pages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-4">
-              <p className="text-sm text-muted-foreground">
-                {t('admin:feeds.pagination.page', { page: data.page, totalPages: data.total_pages, total: data.total })}
+            <div className="border-border flex items-center justify-between border-t px-6 py-4">
+              <p className="text-muted-foreground text-sm">
+                {t('admin:feeds.pagination.page', {
+                  page: data.page,
+                  totalPages: data.total_pages,
+                  total: data.total,
+                })}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -403,9 +425,7 @@ export default function FeedsPage() {
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('admin:feeds.deleteTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('admin:feeds.deleteDescription')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('admin:feeds.deleteDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
@@ -431,4 +451,3 @@ export default function FeedsPage() {
     </div>
   )
 }
-

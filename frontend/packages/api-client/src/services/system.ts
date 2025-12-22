@@ -28,5 +28,3 @@ export class SystemService {
     return this.client.get<VectorizationStatus>('/system/vectorization-status')
   }
 }
-
-

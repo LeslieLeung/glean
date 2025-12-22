@@ -59,7 +59,7 @@ export default function RegistrationSettingsPage() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="text-primary h-8 w-8 animate-spin" />
       </div>
     )
   }
@@ -67,12 +67,17 @@ export default function RegistrationSettingsPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
+      <div className="border-border bg-card border-b px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t('admin:settings.system.title', 'System Settings')}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('admin:settings.system.subtitle', 'Manage global configuration for your Glean instance.')}
+            <h1 className="text-foreground text-2xl font-bold">
+              {t('admin:settings.system.title', 'System Settings')}
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {t(
+                'admin:settings.system.subtitle',
+                'Manage global configuration for your Glean instance.'
+              )}
             </p>
           </div>
         </div>
@@ -80,7 +85,7 @@ export default function RegistrationSettingsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-8">
-        <div className="max-w-4xl space-y-8">
+        <div className="space-y-8">
           {error && (
             <Alert variant="error">
               <AlertCircle className="h-4 w-4" />
@@ -93,15 +98,18 @@ export default function RegistrationSettingsPage() {
             <CardHeader>
               <CardTitle>{t('admin:settings.registration.title', 'User Registration')}</CardTitle>
               <CardDescription>
-                {t('admin:settings.registration.description', 'Control whether new users can sign up for an account. Existing users will still be able to log in.')}
+                {t(
+                  'admin:settings.registration.description',
+                  'Control whether new users can sign up for an account. Existing users will still be able to log in.'
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex items-center justify-between space-x-2">
               <Label htmlFor="registration-mode" className="flex flex-col items-start space-y-1">
                 <span>{t('admin:settings.registration.enableLabel', 'Enable Registration')}</span>
-                <span className="font-normal text-muted-foreground">
-                  {registrationEnabled 
-                    ? t('admin:settings.registration.enabled', 'New users can sign up.') 
+                <span className="text-muted-foreground font-normal">
+                  {registrationEnabled
+                    ? t('admin:settings.registration.enabled', 'New users can sign up.')
                     : t('admin:settings.registration.disabled', 'Sign up is disabled.')}
                 </span>
               </Label>
@@ -118,4 +126,3 @@ export default function RegistrationSettingsPage() {
     </div>
   )
 }
-

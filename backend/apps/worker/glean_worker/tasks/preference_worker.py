@@ -8,7 +8,7 @@ from arq import Retry
 from glean_core import get_logger
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
-from glean_database.session import get_session
+from glean_database.session import get_session_context
 from glean_vector.clients.milvus_client import MilvusClient
 from glean_vector.services.preference_service import PreferenceService
 
@@ -92,7 +92,7 @@ async def update_user_preference(
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
 
-    async with get_session() as session:
+    async with get_session_context() as session:
         try:
             # Check if vectorization is enabled and get config from database
             # Raises Retry for temporary unavailability, ValueError for permanent disable
@@ -148,7 +148,7 @@ async def rebuild_user_preference(
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
 
-    async with get_session() as session:
+    async with get_session_context() as session:
         try:
             # Check if vectorization is enabled and get config from database
             # Raises Retry for temporary unavailability, ValueError for permanent disable

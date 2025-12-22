@@ -15,7 +15,10 @@ from pymilvus import (
     utility,
 )
 
+from glean_core import get_logger
 from glean_vector.config import milvus_config
+
+logger = get_logger(__name__)
 
 
 class MilvusClient:
@@ -84,6 +87,87 @@ class MilvusClient:
             pass
         return None
 
+    def check_model_compatibility(
+        self, dimension: int, provider: str, model: str
+    ) -> tuple[bool, str | None]:
+        """
+        Check if existing Milvus collections are compatible with the target model config.
+
+        This is used to determine if a rebuild is necessary when enabling/updating
+        vectorization config. If the collections already match the target model,
+        no rebuild is needed.
+
+        Args:
+            dimension: Target vector dimension
+            provider: Target embedding provider
+            model: Target model name
+
+        Returns:
+            Tuple of (is_compatible, reason):
+            - (True, None) if collections match or don't exist
+            - (False, reason) if collections exist but don't match
+        """
+        # Try to connect to Milvus
+        try:
+            self.connect()
+        except (MilvusException, ConnectionError) as e:
+            logger.warning(f"Failed to connect to Milvus for compatibility check: {e}")
+            # Assume compatible if we can't check (fail-safe approach)
+            return (True, None)
+
+        expected_signature = self._build_model_signature(provider, model, dimension)
+
+        # Check entries collection
+        try:
+            if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
+                collection = Collection(self.config.entries_collection)
+                existing_signature = self._extract_model_signature(collection)
+                if existing_signature and existing_signature != expected_signature:
+                    return (
+                        False,
+                        f"Entries collection signature mismatch: "
+                        f"existing={existing_signature}, expected={expected_signature}",
+                    )
+        except MilvusException as e:
+            logger.warning(
+                f"Failed to check entries collection compatibility: {e}. Assuming compatible."
+            )
+            # Continue to check preferences collection
+
+        # Check preferences collection
+        try:
+            if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
+                collection = Collection(self.config.prefs_collection)
+                existing_signature = self._extract_model_signature(collection)
+                if existing_signature and existing_signature != expected_signature:
+                    return (
+                        False,
+                        f"Preferences collection signature mismatch: "
+                        f"existing={existing_signature}, expected={expected_signature}",
+                    )
+        except MilvusException as e:
+            logger.warning(
+                f"Failed to check preferences collection compatibility: {e}. Assuming compatible."
+            )
+
+        return (True, None)
+
+    def collections_exist(self) -> bool:
+        """
+        Check if both required Milvus collections exist.
+
+        Returns:
+            True if both entries and preferences collections exist
+        """
+        try:
+            self.connect()
+            entries_exist = utility.has_collection(self.config.entries_collection)  # type: ignore[truthy-function]
+            prefs_exist = utility.has_collection(self.config.prefs_collection)  # type: ignore[truthy-function]
+            return bool(entries_exist and prefs_exist)  # type: ignore[reportUnknownArgumentType]
+        except (MilvusException, ConnectionError) as e:
+            logger.warning(f"Failed to check if collections exist: {e}")
+            return False
+
     def connect(self) -> None:
         """Establish connection to Milvus."""
         # Check if actually connected (not just the flag, but real connection status)
@@ -92,7 +176,7 @@ class MilvusClient:
             return
 
         try:
-            connections.connect(
+            connections.connect(  # type: ignore[reportUnknownMemberType]
                 alias="default",
                 host=self.config.host,
                 port=str(self.config.port),
@@ -345,7 +429,7 @@ class MilvusClient:
             # If index creation fails, log but don't fail the whole operation
             print(f"Warning: Failed to create user_id index: {e}")
 
-        collection.load()
+        collection.load()  # type: ignore[reportUnknownMemberType]
         return collection
 
     def _is_collection_not_found_error(self, e: MilvusException) -> bool:
@@ -424,7 +508,7 @@ class MilvusClient:
         # Delete existing entry if present (upsert pattern)
         # Entry might not exist, ignore
         with suppress(MilvusException):
-            self._entries_collection.delete(expr=f'id == "{self._escape_string(entry_id)}"')
+            self._entries_collection.delete(expr=f'id == "{self._escape_string(entry_id)}"')  # type: ignore[reportUnknownMemberType]
 
         data = [
             [entry_id],
@@ -437,7 +521,7 @@ class MilvusClient:
         ]
 
         try:
-            self._entries_collection.insert(data)
+            self._entries_collection.insert(data)  # type: ignore[reportUnknownMemberType]
         except MilvusException as e:
             # Collection may have been dropped and recreated by another task (rebuild)
             # Refresh the collection reference and retry once
@@ -448,7 +532,7 @@ class MilvusClient:
                         "Entries collection does not exist. "
                         "It may have been dropped during a rebuild."
                     ) from e
-                self._entries_collection.insert(data)
+                self._entries_collection.insert(data)  # type: ignore[reportUnknownMemberType]
             else:
                 raise
 
@@ -589,7 +673,7 @@ class MilvusClient:
         ]
 
         try:
-            self._prefs_collection.insert(data)
+            self._prefs_collection.insert(data)  # type: ignore[reportUnknownMemberType]
         except MilvusException as e:
             # Collection may have been dropped and recreated by another task (rebuild)
             # Refresh the collection reference and retry once
@@ -600,7 +684,7 @@ class MilvusClient:
                         "Preferences collection does not exist. "
                         "It may have been dropped during a rebuild."
                     ) from e
-                self._prefs_collection.insert(data)
+                self._prefs_collection.insert(data)  # type: ignore[reportUnknownMemberType]
             else:
                 raise
 

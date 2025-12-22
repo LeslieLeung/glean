@@ -117,9 +117,13 @@ export function useValidateEmbedding() {
   return useMutation({
     mutationFn: async () => {
       // Use longer timeout for validation as it may download models
-      const res = await api.post('/embedding/validate', {}, {
-        timeout: 600000, // 10 minutes for model download
-      })
+      const res = await api.post(
+        '/embedding/validate',
+        {},
+        {
+          timeout: 600000, // 10 minutes for model download
+        }
+      )
       return res.data as ValidationResult
     },
     onSuccess: () => {

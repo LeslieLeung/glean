@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useInfiniteEntries, useEntry, useUpdateEntryState, useMarkAllRead } from '../hooks/useEntries'
+import {
+  useInfiniteEntries,
+  useEntry,
+  useUpdateEntryState,
+  useMarkAllRead,
+} from '../hooks/useEntries'
 import { useVectorizationStatus } from '../hooks/useVectorizationStatus'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { useAuthStore } from '../stores/authStore'
@@ -44,7 +49,7 @@ const FILTER_ORDER: FilterType[] = ['all', 'unread', 'liked', 'read-later']
  * Hook to detect mobile viewport
  */
 function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => 
+  const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
   )
 
@@ -52,7 +57,7 @@ function useIsMobile(breakpoint = 768) {
     const handleResize = () => {
       setIsMobile(window.innerWidth < breakpoint)
     }
-    
+
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [breakpoint])
@@ -76,11 +81,12 @@ export default function ReaderPage() {
   const isSmartView = viewParam === 'smart'
   const { user } = useAuthStore()
   const { showPreferenceScore } = useUIStore()
-  
+
   // Check vectorization status for Smart view
   const { data: vectorizationStatus } = useVectorizationStatus()
-  const isVectorizationEnabled = vectorizationStatus?.enabled && vectorizationStatus?.status === 'idle'
-  
+  const isVectorizationEnabled =
+    vectorizationStatus?.enabled && vectorizationStatus?.status === 'idle'
+
   // Initialize filterType from URL parameter or default to 'unread'
   const [filterType, setFilterType] = useState<FilterType>(() => {
     if (tabParam && ['all', 'unread', 'liked', 'read-later'].includes(tabParam)) {
@@ -90,7 +96,7 @@ export default function ReaderPage() {
   })
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(entryIdFromUrl)
-  
+
   // Store the original position data of the selected entry when it was first clicked
   // This ensures the entry stays in its original position even after like/dislike/bookmark actions
   const selectedEntryOriginalDataRef = useRef<{
@@ -98,7 +104,7 @@ export default function ReaderPage() {
     preferenceScore: number | null
     publishedAt: string | null
   } | null>(null)
-  
+
   // Track previous view state for animations
   const prevViewRef = useRef<{
     feedId: string | undefined
@@ -142,8 +148,8 @@ export default function ReaderPage() {
     view: isSmartView ? 'smart' : 'timeline',
   })
 
-  const rawEntries = entriesData?.pages.flatMap(page => page.items) || []
-  
+  const rawEntries = entriesData?.pages.flatMap((page) => page.items) || []
+
   // Fetch selected entry separately to keep it visible even when filtered out of list
   const { data: selectedEntry, isLoading: isLoadingEntry } = useEntry(selectedEntryId || '')
 
@@ -155,78 +161,90 @@ export default function ReaderPage() {
     if (!selectedEntry || !selectedEntryId) return rawEntries
     const isSelectedInList = rawEntries.some((e) => e.id === selectedEntryId)
     if (isSelectedInList) return rawEntries
-    
+
     // Only keep the selected entry visible for "all" and "unread" filters
     // For "liked" and "read-later", show only entries that match the filter
     if (filterType === 'liked' || filterType === 'read-later') {
       return rawEntries
     }
-    
+
     // For Smart view, keep the selected entry visible even if marked as read
     // This prevents the article from disappearing while the user is reading it
     // (Only applies when there's an actively selected entry)
-    
+
     // Don't merge if the selected entry is from a different feed than the one being viewed
     // (when viewing a specific feed, not all feeds or a folder)
     if (selectedFeedId && selectedEntry.feed_id !== selectedFeedId) {
       return rawEntries
     }
-    
+
     // For folder views, we still want to keep the selected entry visible
     // even if it's been marked as read and filtered out
     // The backend has already filtered by folder, so we know this entry belongs to the folder
     // if we have it in selectedEntry (it was in the list when user clicked it)
-    
+
     // Insert selected entry at its ORIGINAL position based on sorting rules
     // Use the saved original data to ensure the position doesn't change after like/dislike/bookmark
     // In Smart view, entries are sorted by preference score (descending)
     // In timeline view, entries are sorted by published_at (descending)
     const originalData = selectedEntryOriginalDataRef.current
-    
+
     // Merge the original preference_score back into the entry to ensure it displays correctly
     // This is needed because the single entry API may not return preference_score
-    const entryWithOriginalScore = originalData?.id === selectedEntryId
-      ? { ...selectedEntry, preference_score: originalData.preferenceScore ?? selectedEntry.preference_score }
-      : selectedEntry
-    
+    const entryWithOriginalScore =
+      originalData?.id === selectedEntryId
+        ? {
+            ...selectedEntry,
+            preference_score: originalData.preferenceScore ?? selectedEntry.preference_score,
+          }
+        : selectedEntry
+
     if (isSmartView) {
       // For Smart view, insert based on ORIGINAL preference_score to maintain correct order
       // Use the saved original score, not the current score (which may have changed after like/dislike)
-      const selectedScore = originalData?.id === selectedEntryId 
-        ? (originalData.preferenceScore ?? -1)
-        : (selectedEntry.preference_score ?? -1)
+      const selectedScore =
+        originalData?.id === selectedEntryId
+          ? (originalData.preferenceScore ?? -1)
+          : (selectedEntry.preference_score ?? -1)
       let insertIdx = rawEntries.findIndex((e) => {
         const entryScore = e.preference_score ?? -1
         return entryScore < selectedScore
       })
       if (insertIdx === -1) insertIdx = rawEntries.length
-      return [...rawEntries.slice(0, insertIdx), entryWithOriginalScore, ...rawEntries.slice(insertIdx)]
+      return [
+        ...rawEntries.slice(0, insertIdx),
+        entryWithOriginalScore,
+        ...rawEntries.slice(insertIdx),
+      ]
     } else {
       // For timeline view, insert based on ORIGINAL published_at to maintain chronological order
-      const publishedAt = originalData?.id === selectedEntryId
-        ? originalData.publishedAt
-        : selectedEntry.published_at
+      const publishedAt =
+        originalData?.id === selectedEntryId ? originalData.publishedAt : selectedEntry.published_at
       const selectedDate = publishedAt ? new Date(publishedAt) : new Date(0)
       let insertIdx = rawEntries.findIndex((e) => {
         const entryDate = e.published_at ? new Date(e.published_at) : new Date(0)
         return entryDate < selectedDate
       })
       if (insertIdx === -1) insertIdx = rawEntries.length
-      return [...rawEntries.slice(0, insertIdx), entryWithOriginalScore, ...rawEntries.slice(insertIdx)]
+      return [
+        ...rawEntries.slice(0, insertIdx),
+        entryWithOriginalScore,
+        ...rawEntries.slice(insertIdx),
+      ]
     }
   })()
 
   // Handle filter change with slide direction
   const handleFilterChange = (newFilter: FilterType) => {
     if (newFilter === filterType) return
-    
+
     const currentIndex = FILTER_ORDER.indexOf(filterType)
     const newIndex = FILTER_ORDER.indexOf(newFilter)
     const direction = newIndex > currentIndex ? 'right' : 'left'
-    
+
     setSlideDirection(direction)
     setFilterType(newFilter)
-    
+
     // Reset slide direction after animation completes
     setTimeout(() => setSlideDirection(null), 250)
   }
@@ -235,9 +253,9 @@ export default function ReaderPage() {
   useEffect(() => {
     const loadMoreElement = loadMoreRef.current
     const container = entryListRef.current
-    
+
     if (!loadMoreElement || !container) return
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries
@@ -252,9 +270,9 @@ export default function ReaderPage() {
         threshold: 0.1,
       }
     )
-    
+
     observer.observe(loadMoreElement)
-    
+
     return () => {
       observer.disconnect()
     }
@@ -263,7 +281,7 @@ export default function ReaderPage() {
   // Reset filter when switching to smart view (default to unread)
   useEffect(() => {
     const prev = prevViewRef.current
-    
+
     // When entering smart view, default to 'unread' filter
     if (isSmartView && !prev.isSmartView) {
       setFilterType('unread')
@@ -278,9 +296,9 @@ export default function ReaderPage() {
   // Also reset selected entry when switching views to prevent stale entries
   useEffect(() => {
     const prev = prevViewRef.current
-    const viewChanged = 
-      prev.feedId !== selectedFeedId || 
-      prev.folderId !== selectedFolderId || 
+    const viewChanged =
+      prev.feedId !== selectedFeedId ||
+      prev.folderId !== selectedFolderId ||
       prev.isSmartView !== isSmartView
 
     if (viewChanged) {
@@ -291,7 +309,7 @@ export default function ReaderPage() {
         setSelectedEntryId(null)
         selectedEntryOriginalDataRef.current = null
       }
-      
+
       // Determine slide direction based on view change
       // Smart view slides from left, others slide from right
       if (isSmartView && !prev.isSmartView) {
@@ -314,7 +332,7 @@ export default function ReaderPage() {
   // Handle entry selection - automatically mark as read
   const handleSelectEntry = async (entry: EntryWithState) => {
     setSelectedEntryId(entry.id)
-    
+
     // Save the original position data when first selecting an entry
     // This ensures the entry stays in place even after like/dislike/bookmark actions
     if (selectedEntryOriginalDataRef.current?.id !== entry.id) {
@@ -324,7 +342,7 @@ export default function ReaderPage() {
         publishedAt: entry.published_at,
       }
     }
-    
+
     // Auto-mark as read when selecting an unread entry
     if (!entry.is_read) {
       await updateMutation.mutateAsync({
@@ -348,24 +366,28 @@ export default function ReaderPage() {
       {!isFullscreen && showEntryList && (
         <>
           <div
-            className={`relative flex min-w-0 flex-col border-r border-border bg-card/50 ${
+            className={`border-border bg-card/50 relative flex min-w-0 flex-col border-r ${
               isMobile ? 'w-full' : ''
             }`}
-            style={!isMobile ? { width: `${entriesWidth}px`, minWidth: '280px', maxWidth: '500px' } : undefined}
+            style={
+              !isMobile
+                ? { width: `${entriesWidth}px`, minWidth: '280px', maxWidth: '500px' }
+                : undefined
+            }
           >
             {/* Filters */}
-            <div className="border-b border-border bg-card p-3">
+            <div className="border-border bg-card border-b p-3">
               {isSmartView ? (
                 /* Smart view header + filters */
                 <div className="space-y-2">
                   {/* Smart Header */}
-                  <div className="flex min-w-0 items-center gap-2 rounded-lg bg-primary/5 px-3 py-1.5 animate-fade-in">
-                    <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                    <span className="text-sm font-medium text-primary">{t('smart.title')}</span>
-                    <span className="text-xs text-muted-foreground">{t('smart.description')}</span>
+                  <div className="bg-primary/5 animate-fade-in flex min-w-0 items-center gap-2 rounded-lg px-3 py-1.5">
+                    <Sparkles className="text-primary h-4 w-4 animate-pulse" />
+                    <span className="text-primary text-sm font-medium">{t('smart.title')}</span>
+                    <span className="text-muted-foreground text-xs">{t('smart.description')}</span>
                   </div>
                   {/* Filter tabs for Smart view */}
-                  <div className="@container flex min-w-0 items-center gap-1 rounded-lg bg-muted/50 p-1">
+                  <div className="bg-muted/50 @container flex min-w-0 items-center gap-1 rounded-lg p-1">
                     <FilterTab
                       active={filterType === 'unread'}
                       onClick={() => handleFilterChange('unread')}
@@ -384,7 +406,7 @@ export default function ReaderPage() {
                 /* Regular view filters */
                 <div className="flex items-center gap-2">
                   {/* Filter tabs */}
-                  <div className="@container flex min-w-0 flex-1 items-center gap-1 rounded-lg bg-muted/50 p-1">
+                  <div className="bg-muted/50 @container flex min-w-0 flex-1 items-center gap-1 rounded-lg p-1">
                     <FilterTab
                       active={filterType === 'all'}
                       onClick={() => handleFilterChange('all')}
@@ -419,11 +441,11 @@ export default function ReaderPage() {
 
             {/* Smart view banner when vectorization is disabled */}
             {isSmartView && !isVectorizationEnabled && (
-              <div className="border-b border-border bg-muted/30 px-3 py-2">
+              <div className="border-border bg-muted/30 border-b px-3 py-2">
                 <div className="flex items-start gap-2 text-sm">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-foreground">{t('smart.limitedMode')}</p>
+                    <p className="text-foreground font-medium">{t('smart.limitedMode')}</p>
                     <p className="text-muted-foreground">{t('smart.enableVectorizationHint')}</p>
                   </div>
                 </div>
@@ -443,7 +465,7 @@ export default function ReaderPage() {
                 }`}
               >
                 {isLoading && (
-                  <div className="divide-y divide-border/40 px-1 py-0.5">
+                  <div className="divide-border/40 divide-y px-1 py-0.5">
                     {Array.from({ length: 5 }).map((_, index) => (
                       <EntryListItemSkeleton key={index} />
                     ))}
@@ -462,17 +484,17 @@ export default function ReaderPage() {
 
                 {entries.length === 0 && !isLoading && (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                      <Inbox className="h-8 w-8 text-muted-foreground" />
+                    <div className="bg-muted mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                      <Inbox className="text-muted-foreground h-8 w-8" />
                     </div>
                     <p className="text-muted-foreground">{t('entries.noEntries')}</p>
-                    <p className="mt-1 text-xs text-muted-foreground/60">
+                    <p className="text-muted-foreground/60 mt-1 text-xs">
                       {t('empty.tryChangingFilter')}
                     </p>
                   </div>
                 )}
 
-                <div className="divide-y divide-border/40 px-1 py-0.5">
+                <div className="divide-border/40 divide-y px-1 py-0.5">
                   {entries.map((entry, index) => (
                     <EntryListItem
                       key={entry.id}
@@ -481,7 +503,10 @@ export default function ReaderPage() {
                       onClick={() => handleSelectEntry(entry)}
                       style={{ animationDelay: `${index * 0.03}s` }}
                       showFeedInfo={!selectedFeedId}
-                      showReadLaterRemaining={filterType === 'read-later' && (user?.settings?.show_read_later_remaining ?? true)}
+                      showReadLaterRemaining={
+                        filterType === 'read-later' &&
+                        (user?.settings?.show_read_later_remaining ?? true)
+                      }
                       showPreferenceScore={isSmartView && showPreferenceScore}
                     />
                   ))}
@@ -495,15 +520,19 @@ export default function ReaderPage() {
                 {/* Loading more indicator */}
                 {isFetchingNextPage && (
                   <div className="flex items-center justify-center py-6">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-sm text-muted-foreground">{t('entries.loadingMore')}</span>
+                    <Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
+                    <span className="text-muted-foreground ml-2 text-sm">
+                      {t('entries.loadingMore')}
+                    </span>
                   </div>
                 )}
 
                 {/* End of list indicator */}
                 {!hasNextPage && entries.length > 0 && (
                   <div className="flex items-center justify-center py-6">
-                    <span className="text-sm text-muted-foreground">{t('entries.noMoreEntries')}</span>
+                    <span className="text-muted-foreground text-sm">
+                      {t('entries.noMoreEntries')}
+                    </span>
                   </div>
                 )}
               </div>
@@ -511,7 +540,9 @@ export default function ReaderPage() {
             {/* Resize handle - desktop only, positioned inside container */}
             {!isMobile && (
               <ResizeHandle
-                onResize={(delta) => setEntriesWidth((w) => Math.max(280, Math.min(500, w + delta)))}
+                onResize={(delta) =>
+                  setEntriesWidth((w) => Math.max(280, Math.min(500, w + delta)))
+                }
               />
             )}
           </div>
@@ -520,7 +551,10 @@ export default function ReaderPage() {
 
       {/* Reading pane */}
       {showReader && (
-        <div key={selectedEntryId || 'empty'} className="reader-transition flex min-w-0 flex-1 flex-col">
+        <div
+          key={selectedEntryId || 'empty'}
+          className="reader-transition flex min-w-0 flex-1 flex-col"
+        >
           {isLoadingEntry && selectedEntryId ? (
             <ArticleReaderSkeleton />
           ) : selectedEntry ? (
@@ -536,13 +570,15 @@ export default function ReaderPage() {
               showCloseButton={isMobile}
             />
           ) : !isMobile ? (
-            <div className="flex min-w-0 flex-1 flex-col items-center justify-center bg-background">
+            <div className="bg-background flex min-w-0 flex-1 flex-col items-center justify-center">
               <div className="text-center">
-                <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-muted">
-                  <BookOpen className="h-10 w-10 text-muted-foreground" />
+                <div className="bg-muted mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl">
+                  <BookOpen className="text-muted-foreground h-10 w-10" />
                 </div>
-                <h3 className="font-display text-lg font-semibold text-foreground">{t('empty.selectArticle')}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <h3 className="font-display text-foreground text-lg font-semibold">
+                  {t('empty.selectArticle')}
+                </h3>
+                <p className="text-muted-foreground mt-1 text-sm">
                   {t('empty.selectArticleDescription')}
                 </p>
               </div>
@@ -608,12 +644,12 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
 
   return (
     <div
-      className="absolute -right-1 top-0 bottom-0 w-2 cursor-col-resize"
+      className="absolute top-0 -right-1 bottom-0 w-2 cursor-col-resize"
       onMouseDown={handleMouseDown}
     >
       <div
         className={`absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-colors ${
-          isDragging ? 'bg-primary' : 'bg-transparent hover:bg-border'
+          isDragging ? 'bg-primary' : 'hover:bg-border bg-transparent'
         }`}
       />
     </div>
@@ -652,51 +688,49 @@ function EntryListItem({
     <div
       onClick={onClick}
       className={`group animate-fade-in cursor-pointer px-1.5 py-1.5 transition-all duration-200 ${
-        isSelected 
-          ? 'relative before:absolute before:inset-y-0.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary' 
+        isSelected
+          ? 'before:bg-primary relative before:absolute before:inset-y-0.5 before:left-0 before:w-0.5 before:rounded-full'
           : ''
       }`}
       style={style}
     >
-      <div 
+      <div
         className={`rounded-lg px-2.5 py-2 transition-all duration-200 ${
-          isSelected 
-            ? 'bg-primary/8 ring-1 ring-primary/20' 
-            : 'hover:bg-accent/40'
+          isSelected ? 'bg-primary/8 ring-primary/20 ring-1' : 'hover:bg-accent/40'
         }`}
       >
         <div className="flex gap-2.5">
           {/* Unread indicator */}
           <div className="mt-1.5 flex w-2.5 shrink-0 justify-center">
             {!entry.is_read && (
-              <div className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_1px] shadow-primary/40" />
+              <div className="bg-primary shadow-primary/40 h-1.5 w-1.5 rounded-full shadow-[0_0_6px_1px]" />
             )}
           </div>
-          
+
           <div className="min-w-0 flex-1">
             {/* Feed info for aggregated views */}
             {showFeedInfo && (entry.feed_title || entry.feed_icon_url) && (
               <div className="mb-1 flex items-center gap-1.5">
                 {entry.feed_icon_url ? (
-                  <img 
-                    src={entry.feed_icon_url} 
-                    alt="" 
-                    className="h-3.5 w-3.5 shrink-0 rounded-sm object-cover" 
+                  <img
+                    src={entry.feed_icon_url}
+                    alt=""
+                    className="h-3.5 w-3.5 shrink-0 rounded-sm object-cover"
                   />
                 ) : (
-                  <div className="h-3.5 w-3.5 shrink-0 rounded-sm bg-muted" />
+                  <div className="bg-muted h-3.5 w-3.5 shrink-0 rounded-sm" />
                 )}
-                <span className="truncate text-xs font-medium text-muted-foreground">
+                <span className="text-muted-foreground truncate text-xs font-medium">
                   {entry.feed_title || 'Unknown feed'}
                 </span>
               </div>
             )}
-            
+
             <h3
               className={`mb-1 line-clamp-2 text-[15px] leading-snug transition-colors duration-200 ${
-                entry.is_read 
-                  ? 'text-muted-foreground group-hover:text-foreground/80' 
-                  : 'font-medium text-foreground'
+                entry.is_read
+                  ? 'text-muted-foreground group-hover:text-foreground/80'
+                  : 'text-foreground font-medium'
               }`}
             >
               {entry.title}
@@ -705,54 +739,58 @@ function EntryListItem({
             {/* Fixed height summary area for consistent card size */}
             <div className="mb-1.5 h-10">
               {entry.summary && (
-                <p className="line-clamp-2 text-sm leading-relaxed text-muted-foreground/70">
+                <p className="text-muted-foreground/70 line-clamp-2 text-sm leading-relaxed">
                   {stripHtmlTags(entry.summary)}
                 </p>
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
-              {entry.author && (
-                <span className="max-w-[120px] truncate">{entry.author}</span>
-              )}
+            <div className="text-muted-foreground/80 flex items-center gap-2 text-xs">
+              {entry.author && <span className="max-w-[120px] truncate">{entry.author}</span>}
               {entry.author && entry.published_at && (
                 <span className="text-muted-foreground/40">·</span>
               )}
               {entry.published_at && (
-                <span className="tabular-nums">{format(new Date(entry.published_at), 'MMM d')}</span>
+                <span className="tabular-nums">
+                  {format(new Date(entry.published_at), 'MMM d')}
+                </span>
               )}
 
               <div className="ml-auto flex items-center gap-1.5">
                 {/* M3: Preference score badge */}
-                {showPreferenceScore && entry.preference_score !== null && entry.preference_score !== undefined && (
-                  <span
-                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
-                      entry.preference_score >= 70
-                        ? 'bg-green-500/10 text-green-500'
-                        : entry.preference_score >= 50
-                          ? 'bg-amber-500/10 text-amber-500'
-                          : 'bg-muted text-muted-foreground'
-                    }`}
-                    title={`Preference score: ${entry.preference_score.toFixed(0)}%`}
-                  >
-                    {entry.preference_score.toFixed(0)}%
-                  </span>
-                )}
+                {showPreferenceScore &&
+                  entry.preference_score !== null &&
+                  entry.preference_score !== undefined && (
+                    <span
+                      className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
+                        entry.preference_score >= 70
+                          ? 'bg-green-500/10 text-green-500'
+                          : entry.preference_score >= 50
+                            ? 'bg-amber-500/10 text-amber-500'
+                            : 'bg-muted text-muted-foreground'
+                      }`}
+                      title={`Preference score: ${entry.preference_score.toFixed(0)}%`}
+                    >
+                      {entry.preference_score.toFixed(0)}%
+                    </span>
+                  )}
                 {entry.is_liked === true && (
                   <Heart className="h-3.5 w-3.5 fill-current text-red-500" />
                 )}
                 {entry.is_liked === false && (
-                  <ThumbsDown className="h-3.5 w-3.5 fill-current text-muted-foreground" />
+                  <ThumbsDown className="text-muted-foreground h-3.5 w-3.5 fill-current" />
                 )}
                 {entry.read_later && !showReadLaterRemaining && (
-                  <Clock className="h-3.5 w-3.5 text-primary" />
+                  <Clock className="text-primary h-3.5 w-3.5" />
                 )}
                 {remainingTime && (
-                  <span className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
-                    remainingTime === 'Expired'
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-primary/10 text-primary'
-                  }`}>
+                  <span
+                    className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
+                      remainingTime === 'Expired'
+                        ? 'bg-destructive/10 text-destructive'
+                        : 'bg-primary/10 text-primary'
+                    }`}
+                  >
                     <Timer className="h-2.5 w-2.5" />
                     {remainingTime}
                   </span>
@@ -765,7 +803,6 @@ function EntryListItem({
     </div>
   )
 }
-
 
 function FilterTab({
   active,
@@ -819,7 +856,7 @@ function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: s
         onClick={() => setShowConfirm(true)}
         disabled={markAllMutation.isPending}
         title={t('entries.markAll')}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+        className="text-muted-foreground hover:bg-muted hover:text-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50"
       >
         <CheckCheck className="h-4 w-4" />
       </button>
@@ -834,7 +871,9 @@ function MarkAllReadButton({ feedId, folderId }: { feedId?: string; folderId?: s
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('actions.close')}</AlertDialogClose>
+            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
+              {t('actions.close')}
+            </AlertDialogClose>
             <AlertDialogClose
               className={buttonVariants()}
               onClick={handleMarkAll}
@@ -865,20 +904,20 @@ function EntryListItemSkeleton() {
           <div className="mt-1.5 flex w-2.5 shrink-0 justify-center">
             <Skeleton className="h-1.5 w-1.5 rounded-full" />
           </div>
-          
+
           <div className="min-w-0 flex-1 space-y-1">
             {/* Title - 2 lines */}
             <div className="space-y-1">
               <Skeleton className="h-[18px] w-full" />
               <Skeleton className="h-[18px] w-3/4" />
             </div>
-            
+
             {/* Summary - fixed height area */}
             <div className="h-10 space-y-1">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-5/6" />
             </div>
-            
+
             {/* Meta info */}
             <div className="flex items-center gap-2">
               <Skeleton className="h-3 w-16" />
@@ -890,4 +929,3 @@ function EntryListItemSkeleton() {
     </div>
   )
 }
-

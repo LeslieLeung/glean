@@ -30,13 +30,11 @@ export default function UsersPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
+      <div className="border-border bg-card border-b px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{t('admin:users.title')}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('admin:users.subtitle')}
-            </p>
+            <h1 className="text-foreground text-2xl font-bold">{t('admin:users.title')}</h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t('admin:users.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -46,8 +44,8 @@ export default function UsersPage() {
         {/* Search */}
         <div className="mb-6">
           <form onSubmit={handleSearch} className="flex gap-2">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <div className="relative max-w-md flex-1">
+              <Search className="text-muted-foreground absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2" />
               <Input
                 type="text"
                 value={searchInput}
@@ -74,32 +72,32 @@ export default function UsersPage() {
         </div>
 
         {/* Users table */}
-        <div className="rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-border bg-card rounded-xl border shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <tr className="border-border bg-muted/50 border-b">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.email')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.name')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.status')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.created')}
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-left text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.lastLogin')}
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="text-muted-foreground px-6 py-4 text-right text-xs font-semibold tracking-wider uppercase">
                     {t('admin:users.table.actions')}
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-border divide-y">
                 {isLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
@@ -127,12 +125,10 @@ export default function UsersPage() {
                   data.items.map((user) => (
                     <tr key={user.id} className="hover:bg-muted/50 transition-colors">
                       <td className="px-6 py-4">
-                        <p className="text-sm font-medium text-foreground">{user.email}</p>
+                        <p className="text-foreground text-sm font-medium">{user.email}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">
-                          {user.username || '-'}
-                        </p>
+                        <p className="text-muted-foreground text-sm">{user.username || '-'}</p>
                       </td>
                       <td className="px-6 py-4">
                         {user.is_active ? (
@@ -148,12 +144,12 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           {format(new Date(user.created_at), 'MMM d, yyyy')}
                         </p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-muted-foreground text-sm">
                           {user.last_login_at
                             ? format(new Date(user.last_login_at), 'MMM d, yyyy HH:mm')
                             : t('admin:users.never')}
@@ -180,7 +176,7 @@ export default function UsersPage() {
                 ) : (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center">
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         {search ? t('admin:users.emptyFiltered') : t('admin:users.empty')}
                       </p>
                     </td>
@@ -192,9 +188,13 @@ export default function UsersPage() {
 
           {/* Pagination */}
           {data && data.total_pages > 1 && (
-            <div className="flex items-center justify-between border-t border-border px-6 py-4">
-              <p className="text-sm text-muted-foreground">
-                {t('admin:users.pagination.page', { page: data.page, totalPages: data.total_pages, total: data.total })}
+            <div className="border-border flex items-center justify-between border-t px-6 py-4">
+              <p className="text-muted-foreground text-sm">
+                {t('admin:users.pagination.page', {
+                  page: data.page,
+                  totalPages: data.total_pages,
+                  total: data.total,
+                })}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -221,4 +221,3 @@ export default function UsersPage() {
     </div>
   )
 }
-

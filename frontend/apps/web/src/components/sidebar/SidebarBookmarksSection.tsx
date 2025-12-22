@@ -23,7 +23,15 @@ import {
   Input,
   Label,
 } from '@glean/ui'
-import { ChevronRight, Bookmark, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import {
+  ChevronRight,
+  Bookmark,
+  FolderOpen,
+  FolderPlus,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from 'lucide-react'
 import type { FolderTreeNode } from '@glean/types'
 
 interface SidebarBookmarksSectionProps {
@@ -67,7 +75,7 @@ export function SidebarBookmarksSection({
         <div className="mb-1 flex items-center justify-between md:mb-2">
           <button
             onClick={onToggleBookmarkSection}
-            className="flex items-center gap-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-muted-foreground md:px-3 md:text-xs"
+            className="text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wider uppercase transition-colors md:px-3 md:text-xs"
           >
             <ChevronRight
               className={`h-3 w-3 transition-transform ${
@@ -79,7 +87,7 @@ export function SidebarBookmarksSection({
           <div className="flex items-center gap-1">
             <button
               onClick={() => onCreateFolder(null)}
-              className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              className="text-muted-foreground/60 hover:bg-accent hover:text-foreground rounded p-1 transition-colors"
               title={t('actions.createFolder')}
             >
               <FolderPlus className="h-4 w-4" />
@@ -97,9 +105,7 @@ export function SidebarBookmarksSection({
                 ? 'bg-primary/10 text-primary shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             } ${!isSidebarOpen && !isMobileSidebarOpen ? 'justify-center' : ''}`}
-            title={
-              !isSidebarOpen && !isMobileSidebarOpen ? t('bookmarks.allBookmarks') : undefined
-            }
+            title={!isSidebarOpen && !isMobileSidebarOpen ? t('bookmarks.allBookmarks') : undefined}
           >
             <span
               className={`shrink-0 ${
@@ -110,14 +116,12 @@ export function SidebarBookmarksSection({
             >
               <Bookmark className="h-4 w-4 md:h-5 md:w-5" />
             </span>
-            {(isSidebarOpen || isMobileSidebarOpen) && (
-              <span>{t('bookmarks.allBookmarks')}</span>
-            )}
+            {(isSidebarOpen || isMobileSidebarOpen) && <span>{t('bookmarks.allBookmarks')}</span>}
             {isBookmarksPage &&
               !currentBookmarkFolderId &&
               !currentBookmarkTagId &&
               (isSidebarOpen || isMobileSidebarOpen) && (
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                <span className="bg-primary ml-auto h-1.5 w-1.5 rounded-full" />
               )}
           </button>
 
@@ -206,7 +210,7 @@ function SidebarBookmarkFolderItem({
       <div
         className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-all duration-200 md:px-3 md:py-2 ${
           isActive
-            ? 'bg-primary/10 font-medium text-primary'
+            ? 'bg-primary/10 text-primary font-medium'
             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
         }`}
       >
@@ -222,15 +226,12 @@ function SidebarBookmarkFolderItem({
           )}
           <FolderOpen className="h-4 w-4 shrink-0" />
         </button>
-        <button
-          onClick={() => onSelect(folder.id)}
-          className="min-w-0 flex-1 truncate text-left"
-        >
+        <button onClick={() => onSelect(folder.id)} className="min-w-0 flex-1 truncate text-left">
           {folder.name}
         </button>
 
         <Menu>
-          <MenuTrigger className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100">
+          <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
             <MoreHorizontal className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -252,7 +253,7 @@ function SidebarBookmarkFolderItem({
       </div>
 
       {isExpanded && hasChildren && (
-        <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-2">
+        <div className="border-border mt-0.5 ml-4 space-y-0.5 border-l pl-2">
           {folder.children.map((child) => (
             <SidebarBookmarkFolderItem
               key={child.id}
@@ -327,4 +328,3 @@ function SidebarBookmarkFolderItem({
     </div>
   )
 }
-

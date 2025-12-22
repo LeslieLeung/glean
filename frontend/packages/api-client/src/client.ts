@@ -1,4 +1,8 @@
-import axios, { type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios'
+import axios, {
+  type AxiosInstance,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { tokenStorage } from './tokenStorage'
 import { logger } from '@glean/logger'
 
@@ -65,12 +69,12 @@ export class ApiClient {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
-      
+
       // Log request in development mode
       if (import.meta.env?.MODE !== 'production') {
         logger.debug(`API Request: ${config.method?.toUpperCase()} ${config.url}`)
       }
-      
+
       return config
     })
 
@@ -85,7 +89,7 @@ export class ApiClient {
       },
       async (error) => {
         const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
-        
+
         // Log error (but not for 304 Not Modified, which is a normal caching response)
         const status = error.response?.status
         if (status !== 304) {
@@ -98,7 +102,10 @@ export class ApiClient {
         }
 
         // Don't try to refresh if this is already a refresh request or auth request
-        if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
+        if (
+          originalRequest.url?.includes('/auth/refresh') ||
+          originalRequest.url?.includes('/auth/login')
+        ) {
           logger.warn('Authentication failed, redirecting to login')
           await this.clearTokensAndRedirect()
           return Promise.reject(error)

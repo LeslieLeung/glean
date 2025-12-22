@@ -29,4 +29,3 @@ services:
 volumes:
   postgres_test_data:
   redis_test_data:
-

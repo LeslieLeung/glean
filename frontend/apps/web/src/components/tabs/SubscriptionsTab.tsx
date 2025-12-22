@@ -144,9 +144,9 @@ export function SubscriptionsTab() {
   return (
     <div className="w-full space-y-4 pb-6">
       {/* Actions Bar */}
-      <div className="flex items-center justify-between gap-4 w-full">
+      <div className="flex w-full items-center justify-between gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder={t('manageFeeds.searchPlaceholder')}
             value={searchQuery}
@@ -156,11 +156,21 @@ export function SubscriptionsTab() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleImport} disabled={importMutation.isPending}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImport}
+            disabled={importMutation.isPending}
+          >
             <Upload className="h-4 w-4" />
             {t('manageFeeds.importOPML')}
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={exportMutation.isPending}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={exportMutation.isPending}
+          >
             <Download className="h-4 w-4" />
             {t('manageFeeds.exportOPML')}
           </Button>
@@ -177,10 +187,10 @@ export function SubscriptionsTab() {
       />
 
       {/* Subscriptions List */}
-      <div className="w-full border border-border rounded-lg overflow-hidden">
+      <div className="border-border w-full overflow-hidden rounded-lg border">
         {/* Header */}
-        <div className="bg-muted/50 px-4 py-3 border-b border-border">
-          <span className="text-sm font-medium text-muted-foreground">
+        <div className="bg-muted/50 border-border border-b px-4 py-3">
+          <span className="text-muted-foreground text-sm font-medium">
             {data
               ? t('manageFeeds.subscriptionCount', {
                   count: data.total || 0,
@@ -190,43 +200,42 @@ export function SubscriptionsTab() {
         </div>
 
         {/* List */}
-        <div className="divide-y divide-border">
+        <div className="divide-border divide-y">
           {isLoading ? (
             // Skeleton loading
             Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="p-4 space-y-2">
+              <div key={i} className="space-y-2 p-4">
                 <Skeleton className="h-5 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ))
           ) : error ? (
             <div className="p-8 text-center">
-              <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">{t('manageFeeds.failedToLoad')}</p>
+              <AlertCircle className="text-destructive mx-auto mb-2 h-8 w-8" />
+              <p className="text-muted-foreground text-sm">{t('manageFeeds.failedToLoad')}</p>
             </div>
           ) : data && data.items && data.items.length > 0 ? (
             data.items.map((subscription: Subscription) => (
-              <div
-                key={subscription.id}
-                className="w-full p-4 hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div key={subscription.id} className="hover:bg-muted/30 w-full p-4 transition-colors">
+                <div className="flex w-full items-center gap-3">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
                     {subscription.feed.icon_url ? (
                       <img
                         src={subscription.feed.icon_url}
                         alt=""
-                        className="h-5 w-5 rounded shrink-0"
+                        className="h-5 w-5 shrink-0 rounded"
                       />
                     ) : (
-                      <div className="h-5 w-5 rounded bg-muted shrink-0" />
+                      <div className="bg-muted h-5 w-5 shrink-0 rounded" />
                     )}
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-foreground truncate">
-                        {subscription.custom_title || subscription.feed.title || t('manageFeeds.untitledFeed')}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-foreground truncate font-medium">
+                        {subscription.custom_title ||
+                          subscription.feed.title ||
+                          t('manageFeeds.untitledFeed')}
                       </h3>
-                      <p className="text-sm text-muted-foreground truncate">
+                      <p className="text-muted-foreground truncate text-sm">
                         {subscription.feed.url}
                       </p>
                     </div>
@@ -249,17 +258,21 @@ export function SubscriptionsTab() {
                       disabled={refreshingId === subscription.id}
                       title={t('manageFeeds.refreshFeed')}
                     >
-                      <RefreshCw className={`h-4 w-4 ${refreshingId === subscription.id ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`h-4 w-4 ${refreshingId === subscription.id ? 'animate-spin' : ''}`}
+                      />
                     </Button>
 
                     <Menu>
-                      <MenuTrigger
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                      >
+                      <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 w-8 items-center justify-center rounded-lg transition-colors">
                         <MoreHorizontal className="h-4 w-4" />
                       </MenuTrigger>
                       <MenuPopup align="end">
-                        <MenuItem onClick={() => {/* TODO: Implement edit */}}>
+                        <MenuItem
+                          onClick={() => {
+                            /* TODO: Implement edit */
+                          }}
+                        >
                           <Pencil className="h-4 w-4" />
                           {t('manageFeeds.edit')}
                         </MenuItem>
@@ -282,16 +295,20 @@ export function SubscriptionsTab() {
             ))
           ) : (
             <div className="p-8 text-center">
-              <Rss className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-2">{t('manageFeeds.noSubscriptionsFound')}</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                {searchQuery
-                  ? t('manageFeeds.tryDifferentSearch')
-                  : t('manageFeeds.addFirstFeed')}
+              <Rss className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
+              <h3 className="text-foreground mb-2 text-lg font-medium">
+                {t('manageFeeds.noSubscriptionsFound')}
+              </h3>
+              <p className="text-muted-foreground mb-4 text-sm">
+                {searchQuery ? t('manageFeeds.tryDifferentSearch') : t('manageFeeds.addFirstFeed')}
               </p>
               {!searchQuery && (
-                <Button onClick={() => {/* TODO: Add feed dialog */}}>
-                  <Plus className="h-4 w-4 mr-2" />
+                <Button
+                  onClick={() => {
+                    /* TODO: Add feed dialog */
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
                   {t('manageFeeds.addFeed')}
                 </Button>
               )}
@@ -301,8 +318,8 @@ export function SubscriptionsTab() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
-            <div className="text-sm text-muted-foreground">
+          <div className="border-border bg-muted/30 flex items-center justify-between border-t px-4 py-3">
+            <div className="text-muted-foreground text-sm">
               {t('manageFeeds.pageInfo', {
                 page,
                 totalPages,
@@ -344,7 +361,9 @@ export function SubscriptionsTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>{t('manageFeeds.cancel')}</AlertDialogClose>
+            <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
+              {t('manageFeeds.cancel')}
+            </AlertDialogClose>
             <AlertDialogClose
               className={buttonVariants({ variant: 'destructive' })}
               onClick={() => deletingId && handleDelete(deletingId)}

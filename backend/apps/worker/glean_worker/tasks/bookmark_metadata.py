@@ -11,7 +11,7 @@ import httpx
 from sqlalchemy import select
 
 from glean_database.models import Bookmark
-from glean_database.session import get_session
+from glean_database.session import get_session_context
 
 # Default user agent to avoid being blocked
 USER_AGENT = (
@@ -145,7 +145,7 @@ async def fetch_bookmark_metadata_task(
     """
     print(f"[fetch_bookmark_metadata] Starting fetch for bookmark_id: {bookmark_id}")
 
-    async with get_session() as session:
+    async with get_session_context() as session:
         try:
             # Get bookmark from database
             stmt = select(Bookmark).where(Bookmark.id == bookmark_id)

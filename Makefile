@@ -1,5 +1,6 @@
 .PHONY: help setup up down api worker web admin electron db-migrate db-upgrade db-downgrade \
-        test lint format clean logs install-backend install-frontend install-root verify dev-all
+        test lint format clean logs install-backend install-frontend install-root verify dev-all \
+        pre-commit-install pre-commit-uninstall pre-commit-run
 
 # Default target
 help:
@@ -33,6 +34,8 @@ help:
 	@echo "  make test           - Run all tests"
 	@echo "  make lint           - Run linters"
 	@echo "  make format         - Format code"
+	@echo "  make pre-commit-install   - Install pre-commit hooks"
+	@echo "  make pre-commit-run       - Run pre-commit on all files"
 	@echo ""
 	@echo "Other:"
 	@echo "  make verify         - Verify M0 setup"
@@ -154,6 +157,24 @@ format:
 	@cd frontend && pnpm format 2>/dev/null || cd frontend && npx prettier --write "**/*.{ts,tsx,js,jsx,json}"
 
 # =============================================================================
+# Pre-commit Hooks
+# =============================================================================
+
+pre-commit-install:
+	@echo "🪝 Installing pre-commit hooks..."
+	@pre-commit install
+	@echo "✅ Pre-commit hooks installed"
+
+pre-commit-uninstall:
+	@echo "🗑️  Uninstalling pre-commit hooks..."
+	@pre-commit uninstall
+	@echo "✅ Pre-commit hooks uninstalled"
+
+pre-commit-run:
+	@echo "🔍 Running pre-commit on all files..."
+	@pre-commit run --all-files
+
+# =============================================================================
 # Other
 # =============================================================================
 
@@ -191,4 +212,3 @@ dev:
 	@echo "    Terminal 1: make api"
 	@echo "    Terminal 2: make worker"
 	@echo "    Terminal 3: make web"
-

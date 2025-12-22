@@ -67,4 +67,3 @@ export class FolderService {
     await this.client.post('/folders/reorder', data)
   }
 }
-

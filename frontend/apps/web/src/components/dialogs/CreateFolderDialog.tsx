@@ -46,12 +46,12 @@ export function CreateFolderDialog({
               ? t(
                   type === 'feed'
                     ? 'dialogs.createFolder.subfolderDescriptionFeeds'
-                    : 'dialogs.createFolder.subfolderDescriptionBookmarks',
+                    : 'dialogs.createFolder.subfolderDescriptionBookmarks'
                 )
               : t(
                   type === 'feed'
                     ? 'dialogs.createFolder.descriptionFeeds'
-                    : 'dialogs.createFolder.descriptionBookmarks',
+                    : 'dialogs.createFolder.descriptionBookmarks'
                 )}
           </DialogDescription>
         </DialogHeader>
@@ -72,10 +72,7 @@ export function CreateFolderDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common.cancel')}
           </Button>
           <Button onClick={onSubmit} disabled={!name.trim() || isSubmitting}>
@@ -86,4 +83,3 @@ export function CreateFolderDialog({
     </Dialog>
   )
 }
-

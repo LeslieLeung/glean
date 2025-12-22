@@ -3,7 +3,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef } from 'react'
 import { Rss, ChevronLeft, Menu as MenuIcon, X } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
-import { buttonVariants, AlertDialog, AlertDialogPopup, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogClose } from '@glean/ui'
+import {
+  buttonVariants,
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogClose,
+} from '@glean/ui'
 import type { Subscription, TagWithCounts } from '@glean/types'
 import { useAuthStore } from '../stores/authStore'
 import { useBookmarkStore } from '../stores/bookmarkStore'
@@ -149,7 +158,7 @@ export function Layout() {
       fetchFolders('bookmark')
       fetchTags()
     }
-  }, [user?.id, queryClient, fetchFolders, fetchTags])
+  }, [user?.id, user, queryClient, fetchFolders, fetchTags])
 
   // Handle sidebar resize
   useEffect(() => {
@@ -245,7 +254,7 @@ export function Layout() {
 
   const openCreateFolderDialog = (
     parentId: string | null = null,
-    type: 'feed' | 'bookmark' = 'feed',
+    type: 'feed' | 'bookmark' = 'feed'
   ) => {
     setCreateFolderParentId(parentId)
     setCreateFolderType(type)
@@ -313,15 +322,12 @@ export function Layout() {
     exportMutation.mutate()
   }
 
-  const subscriptionsByFolder = subscriptions.reduce<Record<string, Subscription[]>>(
-    (acc, sub) => {
-      const key = sub.folder_id || '__ungrouped__'
-      if (!acc[key]) acc[key] = []
-      acc[key].push(sub)
-      return acc
-    },
-    {},
-  )
+  const subscriptionsByFolder = subscriptions.reduce<Record<string, Subscription[]>>((acc, sub) => {
+    const key = sub.folder_id || '__ungrouped__'
+    if (!acc[key]) acc[key] = []
+    acc[key].push(sub)
+    return acc
+  }, {})
 
   const ungroupedSubscriptions = subscriptionsByFolder['__ungrouped__'] || []
 
@@ -332,20 +338,20 @@ export function Layout() {
   }, [location.pathname, searchParamsString])
 
   return (
-    <div className="flex h-screen flex-col bg-background md:flex-row">
+    <div className="bg-background flex h-screen flex-col md:flex-row">
       {/* Mobile Header */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 md:hidden">
+      <header className="border-border bg-card flex h-14 shrink-0 items-center justify-between border-b px-4 md:hidden">
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
         >
           <MenuIcon className="h-5 w-5" />
         </button>
         <Link to="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 shadow-md shadow-primary/20">
-            <Rss className="h-4 w-4 text-primary-foreground" />
+          <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br shadow-md">
+            <Rss className="text-primary-foreground h-4 w-4" />
           </div>
-          <span className="font-display text-lg font-bold text-foreground">Glean</span>
+          <span className="font-display text-foreground text-lg font-bold">Glean</span>
         </Link>
         <div className="w-10" />
       </header>
@@ -353,7 +359,7 @@ export function Layout() {
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
+          className="bg-background/80 fixed inset-0 z-40 backdrop-blur-sm md:hidden"
           onClick={() => setIsMobileSidebarOpen(false)}
         />
       )}
@@ -361,12 +367,7 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className={`
-          fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-card md:relative md:z-10
-          ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          md:translate-x-0
-          ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'}
-        `}
+        className={`border-border bg-card fixed inset-y-0 left-0 z-50 flex flex-col border-r md:relative md:z-10 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'} `}
         style={{
           width: isMobileSidebarOpen
             ? '288px'
@@ -377,16 +378,16 @@ export function Layout() {
       >
         {/* Logo */}
         <div
-          className={`flex items-center justify-between border-b border-border p-3 md:p-4 ${
+          className={`border-border flex items-center justify-between border-b p-3 md:p-4 ${
             isMacElectron ? 'md:pt-12' : ''
           }`}
         >
           <Link to="/" className="flex items-center gap-2.5 overflow-hidden md:gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary/20 md:h-9 md:w-9">
-              <Rss className="h-4 w-4 text-primary-foreground md:h-5 md:w-5" />
+            <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg md:h-9 md:w-9">
+              <Rss className="text-primary-foreground h-4 w-4 md:h-5 md:w-5" />
             </div>
             {(isSidebarOpen || isMobileSidebarOpen) && (
-              <span className="font-display text-lg font-bold text-foreground md:text-xl">
+              <span className="font-display text-foreground text-lg font-bold md:text-xl">
                 Glean
               </span>
             )}
@@ -394,7 +395,7 @@ export function Layout() {
           {/* Mobile close button */}
           <button
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
+            className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 w-8 items-center justify-center rounded-lg transition-colors md:hidden"
           >
             <X className="h-5 w-5" />
           </button>
@@ -403,7 +404,7 @@ export function Layout() {
         {/* Toggle button - desktop only */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute -right-3 top-16 z-10 hidden h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground md:flex"
+          className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground absolute top-16 -right-3 z-10 hidden h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors md:flex"
         >
           <ChevronLeft
             className={`h-4 w-4 transition-transform ${!isSidebarOpen ? 'rotate-180' : ''}`}
@@ -413,12 +414,12 @@ export function Layout() {
         {/* Resize handle - desktop only, when sidebar is expanded */}
         {isSidebarOpen && (
           <div
-            className="absolute -right-1 top-0 bottom-0 hidden w-2 cursor-col-resize md:block"
+            className="absolute top-0 -right-1 bottom-0 hidden w-2 cursor-col-resize md:block"
             onMouseDown={handleResizeStart}
           >
             <div
               className={`absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 transition-colors ${
-                isResizing ? 'bg-primary' : 'bg-transparent hover:bg-border'
+                isResizing ? 'bg-primary' : 'hover:bg-border bg-transparent'
               }`}
             />
           </div>
@@ -456,7 +457,7 @@ export function Layout() {
             setDragOverFolderId={setDragOverFolderId}
           />
 
-          <div className="my-2 border-t border-border md:my-3" />
+          <div className="border-border my-2 border-t md:my-3" />
 
           <SidebarBookmarksSection
             isSidebarOpen={isSidebarOpen}
@@ -475,7 +476,7 @@ export function Layout() {
             onDeleteFolder={deleteFolder}
           />
 
-          <div className="my-2 border-t border-border md:my-3" />
+          <div className="border-border my-2 border-t md:my-3" />
 
           <SidebarTagsSection
             isSidebarOpen={isSidebarOpen}
@@ -501,7 +502,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="min-h-0 flex-1 overflow-auto bg-background">
+      <main className="bg-background min-h-0 flex-1 overflow-auto">
         <div key={location.pathname} className="page-transition h-full">
           <Outlet />
         </div>
@@ -541,7 +542,9 @@ export function Layout() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t('opml.importCompleted')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('opml.feedsImported')}: {importResult?.success} · {t('opml.foldersCreated')}: {importResult?.folders_created} · {t('opml.failed')}: {importResult?.failed} · {t('opml.total')}: {importResult?.total}
+              {t('opml.feedsImported')}: {importResult?.success} · {t('opml.foldersCreated')}:{' '}
+              {importResult?.folders_created} · {t('opml.failed')}: {importResult?.failed} ·{' '}
+              {t('opml.total')}: {importResult?.total}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -2,10 +2,10 @@
 
 /**
  * Version Sync Script
- * 
+ *
  * Synchronizes the version from root package.json to all sub-packages.
  * Run this before creating a release to ensure all packages have the same version.
- * 
+ *
  * Usage:
  *   node scripts/sync-version.js
  *   npm run sync-version
@@ -43,16 +43,16 @@ let hasErrors = false;
 // Sync package.json files
 for (const relativePath of packageJsonPaths) {
   const fullPath = path.join(__dirname, '..', relativePath);
-  
+
   if (!fs.existsSync(fullPath)) {
     console.log(`⚠️  Skipping (not found): ${relativePath}`);
     continue;
   }
-  
+
   try {
     const packageJson = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
     const oldVersion = packageJson.version;
-    
+
     if (oldVersion === version) {
       console.log(`✓  Already up to date: ${relativePath}`);
     } else {
@@ -69,22 +69,22 @@ for (const relativePath of packageJsonPaths) {
 // Sync pyproject.toml files
 for (const relativePath of pyprojectPaths) {
   const fullPath = path.join(__dirname, '..', relativePath);
-  
+
   if (!fs.existsSync(fullPath)) {
     console.log(`⚠️  Skipping (not found): ${relativePath}`);
     continue;
   }
-  
+
   try {
     let content = fs.readFileSync(fullPath, 'utf-8');
-    
+
     // Match version line in pyproject.toml (e.g., version = "0.1.0")
     const versionRegex = /^version\s*=\s*"([^"]+)"/m;
     const match = content.match(versionRegex);
-    
+
     if (match) {
       const oldVersion = match[1];
-      
+
       if (oldVersion === version) {
         console.log(`✓  Already up to date: ${relativePath}`);
       } else {
@@ -109,4 +109,3 @@ console.log(`  3. Tag: git tag v${version}`);
 console.log(`  4. Push: git push && git push --tags`);
 
 process.exit(hasErrors ? 1 : 0);
-

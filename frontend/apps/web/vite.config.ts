@@ -50,10 +50,7 @@ export default defineConfig(({ mode }) => {
               },
               preload: {
                 // Preload scripts - use array for multiple entries
-                input: [
-                  'electron/preload.ts',
-                  'electron/config-preload.ts',
-                ],
+                input: ['electron/preload.ts', 'electron/config-preload.ts'],
                 vite: {
                   build: {
                     rollupOptions: {

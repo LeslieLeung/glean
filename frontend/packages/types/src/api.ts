@@ -69,7 +69,7 @@ export interface UpdateSubscriptionRequest {
 /** Update entry state request */
 export interface UpdateEntryStateRequest {
   is_read?: boolean
-  is_liked?: boolean | null  // null to clear like/dislike
+  is_liked?: boolean | null // null to clear like/dislike
   read_later?: boolean
 }
 

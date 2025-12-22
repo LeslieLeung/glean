@@ -27,14 +27,14 @@ export function AddFeedDialog({ onClose }: AddFeedDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="animate-fade-in w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+    <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="animate-fade-in border-border bg-card w-full max-w-md rounded-2xl border p-6 shadow-xl">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              <Sparkles className="h-5 w-5 text-primary" />
+            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl">
+              <Sparkles className="text-primary h-5 w-5" />
             </div>
-            <h2 className="font-display text-xl font-bold text-foreground">
+            <h2 className="font-display text-foreground text-xl font-bold">
               {t('dialogs.addFeed.title')}
             </h2>
           </div>
@@ -69,9 +69,7 @@ export function AddFeedDialog({ onClose }: AddFeedDialogProps) {
               disabled={discoverMutation.isPending}
               className="w-full"
             />
-            <p className="text-xs text-muted-foreground">
-              {t('dialogs.addFeed.urlDescription')}
-            </p>
+            <p className="text-muted-foreground text-xs">{t('dialogs.addFeed.urlDescription')}</p>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">
@@ -106,4 +104,3 @@ export function AddFeedDialog({ onClose }: AddFeedDialogProps) {
     </div>
   )
 }
-

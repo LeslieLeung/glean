@@ -134,9 +134,12 @@ function useActiveHeading(
       observer.observe(heading.element)
     })
 
+    // Capture current ref value for cleanup
+    const visibleHeadings = visibleHeadingsRef.current
+
     return () => {
       observer.disconnect()
-      visibleHeadingsRef.current.clear()
+      visibleHeadings.clear()
     }
   }, [headings, scrollContainerRef, isScrollingToHeading, activeId])
 
@@ -199,7 +202,7 @@ function useOutlineVisibility(
 
       if (timeDelta > 0 && viewportHeight > 0) {
         const scrollDelta = Math.abs(currentScrollTop - lastScrollTop)
-        const velocityVhPerSec = (scrollDelta / viewportHeight) / (timeDelta / 1000)
+        const velocityVhPerSec = scrollDelta / viewportHeight / (timeDelta / 1000)
 
         if (velocityVhPerSec > VELOCITY_THRESHOLD_VH_PER_SEC) {
           setIsVisible(true)
@@ -469,8 +472,10 @@ export function ArticleOutline({
         {/* Floating button with progress ring */}
         <button
           onClick={() => setIsOpen(true)}
-          className={`fixed right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-card/90 shadow-lg backdrop-blur-sm transition-all duration-300 ease-out ${
-            isVisible && !isOpen ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'
+          className={`bg-card/90 fixed right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ease-out ${
+            isVisible && !isOpen
+              ? 'translate-y-0 opacity-100'
+              : 'pointer-events-none translate-y-4 opacity-0'
           } ${className}`}
           style={{ bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))' }}
           aria-label="Show outline"
@@ -498,49 +503,47 @@ export function ArticleOutline({
               className="transition-all duration-150 ease-out"
             />
           </svg>
-          <List className="h-5 w-5 text-primary" />
+          <List className="text-primary h-5 w-5" />
         </button>
 
         {/* Drawer backdrop */}
         <div
-          className={`fixed inset-0 z-40 bg-background/60 backdrop-blur-sm transition-opacity duration-300 ${
-            isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          className={`bg-background/60 fixed inset-0 z-40 backdrop-blur-sm transition-opacity duration-300 ${
+            isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
           }`}
           onClick={() => setIsOpen(false)}
         />
 
         {/* Drawer */}
         <div
-          className={`fixed inset-y-0 right-0 z-50 w-[280px] max-w-[85vw] bg-card shadow-2xl transition-transform duration-300 ease-out ${
+          className={`bg-card fixed inset-y-0 right-0 z-50 w-[280px] max-w-[85vw] shadow-2xl transition-transform duration-300 ease-out ${
             isOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
           <div className="flex h-full flex-col">
             {/* Header with progress */}
-            <div className="border-b border-border/50 px-4 py-3">
+            <div className="border-border/50 border-b px-4 py-3">
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <List className="h-4 w-4 text-primary" />
-                  <span className="font-display text-sm font-semibold text-foreground">
+                  <List className="text-primary h-4 w-4" />
+                  <span className="font-display text-foreground text-sm font-semibold">
                     Table of Contents
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium tabular-nums text-primary">
-                    {progress}%
-                  </span>
+                  <span className="text-primary text-xs font-medium tabular-nums">{progress}%</span>
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+                    className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-150"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>
               {/* Progress bar */}
-              <div className="h-1 w-full overflow-hidden rounded-full bg-border/30">
+              <div className="bg-border/30 h-1 w-full overflow-hidden rounded-full">
                 <div
-                  className="h-full rounded-full bg-primary/70 transition-all duration-150 ease-out"
+                  className="bg-primary/70 h-full rounded-full transition-all duration-150 ease-out"
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -562,7 +565,9 @@ export function ArticleOutline({
                     >
                       <ChevronRight
                         className={`mt-0.5 h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
-                          activeId === heading.id ? 'rotate-90 text-primary' : 'text-muted-foreground/50'
+                          activeId === heading.id
+                            ? 'text-primary rotate-90'
+                            : 'text-muted-foreground/50'
                         }`}
                       />
                       <span className="line-clamp-2">{heading.text}</span>
@@ -573,8 +578,8 @@ export function ArticleOutline({
             </nav>
 
             {/* Footer */}
-            <div className="border-t border-border/50 px-4 py-2 text-center">
-              <span className="text-xs text-muted-foreground">
+            <div className="border-border/50 border-t px-4 py-2 text-center">
+              <span className="text-muted-foreground text-xs">
                 {headings.length} section{headings.length !== 1 ? 's' : ''}
               </span>
             </div>
@@ -596,19 +601,25 @@ export function ArticleOutline({
         <div className="mb-2 flex-none px-2">
           <div className="mb-1.5 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
-              <List className={`h-3 w-3 transition-opacity duration-500 ${isVisible ? 'text-primary/70' : 'text-muted-foreground/20'}`} />
-              <span className={`text-[10px] font-medium uppercase tracking-wider transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/70' : 'text-muted-foreground/20'}`}>
+              <List
+                className={`h-3 w-3 transition-opacity duration-500 ${isVisible ? 'text-primary/70' : 'text-muted-foreground/20'}`}
+              />
+              <span
+                className={`text-[10px] font-medium tracking-wider uppercase transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/70' : 'text-muted-foreground/20'}`}
+              >
                 Contents
               </span>
             </div>
-            <span className={`text-[10px] font-medium tabular-nums transition-opacity duration-500 ${isVisible ? 'text-primary/80' : 'text-muted-foreground/20'}`}>
+            <span
+              className={`text-[10px] font-medium tabular-nums transition-opacity duration-500 ${isVisible ? 'text-primary/80' : 'text-muted-foreground/20'}`}
+            >
               {progress}%
             </span>
           </div>
           {/* Progress bar - always primary color */}
-          <div className="h-0.5 w-full overflow-hidden rounded-full bg-border/30">
+          <div className="bg-border/30 h-0.5 w-full overflow-hidden rounded-full">
             <div
-              className="h-full rounded-full bg-primary/60 transition-all duration-500 ease-out"
+              className="bg-primary/60 h-full rounded-full transition-all duration-500 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -616,17 +627,17 @@ export function ArticleOutline({
 
         {/* Heading list - scrollable, takes remaining space */}
         <nav
-          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-2 outline-scrollbar transition-all duration-500 ease-in-out ${
+          className={`outline-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-2 transition-all duration-500 ease-in-out ${
             isVisible ? '' : 'pointer-events-none'
           }`}
         >
           {/* Progress line - moved further left */}
           <div className="relative pl-4">
             {/* Background track */}
-            <div className="absolute left-0 top-0 h-full w-px bg-border/40" />
+            <div className="bg-border/40 absolute top-0 left-0 h-full w-px" />
             {/* Progress fill - always primary color */}
             <div
-              className="absolute left-0 top-0 w-px bg-primary/50 transition-all duration-500 ease-out"
+              className="bg-primary/50 absolute top-0 left-0 w-px transition-all duration-500 ease-out"
               style={{ height: `${progress}%` }}
             />
 
@@ -638,19 +649,23 @@ export function ArticleOutline({
                     {/* Active indicator - always visible when active */}
                     {isActive && (
                       <div
-                        className="absolute -left-4 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary transition-all duration-500"
-                        style={{ boxShadow: isVisible ? '0 0 8px hsl(var(--primary) / 0.5)' : '0 0 4px hsl(var(--primary) / 0.3)' }}
+                        className="bg-primary absolute top-1/2 -left-4 h-4 w-0.5 -translate-y-1/2 rounded-full transition-all duration-500"
+                        style={{
+                          boxShadow: isVisible
+                            ? '0 0 8px hsl(var(--primary) / 0.5)'
+                            : '0 0 4px hsl(var(--primary) / 0.3)',
+                        }}
                       />
                     )}
                     <button
                       onClick={() => handleHeadingClick(heading)}
                       disabled={!isVisible}
-                      className="group relative flex w-full items-center py-1.5 text-left text-[12px] leading-snug min-h-[1.5rem]"
+                      className="group relative flex min-h-[1.5rem] w-full items-center py-1.5 text-left text-[12px] leading-snug"
                       style={{ paddingLeft: `${(heading.level - minLevel) * 8}px` }}
                     >
                       {/* Text content with blur effect - keeps same visual weight */}
                       <span
-                        className={`block line-clamp-1 ${
+                        className={`line-clamp-1 block ${
                           isVisible
                             ? isActive
                               ? 'text-primary font-medium'
@@ -677,8 +692,10 @@ export function ArticleOutline({
         </nav>
 
         {/* Footer - always visible with fixed height */}
-        <div className="mt-auto flex h-8 flex-none items-center justify-between border-t border-border/20 px-2 pt-2">
-          <span className={`text-[10px] transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/50' : 'text-muted-foreground/15'}`}>
+        <div className="border-border/20 mt-auto flex h-8 flex-none items-center justify-between border-t px-2 pt-2">
+          <span
+            className={`text-[10px] transition-opacity duration-500 ${isVisible ? 'text-muted-foreground/50' : 'text-muted-foreground/15'}`}
+          >
             {headings.length} sections
           </span>
           <button

@@ -10,7 +10,7 @@ from glean_core.schemas.config import VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_core.services.system_config_service import SystemConfigService
 from glean_database.models import Entry, UserPreferenceStats
-from glean_database.session import get_session
+from glean_database.session import get_session_context
 from glean_vector.clients.milvus_client import MilvusClient
 from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 from glean_vector.config import embedding_config as env_embedding_config
@@ -41,7 +41,7 @@ async def rebuild_embeddings(
     if not redis:
         return {"success": False, "error": "Redis unavailable"}
 
-    async with get_session() as session:
+    async with get_session_context() as session:
         # Update status to REBUILDING so embedding tasks can proceed
         config_service = TypedConfigService(session)
         await config_service.update(

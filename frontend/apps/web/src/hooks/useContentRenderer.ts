@@ -9,11 +9,11 @@ hljs.configure({ ignoreUnescapedHTML: true })
 
 /**
  * Hook to enhance content rendering with syntax highlighting and image gallery.
- * 
+ *
  * Integrates:
  * - highlight.js for code syntax highlighting
  * - lightgallery.js for image viewing
- * 
+ *
  * @param content - The HTML content to render (used as dependency for re-initialization)
  */
 export function useContentRenderer(content?: string) {

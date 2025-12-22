@@ -16,4 +16,3 @@ export const TAG_COLOR_PALETTE = [
   '#ec4899', // pink
   '#f43f5e', // rose
 ]
-

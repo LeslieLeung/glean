@@ -12,7 +12,7 @@ from sqlalchemy.engine import CursorResult
 
 from glean_core import get_logger
 from glean_database.models import UserEntry
-from glean_database.session import get_session
+from glean_database.session import get_session_context
 
 logger = get_logger(__name__)
 
@@ -35,7 +35,7 @@ async def cleanup_read_later(_ctx: dict[str, Any]) -> dict[str, int]:
     """
     logger.info("[cleanup_read_later] Starting read-later cleanup")
 
-    async with get_session() as session:
+    async with get_session_context() as session:
         now = datetime.now(UTC)
 
         # Find and update expired entries

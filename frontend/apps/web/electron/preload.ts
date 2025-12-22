@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // 检查是否在 Electron 环境中
-  isElectron: true
+  isElectron: true,
 })
 
 // TypeScript 类型声明
@@ -91,19 +91,25 @@ export interface ElectronAPI {
   setAccessToken: (token: string | null) => Promise<boolean>
   setRefreshToken: (token: string | null) => Promise<boolean>
   clearTokens: () => Promise<boolean>
-  
+
   // Auto-update methods
-  checkForUpdates: () => Promise<{ available: boolean; version?: string; releaseDate?: string; isDev?: boolean; error?: string }>
+  checkForUpdates: () => Promise<{
+    available: boolean
+    version?: string
+    releaseDate?: string
+    isDev?: boolean
+    error?: string
+  }>
   downloadUpdate: () => Promise<{ success: boolean; error?: string }>
   installUpdate: () => Promise<{ success: boolean; error?: string }>
   getUpdateStatus: () => Promise<UpdateStatus>
-  
+
   // Auto-update event listeners
   onUpdateAvailable: (callback: (info: UpdateInfo) => void) => void
   onUpdateDownloadProgress: (callback: (progress: DownloadProgress) => void) => void
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => void
   onUpdateError: (callback: (error: { message: string }) => void) => void
-  
+
   isElectron: boolean
 }
 

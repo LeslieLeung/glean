@@ -45,7 +45,7 @@
   /* Popover colors for dialogs */
   --color-popover: var(--popover);
     --color-popover-foreground: var(--popover-foreground);
-  
+
     /* Sidebar colors for COSS UI sidebar component */
     --color-sidebar: var(--sidebar);
     --color-sidebar-foreground: var(--sidebar-foreground);
@@ -53,7 +53,7 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
-  
+
     /* Info/Warning/Success colors */
     --color-info: var(--info);
     --color-info-foreground: var(--info-foreground);
@@ -169,14 +169,14 @@ body {
 
   /* Enable theme transitions - use lower specificity to not override component transitions */
   .theme-transitioning {
-    transition: 
+    transition:
       background-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
       border-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
       color 300ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .theme-transitioning *:not([style*="transform"]):not(.theme-slider) {
-    transition: 
+    transition:
       background-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
       border-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
       color 300ms cubic-bezier(0.4, 0, 0.2, 1),
@@ -187,7 +187,7 @@ body {
 
   /* Theme slider keeps its own transform transition */
   .theme-slider {
-    transition: 
+    transition:
       transform 300ms cubic-bezier(0.4, 0, 0.2, 1),
       background-color 400ms cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
@@ -259,7 +259,7 @@ body {
       color: hsl(45 20% 88%);
       letter-spacing: 0.01em;
     }
-    
+
     .prose p,
     .prose li,
     .prose ul,
@@ -267,7 +267,7 @@ body {
     .prose span:not([class*="hljs"]) {
       color: hsl(45 18% 85%);
     }
-    
+
     .prose li::marker {
       color: hsl(38 85% 58%);
   }
@@ -281,19 +281,19 @@ body {
     color: hsl(45 25% 94%);
       letter-spacing: -0.01em;
     }
-    
+
     .prose h1 {
       font-size: 1.875rem;
       margin-top: 2rem;
       margin-bottom: 1rem;
     }
-    
+
     .prose h2 {
       font-size: 1.5rem;
       margin-top: 1.75rem;
       margin-bottom: 0.875rem;
     }
-    
+
     .prose h3 {
       font-size: 1.25rem;
       margin-top: 1.5rem;
@@ -308,7 +308,7 @@ body {
       text-decoration-color: hsl(38 88% 60% / 0.4);
       transition: all 0.2s ease;
   }
-  
+
   .prose a:hover {
     text-decoration-color: hsl(38 88% 60%);
   }
@@ -321,7 +321,7 @@ body {
     margin: 1.5rem 0;
       font-style: italic;
     }
-    
+
     .prose blockquote p {
       color: hsl(45 15% 78%);
   }
@@ -345,26 +345,26 @@ body {
     box-shadow: 0 4px 20px -4px hsl(0 0% 0% / 0.4);
       margin: 1.5rem auto;
     }
-    
+
     .prose hr {
       border-color: hsl(220 12% 22%);
       margin: 2rem 0;
     }
-    
+
     .prose strong {
       color: hsl(45 22% 92%);
       font-weight: 600;
     }
-    
+
     .prose em {
       color: hsl(45 18% 85%);
     }
-    
+
     /* Light theme prose overrides */
     [data-theme="light"] .prose {
       color: hsl(220 20% 22%);
     }
-    
+
     [data-theme="light"] .prose p,
     [data-theme="light"] .prose li,
     [data-theme="light"] .prose ul,
@@ -372,48 +372,48 @@ body {
     [data-theme="light"] .prose span:not([class*="hljs"]) {
       color: hsl(220 18% 28%);
     }
-    
+
     [data-theme="light"] .prose li::marker {
       color: hsl(38 80% 42%);
     }
-    
+
     [data-theme="light"] .prose h1,
     [data-theme="light"] .prose h2,
     [data-theme="light"] .prose h3,
     [data-theme="light"] .prose h4 {
       color: hsl(220 22% 15%);
     }
-    
+
     [data-theme="light"] .prose a {
       color: hsl(38 85% 38%);
       text-decoration-color: hsl(38 85% 38% / 0.4);
     }
-    
+
     [data-theme="light"] .prose a:hover {
       text-decoration-color: hsl(38 85% 38%);
     }
-    
+
     [data-theme="light"] .prose blockquote {
       border-left-color: hsl(38 80% 48%);
       background: hsl(45 25% 95%);
     }
-    
+
     [data-theme="light"] .prose blockquote p {
       color: hsl(220 15% 35%);
     }
-    
+
     [data-theme="light"] .prose hr {
       border-color: hsl(45 15% 85%);
     }
-    
+
     [data-theme="light"] .prose strong {
       color: hsl(220 22% 18%);
     }
-    
+
     [data-theme="light"] .prose em {
       color: hsl(220 18% 28%);
     }
-    
+
     [data-theme="light"] .prose img {
       box-shadow: 0 4px 20px -4px hsl(0 0% 0% / 0.15);
   }
@@ -888,7 +888,7 @@ body {
       border: 1px solid hsl(45 15% 88%);
       box-shadow: 0 2px 8px -2px hsl(0 0% 0% / 0.06);
     }
-    
+
     [data-theme="light"] .prose pre code {
       color: hsl(220 25% 22%);
   }
@@ -899,16 +899,16 @@ body {
         color: hsl(230 70% 40%);
         border: 1px solid hsl(45 15% 88%);
       }
-      
+
       /* Light theme code block scrollbar */
       [data-theme="light"] .prose pre::-webkit-scrollbar-track {
         background: hsl(45 15% 92%);
       }
-      
+
       [data-theme="light"] .prose pre::-webkit-scrollbar-thumb {
         background: hsl(220 10% 78%);
       }
-      
+
       [data-theme="light"] .prose pre::-webkit-scrollbar-thumb:hover {
         background: hsl(220 10% 65%);
   }
@@ -1131,7 +1131,7 @@ body {
 /* Dialog popup animations */
 [data-slot="dialog-popup"],
 [data-slot="alert-dialog-popup"] {
-  transition: opacity 250ms cubic-bezier(0.16, 1, 0.3, 1), 
+  transition: opacity 250ms cubic-bezier(0.16, 1, 0.3, 1),
               transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
               scale 250ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1152,7 +1152,7 @@ body {
 [data-slot="menu-popup"],
 [data-slot="popover-popup"],
 [data-slot="select-popup"] {
-  transition: opacity 150ms cubic-bezier(0.16, 1, 0.3, 1), 
+  transition: opacity 150ms cubic-bezier(0.16, 1, 0.3, 1),
               transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1351,34 +1351,34 @@ body {
 .outline-progress-active {
   box-shadow: 0 0 12px 2px color-mix(in srgb, var(--primary) 50%, transparent);
   }
-  
+
   /* Outline scrollbar - subtle and minimal */
   .outline-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  
+
   .outline-scrollbar:hover {
     scrollbar-color: hsl(var(--muted-foreground) / 0.2) transparent;
   }
-  
+
   .outline-scrollbar::-webkit-scrollbar {
     width: 4px;
   }
-  
+
   .outline-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
-  
+
   .outline-scrollbar::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 2px;
   }
-  
+
   .outline-scrollbar:hover::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.2);
   }
-  
+
   .outline-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.35);
 }

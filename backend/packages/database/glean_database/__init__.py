@@ -17,11 +17,12 @@ from .models import (
     User,
     UserEntry,
 )
-from .session import get_session, init_database
+from .session import get_session, get_session_context, init_database
 
 __all__ = [
     "init_database",
     "get_session",
+    "get_session_context",
     "Base",
     "User",
     "Feed",

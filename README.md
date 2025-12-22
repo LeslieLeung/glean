@@ -4,7 +4,7 @@
 
 > [!IMPORTANT]
 > Join our [Discord](https://discord.gg/KMKC4sRVSJ) to stay updated on the latest developments and get support.
-> 
+>
 > This project is still in development and is not ready for production use.
 
 A self-hosted RSS reader and personal knowledge management tool.
@@ -187,6 +187,9 @@ make up
 # Initialize database (first time only)
 make db-upgrade
 
+# Install pre-commit hooks (optional but recommended)
+make pre-commit-install
+
 # Start all services
 make dev-all
 
@@ -195,6 +198,26 @@ make dev-all
 # - Admin: http://localhost:3001
 # - API Docs: http://localhost:8000/api/docs
 ```
+
+### Pre-commit Hooks
+
+The project uses pre-commit hooks to ensure code quality:
+
+```bash
+# Install hooks (one-time setup)
+make pre-commit-install
+
+# Run hooks manually on all files
+make pre-commit-run
+
+# Uninstall hooks (if needed)
+make pre-commit-uninstall
+```
+
+Hooks automatically run on commit and check:
+- Backend: ruff format, ruff linter, pyright type checking
+- Frontend: ESLint, Prettier formatting
+- General: trailing whitespace, file endings, YAML/JSON/TOML validation
 
 ## Roadmap
 

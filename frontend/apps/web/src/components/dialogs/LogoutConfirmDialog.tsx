@@ -41,4 +41,3 @@ export function LogoutConfirmDialog({ open, onOpenChange, onConfirm }: LogoutCon
     </AlertDialog>
   )
 }
-

@@ -38,23 +38,23 @@ let transitionTimeout: ReturnType<typeof setTimeout> | null = null
 function applyTheme(resolvedTheme: ResolvedTheme, animate = true) {
   const root = document.documentElement
   const body = document.body
-  
+
   // Add transition class for smooth animation
   if (animate && body) {
     // Clear any existing transition timeout
     if (transitionTimeout) {
       clearTimeout(transitionTimeout)
     }
-    
+
     body.classList.add('theme-transitioning')
-    
+
     // Remove transition class after animation completes
     transitionTimeout = setTimeout(() => {
       body.classList.remove('theme-transitioning')
       transitionTimeout = null
     }, 450)
   }
-  
+
   if (resolvedTheme === 'light') {
     root.setAttribute('data-theme', 'light')
   } else {
@@ -84,7 +84,7 @@ function setupSystemThemeListener(callback: () => void) {
 
 /**
  * Theme store for managing application theme.
- * 
+ *
  * Supports 'dark', 'light', and 'system' (follows OS preference).
  * Persists theme preference to localStorage and applies it to the document.
  */
@@ -145,7 +145,7 @@ export const useThemeStore = create<ThemeState>()(
 export function initializeTheme() {
   const storedTheme = localStorage.getItem('glean-theme')
   let theme: Theme = 'system'
-  
+
   if (storedTheme) {
     try {
       const parsed = JSON.parse(storedTheme)

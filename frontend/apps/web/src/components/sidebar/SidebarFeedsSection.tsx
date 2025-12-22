@@ -116,8 +116,7 @@ export function SidebarFeedsSection({
   const { t } = useTranslation('feeds')
   const updateMutation = useUpdateSubscription()
 
-  const getSubscriptionsForFolder = (folderId: string) =>
-    subscriptionsByFolder[folderId] || []
+  const getSubscriptionsForFolder = (folderId: string) => subscriptionsByFolder[folderId] || []
 
   return (
     <>
@@ -125,7 +124,7 @@ export function SidebarFeedsSection({
         <div className="mb-1 flex items-center justify-between md:mb-2">
           <button
             onClick={onToggleFeedsSection}
-            className="flex items-center gap-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-muted-foreground md:px-3 md:text-xs"
+            className="text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wider uppercase transition-colors md:px-3 md:text-xs"
           >
             <ChevronRight
               className={`h-3 w-3 transition-transform ${
@@ -137,51 +136,37 @@ export function SidebarFeedsSection({
           <div className="flex items-center gap-1">
             <button
               onClick={onAddFeed}
-              className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              className="text-muted-foreground/60 hover:bg-accent hover:text-foreground rounded p-1 transition-colors"
               title={t('actions.addFeed')}
             >
               <Plus className="h-4 w-4" />
             </button>
             <button
               onClick={() => onCreateFolder(null)}
-              className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              className="text-muted-foreground/60 hover:bg-accent hover:text-foreground rounded p-1 transition-colors"
               title={t('actions.createFolder')}
             >
               <FolderPlus className="h-4 w-4" />
             </button>
             <Menu>
-              <MenuTrigger className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground">
+              <MenuTrigger className="text-muted-foreground/60 hover:bg-accent hover:text-foreground rounded p-1 transition-colors">
                 <MoreHorizontal className="h-4 w-4" />
               </MenuTrigger>
               <MenuPopup align="end">
                 <MenuItem onClick={onRefreshAll} disabled={refreshAllPending}>
-                  <RefreshCw
-                    className={`h-4 w-4 ${
-                      refreshAllPending ? 'animate-spin' : ''
-                    }`}
-                  />
+                  <RefreshCw className={`h-4 w-4 ${refreshAllPending ? 'animate-spin' : ''}`} />
                   <span>
-                    {refreshAllPending
-                      ? t('states.refreshing')
-                      : t('actions.refreshAll')}
+                    {refreshAllPending ? t('states.refreshing') : t('actions.refreshAll')}
                   </span>
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem onClick={onImportOPML} disabled={importPending}>
                   <Upload className="h-4 w-4" />
-                  <span>
-                    {importPending
-                      ? t('states.importing')
-                      : t('actions.importOPML')}
-                  </span>
+                  <span>{importPending ? t('states.importing') : t('actions.importOPML')}</span>
                 </MenuItem>
                 <MenuItem onClick={onExportOPML} disabled={exportPending}>
                   <Download className="h-4 w-4" />
-                  <span>
-                    {exportPending
-                      ? t('states.exporting')
-                      : t('actions.exportOPML')}
-                  </span>
+                  <span>{exportPending ? t('states.exporting') : t('actions.exportOPML')}</span>
                 </MenuItem>
               </MenuPopup>
             </Menu>
@@ -192,7 +177,7 @@ export function SidebarFeedsSection({
       {!isSidebarOpen && !isMobileSidebarOpen && (
         <button
           onClick={onAddFeed}
-          className="group flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground"
+          className="group text-muted-foreground hover:bg-accent hover:text-foreground flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200"
           title={t('actions.addFeed')}
         >
           <Plus className="h-5 w-5" />
@@ -205,12 +190,10 @@ export function SidebarFeedsSection({
             onClick={onSmartViewSelect}
             className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-300 md:gap-3 md:px-3 md:py-2.5 ${
               isSmartView
-                ? 'bg-primary/10 text-primary shadow-sm scale-[1.02]'
+                ? 'bg-primary/10 text-primary scale-[1.02] shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground hover:scale-[1.01]'
             } ${!isSidebarOpen && !isMobileSidebarOpen ? 'justify-center' : ''}`}
-            title={
-              !isSidebarOpen && !isMobileSidebarOpen ? t('sidebar.smart') : undefined
-            }
+            title={!isSidebarOpen && !isMobileSidebarOpen ? t('sidebar.smart') : undefined}
           >
             <span
               className={`shrink-0 transition-transform duration-300 ${
@@ -221,11 +204,9 @@ export function SidebarFeedsSection({
             >
               <Sparkles className="h-4 w-4 md:h-5 md:w-5" />
             </span>
-            {(isSidebarOpen || isMobileSidebarOpen) && (
-              <span>{t('sidebar.smart')}</span>
-            )}
+            {(isSidebarOpen || isMobileSidebarOpen) && <span>{t('sidebar.smart')}</span>}
             {isSmartView && (isSidebarOpen || isMobileSidebarOpen) && (
-              <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="bg-primary ml-auto h-1.5 w-1.5 animate-pulse rounded-full" />
             )}
           </button>
 
@@ -233,14 +214,10 @@ export function SidebarFeedsSection({
             onClick={() => onFeedSelect(undefined)}
             className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-300 md:gap-3 md:px-3 md:py-2.5 ${
               isReaderPage && !currentFeedId && !currentFolderId && !isSmartView
-                ? 'bg-primary/10 text-primary shadow-sm scale-[1.02]'
+                ? 'bg-primary/10 text-primary scale-[1.02] shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground hover:scale-[1.01]'
             } ${!isSidebarOpen && !isMobileSidebarOpen ? 'justify-center' : ''}`}
-            title={
-              !isSidebarOpen && !isMobileSidebarOpen
-                ? t('sidebar.allFeeds')
-                : undefined
-            }
+            title={!isSidebarOpen && !isMobileSidebarOpen ? t('sidebar.allFeeds') : undefined}
           >
             <span
               className={`shrink-0 transition-transform duration-300 ${
@@ -251,15 +228,13 @@ export function SidebarFeedsSection({
             >
               <Inbox className="h-4 w-4 md:h-5 md:w-5" />
             </span>
-            {(isSidebarOpen || isMobileSidebarOpen) && (
-              <span>{t('sidebar.allFeeds')}</span>
-            )}
+            {(isSidebarOpen || isMobileSidebarOpen) && <span>{t('sidebar.allFeeds')}</span>}
             {isReaderPage &&
               !currentFeedId &&
               !currentFolderId &&
               !isSmartView &&
               (isSidebarOpen || isMobileSidebarOpen) && (
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                <span className="bg-primary ml-auto h-1.5 w-1.5 rounded-full" />
               )}
           </button>
 
@@ -322,26 +297,25 @@ export function SidebarFeedsSection({
               </div>
             )}
 
-          {(isSidebarOpen || isMobileSidebarOpen) &&
-            ungroupedSubscriptions.length > 0 && (
-              <div className="mt-1 space-y-0.5 pl-2">
-                {ungroupedSubscriptions.map((sub) => (
-                  <SidebarFeedItem
-                    key={sub.id}
-                    subscription={sub}
-                    isActive={isReaderPage && currentFeedId === sub.feed_id}
-                    onClick={() => onFeedSelect(sub.feed_id)}
-                    allFolders={feedFolders}
-                    isDragging={draggedFeed?.id === sub.id}
-                    onDragStart={() => setDraggedFeed(sub)}
-                    onDragEnd={() => {
-                      setDraggedFeed(null)
-                      setDragOverFolderId(null)
-                    }}
-                  />
-                ))}
-              </div>
-            )}
+          {(isSidebarOpen || isMobileSidebarOpen) && ungroupedSubscriptions.length > 0 && (
+            <div className="mt-1 space-y-0.5 pl-2">
+              {ungroupedSubscriptions.map((sub) => (
+                <SidebarFeedItem
+                  key={sub.id}
+                  subscription={sub}
+                  isActive={isReaderPage && currentFeedId === sub.feed_id}
+                  onClick={() => onFeedSelect(sub.feed_id)}
+                  allFolders={feedFolders}
+                  isDragging={draggedFeed?.id === sub.id}
+                  onDragStart={() => setDraggedFeed(sub)}
+                  onDragEnd={() => {
+                    setDraggedFeed(null)
+                    setDragOverFolderId(null)
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
     </>
@@ -399,10 +373,7 @@ function SidebarFolderItem({
   const [renameFolderName, setRenameFolderName] = useState(folder.name)
   const [isRenaming, setIsRenaming] = useState(false)
 
-  const totalUnread = subscriptions.reduce(
-    (sum, sub) => sum + sub.unread_count,
-    0,
-  )
+  const totalUnread = subscriptions.reduce((sum, sub) => sum + sub.unread_count, 0)
 
   const isDragTarget = dragOverFolderId === folder.id
   const canReceiveDrop = draggedFeed && draggedFeed.folder_id !== folder.id
@@ -458,9 +429,9 @@ function SidebarFolderItem({
       <div
         className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-all duration-200 md:px-3 md:py-2 ${
           isDragTarget && canReceiveDrop
-            ? 'bg-primary/10 ring-2 ring-primary/30'
+            ? 'bg-primary/10 ring-primary/30 ring-2'
             : isActive
-              ? 'bg-primary/10 font-medium text-primary'
+              ? 'bg-primary/10 text-primary font-medium'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
         }`}
         onContextMenu={handleContextMenu}
@@ -476,20 +447,17 @@ function SidebarFolderItem({
           />
           <Folder className="h-4 w-4 shrink-0" />
         </button>
-        <button
-          onClick={() => onSelect(folder.id)}
-          className="min-w-0 flex-1 truncate text-left"
-        >
+        <button onClick={() => onSelect(folder.id)} className="min-w-0 flex-1 truncate text-left">
           {folder.name}
         </button>
         {!isExpanded && totalUnread > 0 && (
-          <Badge size="sm" className="shrink-0 bg-muted text-[10px] text-muted-foreground">
+          <Badge size="sm" className="bg-muted text-muted-foreground shrink-0 text-[10px]">
             {totalUnread}
           </Badge>
         )}
 
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100">
+          <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
             <MoreIcon className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -498,14 +466,10 @@ function SidebarFolderItem({
               disabled={markAllReadMutation.isPending}
             >
               <CheckCheck
-                className={`h-4 w-4 ${
-                  markAllReadMutation.isPending ? 'animate-pulse' : ''
-                }`}
+                className={`h-4 w-4 ${markAllReadMutation.isPending ? 'animate-pulse' : ''}`}
               />
               <span>
-                {markAllReadMutation.isPending
-                  ? t('common.marking')
-                  : t('actions.markAllAsRead')}
+                {markAllReadMutation.isPending ? t('common.marking') : t('actions.markAllAsRead')}
               </span>
             </MenuItem>
             <MenuSeparator />
@@ -527,7 +491,7 @@ function SidebarFolderItem({
       </div>
 
       {isExpanded && (
-        <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-2">
+        <div className="border-border mt-0.5 ml-4 space-y-0.5 border-l pl-2">
           {folder.children.map((child) => (
             <SidebarFolderItem
               key={child.id}
@@ -569,9 +533,7 @@ function SidebarFolderItem({
           ))}
 
           {subscriptions.length === 0 && folder.children.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted-foreground/60">
-              {t('common.emptyFolder')}
-            </p>
+            <p className="text-muted-foreground/60 px-3 py-2 text-xs">{t('common.emptyFolder')}</p>
           )}
         </div>
       )}
@@ -705,7 +667,7 @@ function SidebarFeedItem({
 
   const flattenFolders = (
     nodes: FolderTreeNode[],
-    depth = 0,
+    depth = 0
   ): { id: string; name: string; depth: number }[] => {
     return nodes.flatMap((node) => [
       { id: node.id, name: node.name, depth },
@@ -719,9 +681,9 @@ function SidebarFeedItem({
       <div
         className={`group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-all duration-200 active:cursor-grabbing md:gap-2.5 md:px-3 md:py-2 ${
           isDragging
-            ? 'opacity-50 ring-2 ring-primary/30'
+            ? 'ring-primary/30 opacity-50 ring-2'
             : isActive
-              ? 'bg-primary/10 font-medium text-primary'
+              ? 'bg-primary/10 text-primary font-medium'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
         }`}
         draggable
@@ -741,20 +703,20 @@ function SidebarFeedItem({
               draggable={false}
             />
           ) : (
-            <div className="h-4 w-4 shrink-0 rounded bg-muted" />
+            <div className="bg-muted h-4 w-4 shrink-0 rounded" />
           )}
           <span className="min-w-0 flex-1 truncate text-left">
             {subscription.custom_title || subscription.feed.title || subscription.feed.url}
           </span>
         </button>
         {subscription.unread_count > 0 && (
-          <Badge size="sm" className="shrink-0 bg-muted text-[10px] text-muted-foreground">
+          <Badge size="sm" className="bg-muted text-muted-foreground shrink-0 text-[10px]">
             {subscription.unread_count}
           </Badge>
         )}
 
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100">
+          <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
             <MoreIcon className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -763,14 +725,10 @@ function SidebarFeedItem({
               disabled={markAllReadMutation.isPending}
             >
               <CheckCheck
-                className={`h-4 w-4 ${
-                  markAllReadMutation.isPending ? 'animate-pulse' : ''
-                }`}
+                className={`h-4 w-4 ${markAllReadMutation.isPending ? 'animate-pulse' : ''}`}
               />
               <span>
-                {markAllReadMutation.isPending
-                  ? t('common.marking')
-                  : t('actions.markAllAsRead')}
+                {markAllReadMutation.isPending ? t('common.marking') : t('actions.markAllAsRead')}
               </span>
             </MenuItem>
             <MenuSeparator />
@@ -779,11 +737,7 @@ function SidebarFeedItem({
               <span>{t('common.edit')}</span>
             </MenuItem>
             <MenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
-              <RefreshCw
-                className={`h-4 w-4 ${
-                  refreshMutation.isPending ? 'animate-spin' : ''
-                }`}
-              />
+              <RefreshCw className={`h-4 w-4 ${refreshMutation.isPending ? 'animate-spin' : ''}`} />
               <span>{t('common.refresh')}</span>
             </MenuItem>
             {allFolders.length > 0 && (
@@ -799,9 +753,7 @@ function SidebarFeedItem({
                   <MenuSeparator />
                   {flatFolders.map((folder) => (
                     <MenuItem key={folder.id} onClick={() => handleFolderChange(folder.id)}>
-                      <span style={{ paddingLeft: `${folder.depth * 12}px` }}>
-                        {folder.name}
-                      </span>
+                      <span style={{ paddingLeft: `${folder.depth * 12}px` }}>{folder.name}</span>
                     </MenuItem>
                   ))}
                 </MenuSubPopup>
@@ -852,9 +804,7 @@ function SidebarFeedItem({
                 onChange={(e) => setEditTitle(e.target.value)}
                 placeholder={subscription.feed.title || subscription.feed.url}
               />
-              <p className="text-xs text-muted-foreground">
-                {t('manageSubscriptions.leaveEmpty')}
-              </p>
+              <p className="text-muted-foreground text-xs">{t('manageSubscriptions.leaveEmpty')}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-url">{t('manageSubscriptions.feedUrl')}</Label>
@@ -870,7 +820,7 @@ function SidebarFeedItem({
                   }
                 }}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('manageSubscriptions.rssUrlDescription')}
               </p>
             </div>
@@ -888,4 +838,3 @@ function SidebarFeedItem({
     </>
   )
 }
-

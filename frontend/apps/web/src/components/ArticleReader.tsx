@@ -59,7 +59,7 @@ interface ArticleReaderProps {
  * Hook to detect mobile viewport
  */
 function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() => 
+  const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
   )
 
@@ -67,7 +67,7 @@ function useIsMobile(breakpoint = 640) {
     const handleResize = () => {
       setIsMobile(window.innerWidth < breakpoint)
     }
-    
+
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [breakpoint])
@@ -151,7 +151,7 @@ export function ArticleReader({
   useEffect(() => {
     setHasOutline(false)
   }, [entry.id])
-  
+
   // Animation triggers for action buttons
   const readLaterAnimation = useAnimationTrigger(entry.read_later, 'action-btn-clock-active')
   const bookmarkAnimation = useAnimationTrigger(entry.is_bookmarked, 'action-btn-archive-active')
@@ -194,11 +194,11 @@ export function ArticleReader({
   }
 
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Mobile Header - auto-hide on scroll */}
       {isMobile && (
         <div
-          className={`absolute inset-x-0 top-0 z-10 border-b border-border bg-card/95 backdrop-blur-sm transition-transform duration-300 ${
+          className={`border-border bg-card/95 absolute inset-x-0 top-0 z-10 border-b backdrop-blur-sm transition-transform duration-300 ${
             barsVisible ? 'translate-y-0' : '-translate-y-full'
           }`}
         >
@@ -206,12 +206,12 @@ export function ArticleReader({
             {showCloseButton && onClose && (
               <button
                 onClick={onClose}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
             )}
-            <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+            <h1 className="text-foreground min-w-0 flex-1 truncate text-base font-semibold">
               {entry.title}
             </h1>
           </div>
@@ -220,9 +220,9 @@ export function ArticleReader({
 
       {/* Desktop Header */}
       {!isMobile && (
-        <div className="border-b border-border bg-card px-6 py-4">
+        <div className="border-border bg-card border-b px-6 py-4">
           <div className="mb-3 flex items-start justify-between gap-4">
-            <h1 className="font-display text-2xl font-bold leading-tight text-foreground">
+            <h1 className="font-display text-foreground text-2xl leading-tight font-bold">
               {entry.title}
             </h1>
             <div className="flex shrink-0 items-center gap-1">
@@ -234,7 +234,11 @@ export function ArticleReader({
                   title={isFullscreen ? t('actions.exitFullscreen') : t('actions.fullscreen')}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+                  {isFullscreen ? (
+                    <Minimize2 className="h-5 w-5" />
+                  ) : (
+                    <Maximize2 className="h-5 w-5" />
+                  )}
                 </Button>
               )}
               {showCloseButton && onClose && (
@@ -251,7 +255,7 @@ export function ArticleReader({
             </div>
           </div>
 
-          <div className="mb-4 flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="text-muted-foreground mb-4 flex items-center gap-3 text-sm">
             {entry.author && <span className="font-medium">{entry.author}</span>}
             {entry.author && entry.published_at && <span>·</span>}
             {entry.published_at && (
@@ -322,10 +326,12 @@ export function ArticleReader({
           ref={scrollContainerRef}
           className={`hide-scrollbar flex-1 overflow-y-auto ${isMobile ? 'pt-12 pb-16' : ''}`}
         >
-          <div className={`px-4 py-6 sm:px-6 sm:py-8 ${!isMobile ? 'mx-auto max-w-3xl' : 'max-w-3xl'}`}>
+          <div
+            className={`px-4 py-6 sm:px-6 sm:py-8 ${!isMobile ? 'mx-auto max-w-3xl' : 'max-w-3xl'}`}
+          >
             {/* Mobile: Author and date at top of content */}
             {isMobile && (entry.author || entry.published_at) && (
-              <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="text-muted-foreground mb-4 flex items-center gap-2 text-xs">
                 {entry.author && <span className="font-medium">{entry.author}</span>}
                 {entry.author && entry.published_at && <span>·</span>}
                 {entry.published_at && (
@@ -333,7 +339,7 @@ export function ArticleReader({
                 )}
               </div>
             )}
-            
+
             {entry.content ? (
               <article
                 ref={contentRef}
@@ -348,7 +354,7 @@ export function ArticleReader({
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="italic text-muted-foreground">{t('article.noContent')}</p>
+                <p className="text-muted-foreground italic">{t('article.noContent')}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -367,7 +373,7 @@ export function ArticleReader({
 
         {/* Desktop Outline - Sidebar that only takes space when there are headings */}
         {!isMobile && (entry.content || entry.summary) && (
-          <div className={`hidden xl:flex flex-col ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
+          <div className={`hidden flex-col xl:flex ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
             <ArticleOutline
               contentRef={contentRef}
               scrollContainerRef={scrollContainerRef}
@@ -390,14 +396,14 @@ export function ArticleReader({
       {/* Mobile Bottom Action Bar - auto-hide on scroll */}
       {isMobile && (
         <div
-          className={`absolute inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur-sm transition-transform duration-300 safe-bottom ${
+          className={`border-border bg-card/95 safe-bottom absolute inset-x-0 bottom-0 z-10 border-t backdrop-blur-sm transition-transform duration-300 ${
             barsVisible ? 'translate-y-0' : 'translate-y-full'
           }`}
         >
           <div className="flex h-14 items-center justify-around px-2">
             <button
               onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
-              className="action-btn action-btn-mobile action-btn-external flex flex-col items-center gap-0.5 px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
+              className="action-btn action-btn-mobile action-btn-external text-muted-foreground hover:text-foreground flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors"
             >
               <ExternalLink className="h-5 w-5" />
               <span className="text-[10px]">{t('actions.open')}</span>
@@ -411,7 +417,11 @@ export function ArticleReader({
                 }`}
               >
                 <CheckCheck className="h-5 w-5" />
-                <span className="text-[10px]">{entry.is_read ? t('actions.markUnread').slice(5) : t('actions.markRead').slice(5)}</span>
+                <span className="text-[10px]">
+                  {entry.is_read
+                    ? t('actions.markUnread').slice(5)
+                    : t('actions.markRead').slice(5)}
+                </span>
               </button>
             )}
 
@@ -439,7 +449,9 @@ export function ArticleReader({
               ) : (
                 <Archive className="h-5 w-5" />
               )}
-              <span className="text-[10px]">{entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}</span>
+              <span className="text-[10px]">
+                {entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}
+              </span>
             </button>
           </div>
         </div>
@@ -453,9 +465,9 @@ export function ArticleReader({
  */
 export function ArticleReaderSkeleton() {
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+    <div className="bg-background flex min-w-0 flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
+      <div className="border-border bg-card border-b px-6 py-4">
         <div className="mb-3 flex items-start justify-between gap-4">
           {/* Title skeleton */}
           <div className="flex-1 space-y-2">
@@ -511,4 +523,3 @@ export function ArticleReaderSkeleton() {
     </div>
   )
 }
-

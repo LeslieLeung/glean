@@ -32,12 +32,17 @@
     "deleteConfirm": "Are you sure you want to delete this tag?",
     "tagName": "Tag Name",
     "noTags": "No tags yet",
-    "addFirst": "Add your first tag"
+    "addFirst": "Add your first tag",
+    "noTagsYet": "No tags yet. Type to create one.",
+    "creating": "Creating..."
   },
   "empty": {
     "title": "No bookmarks yet",
     "description": "Save articles you want to read later",
-    "addBookmark": "Add a Bookmark"
+    "addBookmark": "Add a Bookmark",
+    "noBookmarks": "No bookmarks found",
+    "noBookmarksDescription": "Save articles or add external URLs to build your collection",
+    "addFirstBookmark": "Add Your First Bookmark"
   },
   "metadata": {
     "title": "Title",
@@ -66,11 +71,6 @@
     "save": "Save",
     "create": "Create"
   },
-  "empty": {
-    "noBookmarks": "No bookmarks found",
-    "noBookmarksDescription": "Save articles or add external URLs to build your collection",
-    "addFirstBookmark": "Add Your First Bookmark"
-  },
   "pagination": {
     "showing": "Showing {{count}} of {{total}} bookmarks",
     "previous": "Previous",
@@ -86,17 +86,12 @@
     "articleNotFoundDescription": "The article may have been removed or is no longer available.",
     "close": "Close"
   },
-  "tags": {
-    "noTagsYet": "No tags yet. Type to create one.",
-    "creating": "Creating...",
-    "create": "Create \"{{name}}\""
-  },
   "dialogs": {
     "createBookmark": {
       "title": "Add Bookmark",
       "description": "Save a URL or create a note for later reading.",
       "url": "URL",
-      "title": "Title",
+      "bookmarkTitle": "Title",
       "notes": "Notes",
       "folders": "Folders",
       "tags": "Tags",
@@ -111,7 +106,7 @@
     "editBookmark": {
       "title": "Edit Bookmark",
       "description": "Update bookmark details, folders, and tags.",
-      "title": "Title",
+      "bookmarkTitle": "Title",
       "notes": "Notes",
       "source": {
         "savedFromFeed": "Saved from feed",

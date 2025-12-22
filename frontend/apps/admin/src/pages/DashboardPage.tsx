@@ -59,9 +59,9 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
-        <h1 className="text-2xl font-bold text-foreground">{t('dashboard.title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
+      <div className="border-border bg-card border-b px-8 py-6">
+        <h1 className="text-foreground text-2xl font-bold">{t('dashboard.title')}</h1>
+        <p className="text-muted-foreground mt-1 text-sm">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* Content */}
@@ -69,10 +69,7 @@ export default function DashboardPage() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {isLoading
             ? Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-border bg-card p-6 shadow-sm"
-                >
+                <div key={i} className="border-border bg-card rounded-xl border p-6 shadow-sm">
                   <Skeleton className="h-10 w-10 rounded-lg" />
                   <Skeleton className="mt-4 h-4 w-24" />
                   <Skeleton className="mt-2 h-8 w-16" />
@@ -83,7 +80,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={card.title}
-                    className="rounded-xl border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
+                    className="border-border bg-card rounded-xl border p-6 shadow-sm transition-shadow hover:shadow-md"
                   >
                     <div className="flex items-center justify-between">
                       <div
@@ -93,12 +90,12 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="mt-4">
-                      <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
-                      <p className="mt-2 text-3xl font-bold text-foreground">
+                      <p className="text-muted-foreground text-sm font-medium">{card.title}</p>
+                      <p className="text-foreground mt-2 text-3xl font-bold">
                         {card.value?.toLocaleString() || '0'}
                       </p>
                       {card.description && (
-                        <p className="mt-1 text-xs text-muted-foreground">{card.description}</p>
+                        <p className="text-muted-foreground mt-1 text-xs">{card.description}</p>
                       )}
                     </div>
                   </div>
@@ -108,18 +105,22 @@ export default function DashboardPage() {
 
         {/* Additional info */}
         {stats && (
-          <div className="mt-6 rounded-xl border border-border bg-card p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-foreground">{t('dashboard.activity.title')}</h2>
+          <div className="border-border bg-card mt-6 rounded-xl border p-6 shadow-sm">
+            <h2 className="text-foreground text-lg font-semibold">
+              {t('dashboard.activity.title')}
+            </h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/20">
-                  <TrendingUp className="h-5 w-5 text-primary-500" />
+                <div className="bg-primary-50 dark:bg-primary-900/20 flex h-10 w-10 items-center justify-center rounded-lg">
+                  <TrendingUp className="text-primary-500 h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-foreground text-sm font-medium">
                     {t('dashboard.activity.newUsersToday', { count: stats.new_users_today })}
                   </p>
-                  <p className="text-xs text-muted-foreground">{t('dashboard.activity.registeredToday')}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {t('dashboard.activity.registeredToday')}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -127,10 +128,12 @@ export default function DashboardPage() {
                   <FileText className="h-5 w-5 text-purple-500" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-foreground text-sm font-medium">
                     {t('dashboard.activity.newEntriesToday', { count: stats.new_entries_today })}
                   </p>
-                  <p className="text-xs text-muted-foreground">{t('dashboard.activity.addedToday')}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {t('dashboard.activity.addedToday')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -140,4 +143,3 @@ export default function DashboardPage() {
     </div>
   )
 }
-

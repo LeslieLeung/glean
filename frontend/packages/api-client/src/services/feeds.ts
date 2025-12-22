@@ -99,10 +99,7 @@ export class FeedService {
   async batchDeleteSubscriptions(
     data: BatchDeleteSubscriptionsRequest
   ): Promise<BatchDeleteSubscriptionsResponse> {
-    return this.client.post<BatchDeleteSubscriptionsResponse>(
-      '/feeds/batch-delete',
-      data
-    )
+    return this.client.post<BatchDeleteSubscriptionsResponse>('/feeds/batch-delete', data)
   }
 
   /**

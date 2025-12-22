@@ -12,8 +12,16 @@ interface TagState {
   createTag: (data: CreateTagRequest) => Promise<Tag | null>
   updateTag: (id: string, data: UpdateTagRequest) => Promise<Tag | null>
   deleteTag: (id: string) => Promise<boolean>
-  batchAddTag: (tagId: string, targetType: 'bookmark' | 'user_entry', targetIds: string[]) => Promise<number>
-  batchRemoveTag: (tagId: string, targetType: 'bookmark' | 'user_entry', targetIds: string[]) => Promise<number>
+  batchAddTag: (
+    tagId: string,
+    targetType: 'bookmark' | 'user_entry',
+    targetIds: string[]
+  ) => Promise<number>
+  batchRemoveTag: (
+    tagId: string,
+    targetType: 'bookmark' | 'user_entry',
+    targetIds: string[]
+  ) => Promise<number>
   reset: () => void
 }
 
@@ -113,4 +121,3 @@ export const useTagStore = create<TagState>((set, get) => ({
     })
   },
 }))
-

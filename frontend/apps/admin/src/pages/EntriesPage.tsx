@@ -96,15 +96,13 @@ export default function EntriesPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border bg-card px-8 py-6">
+      <div className="border-border bg-card border-b px-8 py-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">
+            <h1 className="font-display text-foreground text-2xl font-bold">
               {t('admin:entries.title')}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t('admin:entries.subtitle')}
-            </p>
+            <p className="text-muted-foreground mt-1 text-sm">{t('admin:entries.subtitle')}</p>
           </div>
           {data && (
             <div className="flex items-center gap-2">
@@ -125,7 +123,7 @@ export default function EntriesPage() {
           {/* Search */}
           <form onSubmit={handleSearch} className="flex gap-2">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
               <Input
                 type="text"
                 value={searchInput}
@@ -156,14 +154,14 @@ export default function EntriesPage() {
           {/* Feed filter */}
           {feedsData && feedsData.items.length > 0 && (
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
+              <Filter className="text-muted-foreground h-4 w-4" />
               <select
                 value={feedFilter}
                 onChange={(e) => {
                   setFeedFilter(e.target.value)
                   setPage(1)
                 }}
-                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="border-border bg-card text-foreground focus:ring-primary/50 rounded-lg border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
               >
                 <option value="">{t('admin:entries.filters.allFeeds')}</option>
                 {feedsData.items.map((feed) => (
@@ -193,14 +191,12 @@ export default function EntriesPage() {
               />
             ))
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-16">
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <FileText className="h-8 w-8 text-muted-foreground" />
+            <div className="border-border bg-card flex flex-col items-center justify-center rounded-xl border py-16">
+              <div className="bg-muted mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                <FileText className="text-muted-foreground h-8 w-8" />
               </div>
               <p className="text-muted-foreground">
-                {search || feedFilter
-                  ? t('admin:entries.emptyFilter')
-                  : t('admin:entries.empty')}
+                {search || feedFilter ? t('admin:entries.emptyFilter') : t('admin:entries.empty')}
               </p>
             </div>
           )}
@@ -208,8 +204,8 @@ export default function EntriesPage() {
 
         {/* Pagination */}
         {data && data.total_pages > 1 && (
-          <div className="mt-6 flex items-center justify-between rounded-xl border border-border bg-card px-6 py-4">
-            <p className="text-sm text-muted-foreground">
+          <div className="border-border bg-card mt-6 flex items-center justify-between rounded-xl border px-6 py-4">
+            <p className="text-muted-foreground text-sm">
               {t('admin:entries.pagination.pageOf', { page: data.page, total: data.total_pages })}
             </p>
             <div className="flex items-center gap-2">
@@ -242,7 +238,7 @@ export default function EntriesPage() {
           <DialogHeader>
             <div className="flex items-start justify-between gap-4 pr-8">
               <div className="min-w-0 flex-1">
-                <DialogTitle className="line-clamp-2 text-xl font-bold leading-tight">
+                <DialogTitle className="line-clamp-2 text-xl leading-tight font-bold">
                   {selectedEntry?.title || t('admin:common.loading')}
                 </DialogTitle>
                 {selectedEntry && (
@@ -308,18 +304,18 @@ export default function EntriesPage() {
               </div>
             ) : selectedEntry?.content ? (
               <article
-                className="prose prose-invert prose-sm max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-blockquote:border-primary prose-blockquote:text-foreground/80 prose-code:text-foreground prose-pre:bg-muted"
+                className="prose prose-invert prose-sm prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-blockquote:border-primary prose-blockquote:text-foreground/80 prose-code:text-foreground prose-pre:bg-muted max-w-none"
                 dangerouslySetInnerHTML={{ __html: selectedEntry.content }}
               />
             ) : selectedEntry?.summary ? (
               <article
-                className="prose prose-invert prose-sm max-w-none prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90"
+                className="prose prose-invert prose-sm prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 max-w-none"
                 dangerouslySetInnerHTML={{ __html: selectedEntry.summary }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="italic text-muted-foreground">{t('admin:entries.noContent')}</p>
+                <FileText className="text-muted-foreground mb-4 h-12 w-12" />
+                <p className="text-muted-foreground italic">{t('admin:entries.noContent')}</p>
                 {selectedEntry && (
                   <Button
                     variant="outline"
@@ -349,9 +345,7 @@ export default function EntriesPage() {
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('admin:entries.deleteTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('admin:entries.deleteDescription')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('admin:entries.deleteDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter variant="bare">
             <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
@@ -407,7 +401,7 @@ function EntryCard({
 }) {
   return (
     <div
-      className="group animate-fadeIn rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:border-border/80 hover:bg-card/80"
+      className="group animate-fadeIn border-border bg-card hover:border-border/80 hover:bg-card/80 rounded-xl border p-4 transition-all duration-200"
       style={{ animationDelay: `${index * 0.03}s` }}
     >
       <div className="flex items-start gap-4">
@@ -418,7 +412,7 @@ function EntryCard({
             onClick={() => onOpenEntry(entry.id)}
             className="mb-2 block text-left transition-colors"
           >
-            <h3 className="line-clamp-2 font-medium text-foreground transition-colors group-hover:text-primary">
+            <h3 className="text-foreground group-hover:text-primary line-clamp-2 font-medium transition-colors">
               {entry.title}
             </h3>
           </button>
@@ -428,14 +422,14 @@ function EntryCard({
             href={entry.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mb-3 flex items-center gap-1 truncate text-xs text-muted-foreground transition-colors hover:text-primary"
+            className="text-muted-foreground hover:text-primary mb-3 flex items-center gap-1 truncate text-xs transition-colors"
           >
             <span className="truncate">{entry.url}</span>
             <ExternalLink className="h-3 w-3 flex-shrink-0" />
           </a>
 
           {/* Meta Info */}
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
             <Badge variant="secondary" className="gap-1">
               <Rss className="h-3 w-3" />
               {entry.feed_title || 'Unknown'}
@@ -493,7 +487,7 @@ function EntryCard({
 function EntryCardSkeleton({ index }: { index: number }) {
   return (
     <div
-      className="animate-fadeIn rounded-xl border border-border bg-card p-4"
+      className="animate-fadeIn border-border bg-card rounded-xl border p-4"
       style={{ animationDelay: `${index * 0.03}s` }}
     >
       <div className="flex items-start gap-4">

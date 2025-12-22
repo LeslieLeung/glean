@@ -157,7 +157,7 @@ class TestUpdateUserPreference:
         )
 
         with (
-            patch("glean_worker.tasks.preference_worker.get_session") as mock_get_session,
+            patch("glean_worker.tasks.preference_worker.get_session_context") as mock_get_session,
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
@@ -187,7 +187,7 @@ class TestUpdateUserPreference:
         )
 
         with (
-            patch("glean_worker.tasks.preference_worker.get_session") as mock_get_session,
+            patch("glean_worker.tasks.preference_worker.get_session_context") as mock_get_session,
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
@@ -225,7 +225,7 @@ class TestRebuildUserPreference:
         )
 
         with (
-            patch("glean_worker.tasks.preference_worker.get_session") as mock_get_session,
+            patch("glean_worker.tasks.preference_worker.get_session_context") as mock_get_session,
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()
@@ -253,7 +253,7 @@ class TestRebuildUserPreference:
         )
 
         with (
-            patch("glean_worker.tasks.preference_worker.get_session") as mock_get_session,
+            patch("glean_worker.tasks.preference_worker.get_session_context") as mock_get_session,
             patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class,
         ):
             mock_session = AsyncMock()

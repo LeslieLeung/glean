@@ -105,4 +105,3 @@ export class BookmarkService {
     return this.client.delete<Bookmark>(`/bookmarks/${bookmarkId}/tags/${tagId}`)
   }
 }
-

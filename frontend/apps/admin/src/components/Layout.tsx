@@ -2,7 +2,16 @@ import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import { useLanguageStore } from '../stores/languageStore'
-import { LogOut, LayoutDashboard, Users, Rss, FileText, SlidersHorizontal, Settings, Languages } from 'lucide-react'
+import {
+  LogOut,
+  LayoutDashboard,
+  Users,
+  Rss,
+  FileText,
+  SlidersHorizontal,
+  Settings,
+  Languages,
+} from 'lucide-react'
 import {
   Button,
   Badge,
@@ -82,19 +91,19 @@ export function Layout() {
   ]
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="bg-background flex h-screen">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-border bg-card">
+      <aside className="border-border bg-card w-64 flex-shrink-0 border-r">
         {/* Logo */}
-        <div className="flex items-center justify-between border-b border-border p-4">
+        <div className="border-border flex items-center justify-between border-b p-4">
           <Link to="/dashboard" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary/20">
-              <Rss className="h-5 w-5 text-primary-foreground" />
+            <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg">
+              <Rss className="text-primary-foreground h-5 w-5" />
             </div>
             <div>
-              <span className="font-display text-xl font-bold text-foreground">Glean</span>
+              <span className="font-display text-foreground text-xl font-bold">Glean</span>
               <Badge variant="secondary" className="ml-2 text-xs">
-              {t('admin:layout.badge')}
+                {t('admin:layout.badge')}
               </Badge>
             </div>
           </Link>
@@ -121,7 +130,7 @@ export function Layout() {
                     className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}
                   />
                   <span>{item.label}</span>
-                  {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
+                  {isActive && <span className="bg-primary ml-auto h-1.5 w-1.5 rounded-full" />}
                 </Link>
               )
             })}
@@ -129,24 +138,25 @@ export function Layout() {
         </nav>
 
         {/* Admin info */}
-        <div className="border-t border-border p-4">
-          <div className="mb-3 rounded-lg bg-muted/50 p-3">
-            <p className="text-xs font-medium text-foreground">{admin?.username}</p>
-            <p className="mt-1 text-xs text-muted-foreground capitalize">{admin?.role}</p>
+        <div className="border-border border-t p-4">
+          <div className="bg-muted/50 mb-3 rounded-lg p-3">
+            <p className="text-foreground text-xs font-medium">{admin?.username}</p>
+            <p className="text-muted-foreground mt-1 text-xs capitalize">{admin?.role}</p>
           </div>
 
           {/* Language Selector */}
           <div className="mb-3">
-            <Label className="mb-2 block text-xs font-medium text-muted-foreground">
+            <Label className="text-muted-foreground mb-2 block text-xs font-medium">
               {t('admin:layout.language.label')}
             </Label>
-            <Select value={language} onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}>
+            <Select
+              value={language}
+              onValueChange={(value) => setLanguage(value as 'en' | 'zh-CN')}
+            >
               <SelectTrigger className="w-full">
                 <div className="flex items-center gap-2">
-                  <Languages className="h-4 w-4 text-muted-foreground" />
-                  <SelectValue>
-                    {language === 'en' ? '🇺🇸 English' : '🇨🇳 简体中文'}
-                  </SelectValue>
+                  <Languages className="text-muted-foreground h-4 w-4" />
+                  <SelectValue>{language === 'en' ? '🇺🇸 English' : '🇨🇳 简体中文'}</SelectValue>
                 </div>
               </SelectTrigger>
               <SelectContent>
@@ -178,9 +188,7 @@ export function Layout() {
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('admin:layout.logout.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('admin:layout.logout.description')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('admin:layout.logout.description')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
@@ -198,4 +206,3 @@ export function Layout() {
     </div>
   )
 }
-

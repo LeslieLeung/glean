@@ -21,7 +21,7 @@ interface PreferenceButtonsProps {
 export function PreferenceButtons({
   entry,
   showLabels = true,
-  mobileStyle = false
+  mobileStyle = false,
 }: PreferenceButtonsProps) {
   const { t } = useTranslation('reader')
   const queryClient = useQueryClient()
@@ -101,7 +101,7 @@ export function PreferenceButtons({
           disabled={isPending}
           className={`action-btn action-btn-mobile flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
             isLiked === true ? 'text-red-500' : 'text-muted-foreground'
-          } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+          } ${isPending ? 'cursor-not-allowed opacity-50' : ''}`}
         >
           <Heart className={`h-5 w-5 ${isLiked === true ? 'fill-current' : ''}`} />
           <span className="text-[10px]">{t('actions.like')}</span>
@@ -112,7 +112,7 @@ export function PreferenceButtons({
           disabled={isPending}
           className={`action-btn action-btn-mobile flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
             isLiked === false ? 'text-foreground' : 'text-muted-foreground'
-          } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+          } ${isPending ? 'cursor-not-allowed opacity-50' : ''}`}
         >
           <ThumbsDown className={`h-5 w-5 ${isLiked === false ? 'fill-current' : ''}`} />
           <span className="text-[10px]">{t('actions.dislike')}</span>

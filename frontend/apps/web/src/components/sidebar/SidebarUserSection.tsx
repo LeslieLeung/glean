@@ -22,7 +22,7 @@ export function SidebarUserSection({
   const { t } = useTranslation('feeds')
 
   return (
-    <div className="border-t border-border p-2 md:p-3">
+    <div className="border-border border-t p-2 md:p-3">
       <div className="mb-2 space-y-0.5 md:mb-3">
         <NavLink
           to="/settings"
@@ -33,19 +33,19 @@ export function SidebarUserSection({
         />
       </div>
 
-      {(isSidebarOpen || isMobileSidebarOpen) ? (
-        <div className="rounded-lg bg-muted/50 p-2.5 md:p-3">
+      {isSidebarOpen || isMobileSidebarOpen ? (
+        <div className="bg-muted/50 rounded-lg p-2.5 md:p-3">
           <div className="flex items-center justify-between gap-2.5 md:gap-3">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1 md:gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-sm font-medium text-primary-foreground shadow-md md:h-10 md:w-10">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 md:gap-3">
+              <div className="from-primary-400 to-primary-600 text-primary-foreground flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-sm font-medium shadow-md md:h-10 md:w-10">
                 {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">
+                <p className="text-foreground truncate text-sm font-medium">
                   {user?.name || user?.email}
                 </p>
                 {user?.name && (
-                  <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                  <p className="text-muted-foreground truncate text-xs">{user.email}</p>
                 )}
               </div>
             </div>
@@ -54,7 +54,7 @@ export function SidebarUserSection({
               size="icon-sm"
               onClick={onLogoutClick}
               title={t('sidebar.logout') || 'Sign out'}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground shrink-0"
             >
               <LogOut className="h-4 w-4" />
             </Button>
@@ -62,7 +62,7 @@ export function SidebarUserSection({
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 font-medium text-primary-foreground shadow-md">
+          <div className="from-primary-400 to-primary-600 text-primary-foreground flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br font-medium shadow-md">
             {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}
           </div>
           <Button
@@ -99,14 +99,13 @@ function NavLink({ to, icon, label, isOpen, isActive }: NavLinkProps) {
       } ${!isOpen ? 'justify-center' : ''}`}
       title={!isOpen ? label : undefined}
     >
-      <span className={`shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}>
+      <span
+        className={`shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'}`}
+      >
         {icon}
       </span>
       {isOpen && <span>{label}</span>}
-      {isActive && isOpen && (
-        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
-      )}
+      {isActive && isOpen && <span className="bg-primary ml-auto h-1.5 w-1.5 rounded-full" />}
     </Link>
   )
 }
-

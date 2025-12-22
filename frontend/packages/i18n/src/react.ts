@@ -6,7 +6,9 @@ import type { Namespace, TypedTFunction, Locale } from './types'
  * Typed useTranslation hook
  * Usage: const { t } = useTranslation('auth')
  */
-export function useTranslation<N extends Namespace>(namespace?: N | N[]): {
+export function useTranslation<N extends Namespace>(
+  namespace?: N | N[]
+): {
   t: TypedTFunction
   i18n: ReturnType<typeof useI18nextTranslation>['i18n']
   ready: boolean

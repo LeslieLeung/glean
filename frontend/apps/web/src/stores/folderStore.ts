@@ -121,4 +121,3 @@ export const useFolderStore = create<FolderState>((set, get) => ({
     })
   },
 }))
-

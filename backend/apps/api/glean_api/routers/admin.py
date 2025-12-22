@@ -741,8 +741,10 @@ async def update_embedding_config(
         updates["dimension"] = inferred_dimension
 
     # Check if this is a config change that requires rebuild
+    # Only provider, model, and dimension changes require rebuild
+    # api_key and base_url changes don't affect embeddings (same model = same vectors)
     config_changed = False
-    rebuild_fields = {"provider", "model", "dimension", "api_key", "base_url"}
+    rebuild_fields = {"provider", "model", "dimension"}
     for field in rebuild_fields:
         if field in updates and getattr(current, field) != updates[field]:
             config_changed = True

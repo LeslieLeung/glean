@@ -257,30 +257,29 @@ jobs:
           generate_release_notes: true
           body: |
             ## Docker Images
-            
+
             This release includes the following Docker images:
-            
+
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-backend:${{ github.ref_name }}`
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}`
             - `ghcr.io/${{ env.IMAGE_PREFIX }}-admin:${{ github.ref_name }}`
-            
+
             ## Desktop Apps
-            
+
             Download the desktop application for your platform from the assets below.
-            
+
             ## Quick Start
-            
+
             ```bash
             # Download docker-compose.yml
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
-            
+
             # Start Glean
             docker compose up -d
-            
+
             # Access at http://localhost
             ```
-            
+
             See [README](https://github.com/${{ github.repository }}#quick-start) for full documentation.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

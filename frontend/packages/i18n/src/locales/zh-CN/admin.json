@@ -36,6 +36,7 @@
       "subtitle": "配置向量化以启用智能推荐。",
       "config": "配置",
       "enabled": "启用向量化",
+      "enabledDesc": "开启基于向量嵌入的 AI 智能推荐功能。",
       "provider": "提供商",
       "model": "模型",
       "dimension": "维度",
@@ -218,4 +219,3 @@
     "loading": "加载中..."
   }
 }
-

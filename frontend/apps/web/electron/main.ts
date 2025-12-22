@@ -30,8 +30,8 @@ function isValidApiUrl(url: string): boolean {
 
 const store = new Store<StoreType>({
   defaults: {
-    apiUrl: 'http://localhost:8000'
-  }
+    apiUrl: 'http://localhost:8000',
+  },
 })
 
 let mainWindow: BrowserWindow | null = null
@@ -56,12 +56,12 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   console.log('[AutoUpdater] Update available:', info.version)
   updateAvailable = true
-  
+
   // Notify renderer process
   mainWindow?.webContents.send('update-available', {
     version: info.version,
     releaseDate: info.releaseDate,
-    releaseNotes: info.releaseNotes
+    releaseNotes: info.releaseNotes,
   })
 })
 
@@ -73,13 +73,13 @@ autoUpdater.on('update-not-available', () => {
 autoUpdater.on('download-progress', (progress) => {
   downloadProgress = progress.percent
   console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}%`)
-  
+
   // Notify renderer process
   mainWindow?.webContents.send('update-download-progress', {
     percent: progress.percent,
     bytesPerSecond: progress.bytesPerSecond,
     transferred: progress.transferred,
-    total: progress.total
+    total: progress.total,
   })
 })
 
@@ -87,34 +87,36 @@ autoUpdater.on('update-downloaded', (info) => {
   console.log('[AutoUpdater] Update downloaded:', info.version)
   updateDownloaded = true
   downloadProgress = 100
-  
+
   // Notify renderer process
   mainWindow?.webContents.send('update-downloaded', {
-    version: info.version
+    version: info.version,
   })
-  
+
   // Show dialog to user
-  dialog.showMessageBox(mainWindow!, {
-    type: 'info',
-    title: 'Update Ready',
-    message: `Version ${info.version} has been downloaded.`,
-    detail: 'The update will be installed when you restart the application.',
-    buttons: ['Restart Now', 'Later'],
-    defaultId: 0,
-    cancelId: 1
-  }).then(({ response }) => {
-    if (response === 0) {
-      autoUpdater.quitAndInstall()
-    }
-  })
+  dialog
+    .showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Update Ready',
+      message: `Version ${info.version} has been downloaded.`,
+      detail: 'The update will be installed when you restart the application.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response === 0) {
+        autoUpdater.quitAndInstall()
+      }
+    })
 })
 
 autoUpdater.on('error', (error) => {
   console.error('[AutoUpdater] Error:', error.message)
-  
+
   // Notify renderer process
   mainWindow?.webContents.send('update-error', {
-    message: error.message
+    message: error.message,
   })
 })
 
@@ -134,7 +136,7 @@ function createApplicationMenu() {
               {
                 label: 'Preferences...',
                 accelerator: 'CommandOrControl+,',
-                click: () => createConfigWindow()
+                click: () => createConfigWindow(),
               },
               { type: 'separator' as const },
               { role: 'services' as const },
@@ -143,9 +145,9 @@ function createApplicationMenu() {
               { role: 'hideOthers' as const },
               { role: 'unhide' as const },
               { type: 'separator' as const },
-              { role: 'quit' as const }
-            ]
-          }
+              { role: 'quit' as const },
+            ],
+          },
         ]
       : []),
     // File menu
@@ -157,13 +159,13 @@ function createApplicationMenu() {
               {
                 label: 'Preferences...',
                 accelerator: 'CommandOrControl+,',
-                click: () => createConfigWindow()
+                click: () => createConfigWindow(),
               },
-              { type: 'separator' as const }
+              { type: 'separator' as const },
             ]
           : []),
-        isMac ? { role: 'close' as const } : { role: 'quit' as const }
-      ]
+        isMac ? { role: 'close' as const } : { role: 'quit' as const },
+      ],
     },
     // Edit menu
     {
@@ -179,10 +181,14 @@ function createApplicationMenu() {
           ? [
               { role: 'pasteAndMatchStyle' as const },
               { role: 'delete' as const },
-              { role: 'selectAll' as const }
+              { role: 'selectAll' as const },
             ]
-          : [{ role: 'delete' as const }, { type: 'separator' as const }, { role: 'selectAll' as const }])
-      ]
+          : [
+              { role: 'delete' as const },
+              { type: 'separator' as const },
+              { role: 'selectAll' as const },
+            ]),
+      ],
     },
     // View menu
     {
@@ -196,8 +202,8 @@ function createApplicationMenu() {
         { role: 'zoomIn' as const },
         { role: 'zoomOut' as const },
         { type: 'separator' as const },
-        { role: 'togglefullscreen' as const }
-      ]
+        { role: 'togglefullscreen' as const },
+      ],
     },
     // Window menu
     {
@@ -206,10 +212,15 @@ function createApplicationMenu() {
         { role: 'minimize' as const },
         { role: 'zoom' as const },
         ...(isMac
-          ? [{ type: 'separator' as const }, { role: 'front' as const }, { type: 'separator' as const }, { role: 'window' as const }]
-          : [{ role: 'close' as const }])
-      ]
-    }
+          ? [
+              { type: 'separator' as const },
+              { role: 'front' as const },
+              { type: 'separator' as const },
+              { role: 'window' as const },
+            ]
+          : [{ role: 'close' as const }]),
+      ],
+    },
   ]
 
   const menu = Menu.buildFromTemplate(template)
@@ -223,7 +234,7 @@ async function checkBackendConnection(apiUrl: string): Promise<boolean> {
     const timeoutId = setTimeout(() => controller.abort(), 5000)
 
     const response = await fetch(`${apiUrl}/api/health`, {
-      signal: controller.signal
+      signal: controller.signal,
     })
 
     clearTimeout(timeoutId)
@@ -257,13 +268,13 @@ function createConfigWindow() {
       preload: path.join(__dirname, 'config-preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: true
+      webSecurity: true,
     },
     title: 'Glean - Backend Configuration',
     backgroundColor: '#1a1a1a',
     show: false, // Don't show initially, wait for fade-in animation after loading
     center: true,
-    opacity: 0 // Initial opacity is 0
+    opacity: 0, // Initial opacity is 0
   })
 
   // Load configuration page
@@ -313,11 +324,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: true
+      webSecurity: true,
     },
     title: 'Glean',
     show: false,
-    backgroundColor: '#1a1a1a'
+    backgroundColor: '#1a1a1a',
   })
 
   // Add timeout protection: force show window if not shown after 5 seconds
@@ -336,14 +347,17 @@ function createWindow() {
   })
 
   // Listen for load failures
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error('[Main] Failed to load:', validatedURL)
-    console.error('[Main] Error:', errorCode, errorDescription)
-    // Show window even on load failure so user can see the error
-    if (mainWindow && !mainWindow.isVisible()) {
-      mainWindow.show()
+  mainWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error('[Main] Failed to load:', validatedURL)
+      console.error('[Main] Error:', errorCode, errorDescription)
+      // Show window even on load failure so user can see the error
+      if (mainWindow && !mainWindow.isVisible()) {
+        mainWindow.show()
+      }
     }
-  })
+  )
 
   // Listen for load success
   mainWindow.webContents.on('did-finish-load', () => {
@@ -356,7 +370,7 @@ function createWindow() {
 
   if (isDev) {
     // Development mode: load Vite dev server
-    mainWindow.loadURL('http://localhost:3000').catch(err => {
+    mainWindow.loadURL('http://localhost:3000').catch((err) => {
       console.error('[Main] Failed to load dev server:', err)
       // Show error to user
       mainWindow?.show()
@@ -364,7 +378,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools()
   } else {
     // Production mode: load built files
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html')).catch(err => {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html')).catch((err) => {
       console.error('[Main] Failed to load file:', err)
       mainWindow?.show()
     })
@@ -454,7 +468,7 @@ ipcMain.handle('get-platform', () => {
     platform: process.platform,
     arch: process.arch,
     version: app.getVersion(),
-    name: app.getName()
+    name: app.getName(),
   }
 })
 
@@ -523,13 +537,13 @@ ipcMain.handle('check-for-updates', async () => {
     console.log('[Main] Skipping update check in development mode')
     return { available: false, isDev: true }
   }
-  
+
   try {
     const result = await autoUpdater.checkForUpdates()
     return {
       available: updateAvailable,
       version: result?.updateInfo?.version,
-      releaseDate: result?.updateInfo?.releaseDate
+      releaseDate: result?.updateInfo?.releaseDate,
     }
   } catch (error) {
     console.error('[Main] Update check failed:', error)
@@ -542,7 +556,7 @@ ipcMain.handle('download-update', async () => {
   if (!updateAvailable) {
     return { success: false, error: 'No update available' }
   }
-  
+
   try {
     await autoUpdater.downloadUpdate()
     return { success: true }
@@ -557,7 +571,7 @@ ipcMain.handle('install-update', () => {
   if (!updateDownloaded) {
     return { success: false, error: 'Update not downloaded' }
   }
-  
+
   autoUpdater.quitAndInstall()
   return { success: true }
 })
@@ -568,6 +582,6 @@ ipcMain.handle('get-update-status', () => {
     available: updateAvailable,
     downloaded: updateDownloaded,
     downloadProgress: downloadProgress,
-    currentVersion: app.getVersion()
+    currentVersion: app.getVersion(),
   }
 })

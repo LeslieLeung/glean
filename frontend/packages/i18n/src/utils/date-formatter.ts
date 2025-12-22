@@ -49,10 +49,7 @@ export function formatDate(
  * formatRelativeTime(new Date(Date.now() - 3600000), 'en') // "about 1 hour ago"
  * formatRelativeTime(new Date(Date.now() - 3600000), 'zh-CN') // "大约 1 小时前"
  */
-export function formatRelativeTime(
-  date: Date | string | number,
-  locale: Locale
-): string {
+export function formatRelativeTime(date: Date | string | number, locale: Locale): string {
   const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date
   return formatDistanceToNow(dateObj, {
     addSuffix: true,

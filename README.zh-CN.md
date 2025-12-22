@@ -4,7 +4,7 @@
 
 > [!IMPORTANT]
 > 加入我们的 [Discord](https://discord.gg/KMKC4sRVSJ) 以获取最新动态和获得支持。
-> 
+>
 > 该项目仍在开发中，尚未准备好生产使用。
 
 一个自托管的 RSS 阅读器和个人知识管理工具。
@@ -227,4 +227,3 @@ make dev-all
 ## 许可证
 
 本项目采用 **AGPL-3.0 许可证** - 详见 [LICENSE](LICENSE) 文件。
-

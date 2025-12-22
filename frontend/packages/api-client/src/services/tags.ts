@@ -57,4 +57,3 @@ export class TagService {
     return this.client.post<{ affected: number }>('/tags/batch', data)
   }
 }
-

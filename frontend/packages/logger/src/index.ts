@@ -30,7 +30,7 @@ const getDefaultLogLevel = (): LogLevel => {
  */
 const setLogLevel = (level: LogLevel, persistent = false): void => {
   log.setLevel(level)
-  
+
   if (persistent) {
     try {
       localStorage.setItem('glean_log_level', level)
@@ -45,23 +45,23 @@ const setLogLevel = (level: LogLevel, persistent = false): void => {
  */
 const createLogger = (config: LoggerConfig = {}): Logger => {
   const { level = getDefaultLogLevel(), prefix, persistent = false } = config
-  
+
   // Set the log level
   setLogLevel(level, persistent)
-  
+
   // Create logger methods
   const logger: Logger = {
     trace: (...args) => log.trace(...args),
     debug: (...args) => log.debug(...args),
     info: (...args) => log.info(...args),
     warn: (...args) => log.warn(...args),
-    error: (...args) => log.error(...args)
+    error: (...args) => log.error(...args),
   }
-  
+
   // Add prefix if provided
   if (prefix) {
     const originalMethods = { ...logger }
-    
+
     Object.keys(logger).forEach((level) => {
       const levelKey = level as keyof Logger
       logger[levelKey] = (...args) => {
@@ -69,7 +69,7 @@ const createLogger = (config: LoggerConfig = {}): Logger => {
       }
     })
   }
-  
+
   return logger
 }
 
@@ -86,7 +86,7 @@ const createNamedLogger = (options: NamedLoggerOptions): Logger => {
  */
 export const logger = createLogger({
   level: getDefaultLogLevel(),
-  persistent: true
+  persistent: true,
 })
 
 /**

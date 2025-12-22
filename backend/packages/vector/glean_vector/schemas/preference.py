@@ -1,9 +1,22 @@
 """Preference-related schemas."""
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+class SourceAffinity(BaseModel):
+    """Source affinity data."""
+
+    source_name: str
+    affinity_score: float
+
+
+class AuthorAffinity(BaseModel):
+    """Author affinity data."""
+
+    author_name: str
+    affinity_score: float
 
 
 class UserPreferenceVector(BaseModel):
@@ -34,6 +47,6 @@ class PreferenceStats(BaseModel):
     total_dislikes: int
     total_bookmarks: int
     preference_strength: str = Field(..., description="weak, moderate, or strong")
-    top_sources: list[dict[str, Any]] = Field(default_factory=list)
-    top_authors: list[dict[str, Any]] = Field(default_factory=list)
+    top_sources: list[SourceAffinity] = Field(default_factory=list)  # type: ignore[reportUnknownVariableType]
+    top_authors: list[AuthorAffinity] = Field(default_factory=list)  # type: ignore[reportUnknownVariableType]
     model_updated_at: datetime | None = None

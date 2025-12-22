@@ -82,7 +82,7 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
 
 async def fetch_feed(
     url: str, etag: str | None = None, last_modified: str | None = None
-) -> tuple[str, dict[str, str] | None] | None:
+) -> tuple[str, dict[str, str]] | None:
     """
     Fetch feed content with conditional request support.
 
@@ -114,7 +114,7 @@ async def fetch_feed(
             response.raise_for_status()
 
             # Extract caching headers
-            cache_headers = {}
+            cache_headers: dict[str, str] = {}
             if "etag" in response.headers:
                 cache_headers["etag"] = response.headers["etag"]
             if "last-modified" in response.headers:

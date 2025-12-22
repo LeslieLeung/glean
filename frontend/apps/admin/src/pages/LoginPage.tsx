@@ -35,19 +35,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="bg-background flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary/20">
-            <Rss className="h-8 w-8 text-primary-foreground" />
+          <div className="from-primary-500 to-primary-600 shadow-primary/20 mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg">
+            <Rss className="text-primary-foreground h-8 w-8" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-foreground">{t('admin:login.title')}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{t('admin:login.subtitle')}</p>
+          <h1 className="font-display text-foreground text-3xl font-bold">
+            {t('admin:login.title')}
+          </h1>
+          <p className="text-muted-foreground mt-2 text-sm">{t('admin:login.subtitle')}</p>
         </div>
 
         {/* Login form */}
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+        <div className="border-border bg-card rounded-2xl border p-8 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <Alert variant="error">
@@ -59,14 +61,14 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="username">{t('admin:login.username')}</Label>
-              <div className="input-container flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 shadow-2xs ring-ring/24 transition-shadow focus-within:border-ring focus-within:ring-[3px] dark:bg-input/32">
-                <User className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className="input-container border-input bg-background ring-ring/24 focus-within:border-ring dark:bg-input/32 flex items-center gap-3 rounded-lg border px-3 py-2 shadow-2xs transition-shadow focus-within:ring-[3px]">
+                <User className="text-muted-foreground h-5 w-5 shrink-0" />
                 <input
                   id="username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/64"
+                  className="placeholder:text-muted-foreground/64 w-full bg-transparent text-sm outline-none"
                   placeholder={t('admin:login.usernamePlaceholder')}
                   required
                   autoComplete="username"
@@ -76,14 +78,14 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password">{t('admin:login.password')}</Label>
-              <div className="input-container flex items-center gap-3 rounded-lg border border-input bg-background px-3 py-2 shadow-2xs ring-ring/24 transition-shadow focus-within:border-ring focus-within:ring-[3px] dark:bg-input/32">
-                <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
+              <div className="input-container border-input bg-background ring-ring/24 focus-within:border-ring dark:bg-input/32 flex items-center gap-3 rounded-lg border px-3 py-2 shadow-2xs transition-shadow focus-within:ring-[3px]">
+                <Lock className="text-muted-foreground h-5 w-5 shrink-0" />
                 <input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/64"
+                  className="placeholder:text-muted-foreground/64 w-full bg-transparent text-sm outline-none"
                   placeholder={t('admin:login.passwordPlaceholder')}
                   required
                   autoComplete="current-password"
@@ -97,11 +99,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          {t('admin:login.footer')}
-        </p>
+        <p className="text-muted-foreground mt-6 text-center text-xs">{t('admin:login.footer')}</p>
       </div>
     </div>
   )
 }
-

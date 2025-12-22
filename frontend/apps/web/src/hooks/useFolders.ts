@@ -99,4 +99,3 @@ export function useFolders(type?: FolderType) {
     moveFolder,
   }
 }
-

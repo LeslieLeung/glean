@@ -36,18 +36,16 @@ export function SidebarTagsSection({
         <div className="mb-1 flex items-center justify-between md:mb-2">
           <button
             onClick={onToggleTagSection}
-            className="flex items-center gap-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-muted-foreground md:px-3 md:text-xs"
+            className="text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wider uppercase transition-colors md:px-3 md:text-xs"
           >
             <ChevronRight
-              className={`h-3 w-3 transition-transform ${
-                isTagSectionExpanded ? 'rotate-90' : ''
-              }`}
+              className={`h-3 w-3 transition-transform ${isTagSectionExpanded ? 'rotate-90' : ''}`}
             />
             {t('sidebar.tags')}
           </button>
           <button
             onClick={onCreateTag}
-            className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+            className="text-muted-foreground/60 hover:bg-accent hover:text-foreground rounded p-1 transition-colors"
             title={t('sidebar.tags')}
           >
             <Plus className="h-4 w-4" />
@@ -58,7 +56,7 @@ export function SidebarTagsSection({
       {!isSidebarOpen && !isMobileSidebarOpen && (
         <button
           onClick={onCreateTag}
-          className="group flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground"
+          className="group text-muted-foreground hover:bg-accent hover:text-foreground flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200"
           title="Tags"
         >
           <Tag className="h-5 w-5" />
@@ -74,7 +72,7 @@ export function SidebarTagsSection({
                   key={tag.id}
                   className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-all duration-200 md:gap-2.5 md:px-3 md:py-2 ${
                     currentBookmarkTagId === tag.id
-                      ? 'bg-primary/10 font-medium text-primary'
+                      ? 'bg-primary/10 text-primary font-medium'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   }`}
                 >
@@ -93,12 +91,15 @@ export function SidebarTagsSection({
                     <span className="min-w-0 flex-1 truncate text-left">{tag.name}</span>
                   </button>
                   {tag.bookmark_count > 0 && (
-                    <Badge size="sm" className="shrink-0 bg-muted text-[10px] text-muted-foreground">
+                    <Badge
+                      size="sm"
+                      className="bg-muted text-muted-foreground shrink-0 text-[10px]"
+                    >
                       {tag.bookmark_count}
                     </Badge>
                   )}
                   <Menu>
-                    <MenuTrigger className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100">
+                    <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </MenuTrigger>
                     <MenuPopup align="end">
@@ -119,7 +120,7 @@ export function SidebarTagsSection({
           )}
 
           {(isSidebarOpen || isMobileSidebarOpen) && tags.length === 0 && (
-            <p className="px-4 py-1.5 text-xs text-muted-foreground/60 md:px-5 md:py-2">
+            <p className="text-muted-foreground/60 px-4 py-1.5 text-xs md:px-5 md:py-2">
               {t('common.noTagsYet')}
             </p>
           )}
@@ -128,4 +129,3 @@ export function SidebarTagsSection({
     </>
   )
 }
-

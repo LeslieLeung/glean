@@ -48,7 +48,11 @@ export default function PreferencePage() {
   const { showPreferenceScore, setShowPreferenceScore } = useUIStore()
 
   // Fetch preference stats
-  const { data: stats, isLoading, error } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['preference', 'stats'],
     queryFn: () => preferenceService.getStats(),
   })
@@ -98,17 +102,15 @@ export default function PreferencePage() {
     <div className="container mx-auto max-w-4xl px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Sparkles className="h-6 w-6 text-primary" />
+        <div className="mb-2 flex items-center gap-3">
+          <div className="bg-primary/10 flex h-12 w-12 items-center justify-center rounded-xl">
+            <Sparkles className="text-primary h-6 w-6" />
           </div>
           <div>
-            <h1 className="font-display text-3xl font-bold text-foreground">
+            <h1 className="font-display text-foreground text-3xl font-bold">
               {t('preferences.title')}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('preferences.desc')}
-            </p>
+            <p className="text-muted-foreground text-sm">{t('preferences.desc')}</p>
           </div>
         </div>
       </div>
@@ -141,50 +143,40 @@ export default function PreferencePage() {
           {/* Statistics cards */}
           <div className="grid gap-4 sm:grid-cols-3">
             {/* Likes */}
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-3 mb-2">
+            <div className="border-border bg-card rounded-lg border p-6">
+              <div className="mb-2 flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
                   <Heart className="h-5 w-5 fill-current text-red-500" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.total_likes}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('preferences.stats.liked')}
-                  </p>
+                  <p className="text-foreground text-2xl font-bold">{stats.total_likes}</p>
+                  <p className="text-muted-foreground text-xs">{t('preferences.stats.liked')}</p>
                 </div>
               </div>
             </div>
 
             {/* Dislikes */}
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <ThumbsDown className="h-5 w-5 fill-current text-muted-foreground" />
+            <div className="border-border bg-card rounded-lg border p-6">
+              <div className="mb-2 flex items-center gap-3">
+                <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg">
+                  <ThumbsDown className="text-muted-foreground h-5 w-5 fill-current" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.total_dislikes}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('preferences.stats.disliked')}
-                  </p>
+                  <p className="text-foreground text-2xl font-bold">{stats.total_dislikes}</p>
+                  <p className="text-muted-foreground text-xs">{t('preferences.stats.disliked')}</p>
                 </div>
               </div>
             </div>
 
             {/* Bookmarks */}
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Archive className="h-5 w-5 text-primary" />
+            <div className="border-border bg-card rounded-lg border p-6">
+              <div className="mb-2 flex items-center gap-3">
+                <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+                  <Archive className="text-primary h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stats.total_bookmarks}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-foreground text-2xl font-bold">{stats.total_bookmarks}</p>
+                  <p className="text-muted-foreground text-xs">
                     {t('preferences.stats.bookmarked')}
                   </p>
                 </div>
@@ -193,17 +185,17 @@ export default function PreferencePage() {
           </div>
 
           {/* Model strength */}
-          <div className="rounded-lg border border-border bg-card p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="border-border bg-card rounded-lg border p-6">
+            <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg">
+                  <TrendingUp className="text-muted-foreground h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="font-display text-lg font-semibold text-foreground">
+                  <h2 className="font-display text-foreground text-lg font-semibold">
                     {t('preferences.stats.modelStrength')}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     {t('preferences.stats.modelStrengthDesc')}
                   </p>
                 </div>
@@ -214,7 +206,7 @@ export default function PreferencePage() {
             </div>
 
             {stats.model_updated_at && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {t('preferences.stats.lastUpdated', {
                   date: format(new Date(stats.model_updated_at), 'PPpp'),
                 })}
@@ -239,34 +231,35 @@ export default function PreferencePage() {
                   </>
                 )}
               </Button>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t('preferences.rebuildHint')}
-              </p>
+              <p className="text-muted-foreground mt-2 text-xs">{t('preferences.rebuildHint')}</p>
             </div>
           </div>
 
           {/* Display settings */}
-          <div className="rounded-lg border border-border bg-card p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                <Eye className="h-5 w-5 text-muted-foreground" />
+          <div className="border-border bg-card rounded-lg border p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg">
+                <Eye className="text-muted-foreground h-5 w-5" />
               </div>
               <div>
-                <h2 className="font-display text-lg font-semibold text-foreground">
+                <h2 className="font-display text-foreground text-lg font-semibold">
                   {t('preferences.displaySettings.title')}
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-muted-foreground text-sm">
                   {t('preferences.displaySettings.desc')}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg bg-muted/30 px-4 py-3">
+            <div className="bg-muted/30 flex items-center justify-between rounded-lg px-4 py-3">
               <div className="flex flex-col gap-0.5">
-                <Label htmlFor="show-score" className="text-sm font-medium text-foreground cursor-pointer">
+                <Label
+                  htmlFor="show-score"
+                  className="text-foreground cursor-pointer text-sm font-medium"
+                >
                   {t('preferences.displaySettings.showScore')}
                 </Label>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   {t('preferences.displaySettings.showScoreDesc')}
                 </p>
               </div>
@@ -280,16 +273,16 @@ export default function PreferencePage() {
 
           {/* Top sources */}
           {stats.top_sources.length > 0 && (
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <Rss className="h-5 w-5 text-muted-foreground" />
+            <div className="border-border bg-card rounded-lg border p-6">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg">
+                  <Rss className="text-muted-foreground h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="font-display text-lg font-semibold text-foreground">
+                  <h2 className="font-display text-foreground text-lg font-semibold">
                     {t('preferences.topSources.title')}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     {t('preferences.topSources.description')}
                   </p>
                 </div>
@@ -299,24 +292,24 @@ export default function PreferencePage() {
                 {stats.top_sources.slice(0, 5).map((source) => (
                   <div
                     key={source.feed_id}
-                    className="flex items-center justify-between rounded-lg bg-muted/30 px-4 py-3"
+                    className="bg-muted/30 flex items-center justify-between rounded-lg px-4 py-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <BarChart3 className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="text-sm font-medium text-foreground truncate">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <BarChart3 className="text-primary h-4 w-4 shrink-0" />
+                      <span className="text-foreground truncate text-sm font-medium">
                         {t('preferences.topSources.feed', { id: source.feed_id.slice(0, 8) })}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
+                      <div className="bg-muted h-2 w-24 overflow-hidden rounded-full">
                         <div
-                          className="h-full bg-primary"
+                          className="bg-primary h-full"
                           style={{
                             width: `${Math.min(100, Math.abs(source.affinity_score) * 100)}%`,
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-muted-foreground w-12 text-right">
+                      <span className="text-muted-foreground w-12 text-right font-mono text-xs">
                         {source.affinity_score.toFixed(2)}
                       </span>
                     </div>
@@ -328,16 +321,16 @@ export default function PreferencePage() {
 
           {/* Top authors */}
           {stats.top_authors.length > 0 && (
-            <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                  <User className="h-5 w-5 text-muted-foreground" />
+            <div className="border-border bg-card rounded-lg border p-6">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-lg">
+                  <User className="text-muted-foreground h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="font-display text-lg font-semibold text-foreground">
+                  <h2 className="font-display text-foreground text-lg font-semibold">
                     {t('preferences.topAuthors.title')}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     {t('preferences.topAuthors.description')}
                   </p>
                 </div>
@@ -347,24 +340,24 @@ export default function PreferencePage() {
                 {stats.top_authors.slice(0, 5).map((author, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between rounded-lg bg-muted/30 px-4 py-3"
+                    className="bg-muted/30 flex items-center justify-between rounded-lg px-4 py-3"
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <BarChart3 className="h-4 w-4 shrink-0 text-primary" />
-                      <span className="text-sm font-medium text-foreground truncate">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <BarChart3 className="text-primary h-4 w-4 shrink-0" />
+                      <span className="text-foreground truncate text-sm font-medium">
                         {author.name}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
+                      <div className="bg-muted h-2 w-24 overflow-hidden rounded-full">
                         <div
-                          className="h-full bg-primary"
+                          className="bg-primary h-full"
                           style={{
                             width: `${Math.min(100, Math.abs(author.affinity_score) * 100)}%`,
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-muted-foreground w-12 text-right">
+                      <span className="text-muted-foreground w-12 text-right font-mono text-xs">
                         {author.affinity_score.toFixed(2)}
                       </span>
                     </div>
@@ -376,16 +369,14 @@ export default function PreferencePage() {
 
           {/* Empty state */}
           {stats.total_likes === 0 && stats.total_dislikes === 0 && stats.total_bookmarks === 0 && (
-            <div className="rounded-lg border border-border bg-card p-12 text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <Heart className="h-8 w-8 text-muted-foreground" />
+            <div className="border-border bg-card rounded-lg border p-12 text-center">
+              <div className="bg-muted mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                <Heart className="text-muted-foreground h-8 w-8" />
               </div>
-              <h3 className="mb-2 font-display text-lg font-semibold text-foreground">
+              <h3 className="font-display text-foreground mb-2 text-lg font-semibold">
                 {t('preferences.empty.title')}
               </h3>
-              <p className="text-sm text-muted-foreground">
-                {t('preferences.empty.description')}
-              </p>
+              <p className="text-muted-foreground text-sm">{t('preferences.empty.description')}</p>
             </div>
           )}
         </div>
@@ -396,9 +387,7 @@ export default function PreferencePage() {
         <AlertDialogPopup>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('preferences.rebuildConfirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('preferences.rebuildConfirmDesc')}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{t('preferences.rebuildConfirmDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>

@@ -32,12 +32,17 @@
     "deleteConfirm": "确定要删除此标签吗？",
     "tagName": "标签名称",
     "noTags": "暂无标签",
-    "addFirst": "添加您的第一个标签"
+    "addFirst": "添加您的第一个标签",
+    "noTagsYet": "暂无标签。输入以创建。",
+    "creating": "创建中..."
   },
   "empty": {
     "title": "暂无书签",
     "description": "保存您想稍后阅读的文章",
-    "addBookmark": "添加书签"
+    "addBookmark": "添加书签",
+    "noBookmarks": "未找到书签",
+    "noBookmarksDescription": "保存文章或添加外部链接以建立您的收藏",
+    "addFirstBookmark": "添加您的第一个书签"
   },
   "metadata": {
     "title": "标题",
@@ -66,11 +71,6 @@
     "save": "保存",
     "create": "创建"
   },
-  "empty": {
-    "noBookmarks": "未找到书签",
-    "noBookmarksDescription": "保存文章或添加外部链接以建立您的收藏",
-    "addFirstBookmark": "添加您的第一个书签"
-  },
   "pagination": {
     "showing": "显示 {{count}} / {{total}} 个书签",
     "previous": "上一页",
@@ -86,17 +86,12 @@
     "articleNotFoundDescription": "文章可能已被移除或不再可用。",
     "close": "关闭"
   },
-  "tags": {
-    "noTagsYet": "暂无标签。输入以创建。",
-    "creating": "创建中...",
-    "create": "创建 \"{{name}}\""
-  },
   "dialogs": {
     "createBookmark": {
       "title": "添加书签",
       "description": "保存链接或创建笔记以便稍后阅读。",
       "url": "链接",
-      "title": "标题",
+      "bookmarkTitle": "标题",
       "notes": "笔记",
       "folders": "文件夹",
       "tags": "标签",
@@ -111,7 +106,7 @@
     "editBookmark": {
       "title": "编辑书签",
       "description": "更新书签详情、文件夹和标签。",
-      "title": "标题",
+      "bookmarkTitle": "标题",
       "notes": "笔记",
       "source": {
         "savedFromFeed": "从订阅保存",
