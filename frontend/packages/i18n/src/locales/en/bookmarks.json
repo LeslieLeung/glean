@@ -69,7 +69,10 @@
     "delete": "Delete",
     "cancel": "Cancel",
     "save": "Save",
-    "create": "Create"
+    "create": "Create",
+    "close": "Close",
+    "enterFullscreen": "Enter fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   },
   "pagination": {
     "showing": "Showing {{count}} of {{total}} bookmarks",
@@ -84,7 +87,8 @@
   "emptyState": {
     "articleNotFound": "Article not found",
     "articleNotFoundDescription": "The article may have been removed or is no longer available.",
-    "close": "Close"
+    "close": "Close",
+    "noContent": "Content could not be extracted from this page."
   },
   "dialogs": {
     "createBookmark": {
@@ -126,5 +130,9 @@
   },
   "filters": {
     "label": "Filters:"
+  },
+  "view": {
+    "grid": "Grid view",
+    "list": "List view"
   }
 }

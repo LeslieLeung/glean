@@ -201,6 +201,7 @@ export interface Bookmark {
   url: string | null
   title: string
   excerpt: string | null
+  content: string | null // Full article content (HTML) for in-app reading
   snapshot_status: 'pending' | 'processing' | 'done' | 'failed'
   folders: BookmarkFolderSimple[]
   tags: BookmarkTagSimple[]
