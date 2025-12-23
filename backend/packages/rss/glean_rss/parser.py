@@ -4,6 +4,7 @@ RSS/Atom feed parser.
 Parses RSS and Atom feeds using feedparser.
 """
 
+import html
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -56,8 +57,8 @@ class ParsedFeed:
         """
         # feedparser returns a FeedParserDict for the "feed" key
         feed_info: dict[str, Any] = dict(data.get("feed", {}))  # type: ignore[arg-type]
-        self.title = str(feed_info.get("title", ""))
-        self.description = str(feed_info.get("description", ""))
+        self.title = html.unescape(str(feed_info.get("title", "")))
+        self.description = html.unescape(str(feed_info.get("description", "")))
         self.site_url = str(feed_info.get("link", ""))
         self.language = feed_info.get("language")
 
@@ -82,16 +83,21 @@ class ParsedEntry:
         """
         self.guid = data.get("id") or data.get("link", "")
         self.url = data.get("link", "")
-        self.title = data.get("title", "")
+        # Decode HTML entities in title
+        raw_title = data.get("title", "")
+        self.title = html.unescape(raw_title) if raw_title else ""
         self.author = data.get("author")
         self.summary = data.get("summary")
 
         # Get content (prefer content over summary)
+        # Track whether the feed provides actual content or just summary/description
         content_list = data.get("content", [])
         if content_list:
             self.content = content_list[0].get("value")
+            self.has_full_content = True  # Feed provides content field
         else:
             self.content = data.get("summary")
+            self.has_full_content = False  # Only has summary/description, may need full-text extraction
 
         # Parse published date
         published = data.get("published_parsed") or data.get("updated_parsed")
