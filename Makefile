@@ -1,5 +1,5 @@
 .PHONY: help setup up down api worker web admin electron db-migrate db-upgrade db-downgrade \
-        test lint format clean logs install-backend install-frontend install-root verify dev-all \
+        test test-db-up test-db-down test-cov lint format clean logs install-backend install-frontend install-root verify dev-all \
         pre-commit-install pre-commit-uninstall pre-commit-run
 
 # Default target
@@ -30,8 +30,13 @@ help:
 	@echo "  make db-upgrade     - Apply migrations"
 	@echo "  make db-downgrade   - Revert last migration"
 	@echo ""
+	@echo "Testing:"
+	@echo "  make test           - Run all tests (auto-starts test database)"
+	@echo "  make test-cov       - Run tests with coverage report"
+	@echo "  make test-db-up     - Start test database (port 5433)"
+	@echo "  make test-db-down   - Stop test database"
+	@echo ""
 	@echo "Quality:"
-	@echo "  make test           - Run all tests"
 	@echo "  make lint           - Run linters"
 	@echo "  make format         - Format code"
 	@echo "  make pre-commit-install   - Install pre-commit hooks"
@@ -133,16 +138,27 @@ db-reset:
 	@echo "✅ Database reset complete"
 
 # =============================================================================
-# Quality
+# Testing
 # =============================================================================
 
-test:
-	@echo "🧪 Running tests..."
-	@cd backend && uv run pytest
+test-db-up:
+	@echo "🐳 Starting test database..."
+	@docker compose -f docker-compose.test.yml up -d
+	@echo "⏳ Waiting for test database to be ready..."
+	@sleep 2
+	@echo "✅ Test database ready on localhost:5433"
 
-test-cov:
+test-db-down:
+	@echo "🛑 Stopping test database..."
+	@docker compose -f docker-compose.test.yml down
+
+test: test-db-up
+	@echo "🧪 Running tests..."
+	@cd backend && TEST_DATABASE_URL="postgresql+asyncpg://glean:devpassword@localhost:5433/glean_test" uv run pytest $(ARGS)
+
+test-cov: test-db-up
 	@echo "🧪 Running tests with coverage..."
-	@cd backend && uv run pytest --cov --cov-report=html
+	@cd backend && TEST_DATABASE_URL="postgresql+asyncpg://glean:devpassword@localhost:5433/glean_test" uv run pytest --cov --cov-report=html
 
 lint:
 	@echo "🔍 Running linters..."

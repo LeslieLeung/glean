@@ -1,7 +1,7 @@
 """
 Bookmark metadata fetching tasks.
 
-Background tasks for fetching webpage title and description for URL bookmarks.
+Background tasks for fetching webpage title, description, and full content for URL bookmarks.
 """
 
 import re
@@ -10,8 +10,12 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 
+from glean_core import get_logger
 from glean_database.models import Bookmark
 from glean_database.session import get_session_context
+from glean_rss import extract_fulltext
+
+logger = get_logger(__name__)
 
 # Default user agent to avoid being blocked
 USER_AGENT = (
@@ -132,7 +136,7 @@ def unescape_html(text: str) -> str:
 
 async def fetch_bookmark_metadata_task(
     _ctx: dict[str, Any], bookmark_id: str
-) -> dict[str, str | None]:
+) -> dict[str, str | int | None]:
     """
     Fetch webpage metadata (title and description) for a bookmark.
 
@@ -143,7 +147,10 @@ async def fetch_bookmark_metadata_task(
     Returns:
         Dictionary with fetch results.
     """
-    print(f"[fetch_bookmark_metadata] Starting fetch for bookmark_id: {bookmark_id}")
+    logger.info(
+        "Starting metadata fetch",
+        extra={"bookmark_id": bookmark_id},
+    )
 
     async with get_session_context() as session:
         try:
@@ -153,14 +160,14 @@ async def fetch_bookmark_metadata_task(
             bookmark = result.scalar_one_or_none()
 
             if not bookmark:
-                print(f"[fetch_bookmark_metadata] ERROR: Bookmark not found: {bookmark_id}")
+                logger.error("Bookmark not found", extra={"bookmark_id": bookmark_id})
                 return {"status": "error", "message": "Bookmark not found"}
 
             if not bookmark.url:
-                print(f"[fetch_bookmark_metadata] ERROR: Bookmark has no URL: {bookmark_id}")
+                logger.error("Bookmark has no URL", extra={"bookmark_id": bookmark_id})
                 return {"status": "error", "message": "Bookmark has no URL"}
 
-            print(f"[fetch_bookmark_metadata] Fetching URL: {bookmark.url}")
+            logger.info("Fetching URL", extra={"bookmark_id": bookmark_id, "url": bookmark.url})
 
             # Fetch the webpage
             async with httpx.AsyncClient(
@@ -174,7 +181,10 @@ async def fetch_bookmark_metadata_task(
                 # Only process HTML content
                 content_type = response.headers.get("content-type", "")
                 if "text/html" not in content_type.lower():
-                    print(f"[fetch_bookmark_metadata] Non-HTML content type: {content_type}")
+                    logger.warning(
+                        "Non-HTML content type",
+                        extra={"bookmark_id": bookmark_id, "content_type": content_type},
+                    )
                     return {
                         "status": "skipped",
                         "message": f"Non-HTML content: {content_type}",
@@ -192,9 +202,32 @@ async def fetch_bookmark_metadata_task(
             if description:
                 description = unescape_html(description)
 
-            print(f"[fetch_bookmark_metadata] Extracted title: {title}")
-            print(
-                f"[fetch_bookmark_metadata] Extracted description: {description[:100] if description else None}..."
+            # Extract full content using readability
+            content = None
+            try:
+                content = await extract_fulltext(html, url=bookmark.url)
+                if content:
+                    logger.info(
+                        "Extracted content",
+                        extra={"bookmark_id": bookmark_id, "content_length": len(content)},
+                    )
+                else:
+                    logger.warning(
+                        "Content extraction returned empty", extra={"bookmark_id": bookmark_id}
+                    )
+            except Exception as extract_err:
+                logger.warning(
+                    "Content extraction failed",
+                    extra={"bookmark_id": bookmark_id, "error": str(extract_err)},
+                )
+
+            logger.debug(
+                "Extracted metadata",
+                extra={
+                    "bookmark_id": bookmark_id,
+                    "title": title,
+                    "description_preview": description[:100] if description else None,
+                },
             )
 
             # Update bookmark if we got better data
@@ -204,40 +237,51 @@ async def fetch_bookmark_metadata_task(
             if title and bookmark.title == bookmark.url:
                 bookmark.title = title[:500]  # Respect max length
                 updated = True
-                print(f"[fetch_bookmark_metadata] Updated title for bookmark {bookmark_id}")
+                logger.info("Updated title", extra={"bookmark_id": bookmark_id})
 
             # Update excerpt if not set
             if description and not bookmark.excerpt:
                 bookmark.excerpt = description
                 updated = True
-                print(f"[fetch_bookmark_metadata] Updated excerpt for bookmark {bookmark_id}")
+                logger.info("Updated excerpt", extra={"bookmark_id": bookmark_id})
+
+            # Store extracted content for in-app reading
+            if content:
+                bookmark.content = content
+                updated = True
+                logger.info("Updated content", extra={"bookmark_id": bookmark_id})
 
             if updated:
-                print(f"[fetch_bookmark_metadata] SUCCESS: Updated bookmark {bookmark_id}")
+                logger.info("Successfully updated bookmark", extra={"bookmark_id": bookmark_id})
             else:
-                print(f"[fetch_bookmark_metadata] No updates needed for bookmark {bookmark_id}")
+                logger.debug("No updates needed", extra={"bookmark_id": bookmark_id})
 
             return {
                 "status": "success",
                 "bookmark_id": bookmark_id,
                 "title": title,
                 "description": description[:200] if description else None,
+                "content_length": len(content) if content else 0,
             }
 
         except httpx.HTTPStatusError as e:
-            print(
-                f"[fetch_bookmark_metadata] HTTP error for {bookmark_id}: {e.response.status_code}"
+            logger.error(
+                "HTTP error fetching bookmark",
+                extra={"bookmark_id": bookmark_id, "status_code": e.response.status_code},
             )
             return {
                 "status": "error",
                 "message": f"HTTP {e.response.status_code}",
             }
         except httpx.RequestError as e:
-            print(f"[fetch_bookmark_metadata] Request error for {bookmark_id}: {str(e)}")
+            logger.error(
+                "Request error fetching bookmark",
+                extra={"bookmark_id": bookmark_id, "error": str(e)},
+            )
             return {"status": "error", "message": str(e)}
-        except Exception as e:
-            print(
-                f"[fetch_bookmark_metadata] ERROR: Failed to fetch metadata for "
-                f"{bookmark_id}: {type(e).__name__}: {str(e)}"
+        except Exception:
+            logger.exception(
+                "Failed to fetch metadata",
+                extra={"bookmark_id": bookmark_id},
             )
             raise

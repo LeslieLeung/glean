@@ -23,6 +23,7 @@ class Bookmark(Base, TimestampMixin):
         url: External URL (optional, required if entry_id is null).
         title: Bookmark title.
         excerpt: Optional excerpt/summary.
+        content: Full article content (HTML) extracted from URL.
         snapshot_status: Status of content snapshot (pending/processing/done/failed).
         snapshot_path: Path to stored snapshot (M6 feature).
     """
@@ -50,6 +51,7 @@ class Bookmark(Base, TimestampMixin):
     url: Mapped[str | None] = mapped_column(String(2048))
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     excerpt: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str | None] = mapped_column(Text)  # Full article content (HTML)
 
     # Snapshot status (for M6)
     snapshot_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")

@@ -68,6 +68,16 @@ docker compose -f docker-compose.dev.yml down
 docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 ```
 
+### Test Environment
+
+```bash
+# Start test database (port 5433, isolated from dev)
+docker compose -f docker-compose.test.yml up -d
+
+# Or use Makefile shortcut
+make test-db-up
+```
+
 ### Environment Variables
 
 Key environment variables for Docker deployments:
@@ -186,8 +196,31 @@ Environment variables in `.env` (copy from `.env.example`):
 
 ## Testing
 
+### Test Database
+
+Tests use a separate PostgreSQL instance to avoid affecting development data:
+
 ```bash
-# Backend
+# Start test database (required before running tests)
+make test-db-up
+
+# Run tests (automatically starts test database)
+make test
+
+# Stop test database
+make test-db-down
+```
+
+**Important**: The test database runs on port 5433, separate from the development database (port 5432).
+
+### Running Tests
+
+```bash
+# Backend (using Makefile - recommended)
+make test                    # Run all tests
+make test ARGS="-k auth"     # Run tests matching pattern
+
+# Backend (manual)
 cd backend && uv run pytest apps/api/tests/test_auth.py
 cd backend && uv run pytest apps/api/tests/test_auth.py::test_login
 

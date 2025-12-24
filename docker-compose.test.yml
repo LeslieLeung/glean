@@ -1,0 +1,26 @@
+# Test database for pytest
+# Usage: docker compose -f docker-compose.test.yml up -d
+#
+# This configuration provides an isolated PostgreSQL instance for running tests,
+# ensuring that test operations (including drop_all) don't affect development data.
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: glean-test-postgres
+    environment:
+      POSTGRES_DB: glean_test
+      POSTGRES_USER: glean
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glean"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_test_data:

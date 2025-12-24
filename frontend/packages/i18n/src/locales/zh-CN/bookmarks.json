@@ -69,7 +69,10 @@
     "delete": "删除",
     "cancel": "取消",
     "save": "保存",
-    "create": "创建"
+    "create": "创建",
+    "close": "关闭",
+    "enterFullscreen": "进入全屏",
+    "exitFullscreen": "退出全屏"
   },
   "pagination": {
     "showing": "显示 {{count}} / {{total}} 个书签",
@@ -84,7 +87,8 @@
   "emptyState": {
     "articleNotFound": "文章未找到",
     "articleNotFoundDescription": "文章可能已被移除或不再可用。",
-    "close": "关闭"
+    "close": "关闭",
+    "noContent": "无法从此页面提取内容。"
   },
   "dialogs": {
     "createBookmark": {
@@ -126,5 +130,9 @@
   },
   "filters": {
     "label": "筛选："
+  },
+  "view": {
+    "grid": "网格视图",
+    "list": "列表视图"
   }
 }

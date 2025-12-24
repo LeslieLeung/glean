@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
@@ -7,7 +7,7 @@ import { useEntry } from '../hooks/useEntries'
 import { useTranslation } from '@glean/i18n'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { stripHtmlTags } from '../lib/html'
-import type { Bookmark, FolderTreeNode, TagWithCounts } from '@glean/types'
+import type { Bookmark, FolderTreeNode, TagWithCounts, EntryWithState } from '@glean/types'
 import {
   Bookmark as BookmarkIcon,
   FolderOpen,
@@ -24,6 +24,8 @@ import {
   FileText,
   Tags,
   BookOpen,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import {
@@ -55,23 +57,40 @@ import {
 } from '@glean/ui'
 
 /**
- * Hook to detect mobile viewport
+ * Convert a Bookmark to EntryWithState format for use with ArticleReader component.
+ * This allows bookmarks to be displayed using the same reader as feed entries.
  */
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
-  )
+function convertBookmarkToEntry(bookmark: Bookmark): EntryWithState {
+  return {
+    // Required Entry fields
+    id: bookmark.id,
+    feed_id: '', // Bookmarks don't have feed_id
+    guid: bookmark.id,
+    url: bookmark.url || '',
+    title: bookmark.title,
+    author: null,
+    content: bookmark.content,
+    summary: bookmark.excerpt,
+    published_at: bookmark.created_at,
+    created_at: bookmark.created_at,
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < breakpoint)
-    }
+    // User state fields
+    is_read: true, // Bookmarks are considered read
+    is_liked: null,
+    read_later: false,
+    read_later_until: null,
+    read_at: bookmark.created_at,
+    is_bookmarked: true, // Already a bookmark
+    bookmark_id: bookmark.id,
 
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [breakpoint])
+    // Feed info (not applicable for bookmarks)
+    feed_title: null,
+    feed_icon_url: null,
 
-  return isMobile
+    // Preference score (not applicable for bookmarks)
+    preference_score: null,
+    debug_info: null,
+  }
 }
 
 /**
@@ -83,7 +102,6 @@ export default function BookmarksPage() {
   const { t } = useTranslation('bookmarks')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const isMobile = useIsMobile()
 
   const {
     bookmarks,
@@ -112,23 +130,20 @@ export default function BookmarksPage() {
 
   // Reader panel state
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+  const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(null)
   const { data: selectedEntry, isLoading: isLoadingEntry } = useEntry(selectedEntryId || '')
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Bookmarks panel width (resizable) - use same default as feeds page
-  const [bookmarksWidth, setBookmarksWidth] = useState(() => {
-    const saved = localStorage.getItem('glean:bookmarksWidth')
-    // Default to same width as entries list in feeds (360px) when reader is open
-    // But since bookmarks is a grid, we use a larger default
-    return saved !== null ? Number(saved) : 600
+  // View mode state (grid or list)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    const saved = localStorage.getItem('glean:bookmarksViewMode')
+    return saved === 'list' ? 'list' : 'grid'
   })
 
-  // Persist width to localStorage
+  // Persist view mode to localStorage
   useEffect(() => {
-    if (selectedEntryId) {
-      localStorage.setItem('glean:bookmarksWidth', String(bookmarksWidth))
-    }
-  }, [bookmarksWidth, selectedEntryId])
+    localStorage.setItem('glean:bookmarksViewMode', viewMode)
+  }, [viewMode])
 
   // Initial data loading
   useEffect(() => {
@@ -177,50 +192,63 @@ export default function BookmarksPage() {
     fetchBookmarks({ ...filters, page: newPage })
   }
 
-  // Handle bookmark click - open reader panel for feed entries, external URL for others
+  // Handle bookmark click - open reader panel for feed entries or URL bookmarks with content
   const handleBookmarkClick = (bookmark: Bookmark) => {
     if (bookmark.entry_id) {
       // Open reader panel for feed-saved bookmarks
       setSelectedEntryId(bookmark.entry_id)
+      setSelectedBookmark(null)
+    } else if (bookmark.content) {
+      // Open reader panel for URL bookmarks with extracted content
+      setSelectedBookmark(bookmark)
+      setSelectedEntryId(null)
     } else if (bookmark.url) {
-      // Open external URL
+      // Open external URL for bookmarks without content
       window.open(bookmark.url, '_blank', 'noopener,noreferrer')
     }
   }
 
-  // On mobile, show list OR reader, not both
-  const showBookmarkList = !isMobile || !selectedEntryId
-  const showReader = !isMobile || !!selectedEntryId
+  // Show list OR reader (not both) - single-panel navigation
+  const hasActiveReader = !!selectedEntryId || !!selectedBookmark
 
   return (
     <div className="flex h-full">
-      {/* Main Content - Hidden when fullscreen or when viewing reader on mobile */}
-      {!isFullscreen && showBookmarkList && (
-        <>
-          <div
-            className={`border-border flex min-w-0 flex-col border-r transition-all duration-300 ${
-              isMobile ? 'w-full' : ''
-            }`}
-            style={
-              !isMobile && selectedEntryId
-                ? { width: `${bookmarksWidth}px`, minWidth: '400px', maxWidth: '800px' }
-                : !isMobile
-                  ? { flex: 1 }
-                  : undefined
-            }
-          >
+      {/* Bookmark List - Hidden when reader is active */}
+      {!hasActiveReader && (
+        <div className="flex min-w-0 flex-1 flex-col">
             {/* Header */}
             <header className="border-border bg-card border-b px-4 py-3 sm:px-6 sm:py-4">
-              <div
-                className={`flex gap-3 ${selectedEntryId ? 'flex-col' : 'flex-col md:flex-row md:items-center md:justify-between md:gap-4'}`}
-              >
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
                 <h1 className="font-display text-foreground shrink-0 text-xl font-bold">
                   {t('title')}
                 </h1>
-                <div
-                  className={`flex min-w-0 flex-1 gap-2 ${selectedEntryId ? 'flex-col' : 'flex-col sm:flex-row sm:items-center sm:justify-end sm:gap-3'}`}
-                >
-                  <div className={`relative ${selectedEntryId ? 'w-full' : 'w-full sm:w-64'}`}>
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+                  {/* View Toggle */}
+                  <div className="border-border flex shrink-0 rounded-lg border p-0.5">
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        viewMode === 'grid'
+                          ? 'bg-muted text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      title={t('view.grid')}
+                    >
+                      <LayoutGrid className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`rounded-md p-1.5 transition-colors ${
+                        viewMode === 'list'
+                          ? 'bg-muted text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      title={t('view.list')}
+                    >
+                      <List className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="relative w-full sm:w-64">
                     <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 h-4 w-4 -translate-y-1/2" />
                     <Input
                       type="text"
@@ -232,7 +260,7 @@ export default function BookmarksPage() {
                   </div>
                   <Button
                     onClick={() => setShowCreateBookmark(true)}
-                    className={`shrink-0 whitespace-nowrap ${selectedEntryId ? 'w-full' : 'w-full sm:w-auto'}`}
+                    className="w-full shrink-0 whitespace-nowrap sm:w-auto"
                   >
                     <Plus className="h-4 w-4" />
                     {t('actions.addBookmark')}
@@ -288,18 +316,26 @@ export default function BookmarksPage() {
               )}
             </header>
 
-            {/* Bookmarks Grid */}
+            {/* Bookmarks Grid/List */}
             <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               <div
-                key={`${selectedFolder || 'all'}-${selectedTag || 'none'}`}
+                key={`${selectedFolder || 'all'}-${selectedTag || 'none'}-${viewMode}`}
                 className="feed-content-transition"
               >
                 {loading ? (
-                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <BookmarkCardSkeleton key={i} />
-                    ))}
-                  </div>
+                  viewMode === 'grid' ? (
+                    <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <BookmarkCardSkeleton key={i} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <BookmarkListItemSkeleton key={i} />
+                      ))}
+                    </div>
+                  )
                 ) : bookmarks.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <div className="bg-muted mb-4 flex h-16 w-16 items-center justify-center rounded-full">
@@ -318,15 +354,12 @@ export default function BookmarksPage() {
                       {t('empty.addFirstBookmark')}
                     </Button>
                   </div>
-                ) : (
-                  <div
-                    className={`grid gap-3 sm:gap-4 ${selectedEntryId && !isMobile ? 'grid-cols-1 lg:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}
-                  >
+                ) : viewMode === 'grid' ? (
+                  <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                     {bookmarks.map((bookmark, index) => (
                       <BookmarkCard
                         key={bookmark.id}
                         bookmark={bookmark}
-                        isSelected={!!selectedEntryId && bookmark.entry_id === selectedEntryId}
                         onClick={() => handleBookmarkClick(bookmark)}
                         onDelete={() => setDeleteConfirmId(bookmark.id)}
                         onEdit={() => setEditingBookmark(bookmark)}
@@ -342,6 +375,30 @@ export default function BookmarksPage() {
                           return tag?.id ?? null
                         }}
                         style={{ animationDelay: `${index * 0.05}s` }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {bookmarks.map((bookmark, index) => (
+                      <BookmarkListItem
+                        key={bookmark.id}
+                        bookmark={bookmark}
+                        onClick={() => handleBookmarkClick(bookmark)}
+                        onDelete={() => setDeleteConfirmId(bookmark.id)}
+                        onEdit={() => setEditingBookmark(bookmark)}
+                        allTags={tags}
+                        onAddTag={async (bookmarkId, tagId) => {
+                          await bookmarkAddTag(bookmarkId, tagId)
+                        }}
+                        onRemoveTag={async (bookmarkId, tagId) => {
+                          await bookmarkRemoveTag(bookmarkId, tagId)
+                        }}
+                        onCreateTag={async (name) => {
+                          const tag = await createTag({ name })
+                          return tag?.id ?? null
+                        }}
+                        style={{ animationDelay: `${index * 0.03}s` }}
                       />
                     ))}
                   </div>
@@ -381,16 +438,6 @@ export default function BookmarksPage() {
               </div>
             )}
           </div>
-
-          {/* Resize Handle - only shown when reader is open on desktop */}
-          {selectedEntryId && !isMobile && (
-            <ResizeHandle
-              onResize={(delta) =>
-                setBookmarksWidth((w) => Math.max(400, Math.min(800, w + delta)))
-              }
-            />
-          )}
-        </>
       )}
 
       {/* Create Bookmark Dialog */}
@@ -433,8 +480,8 @@ export default function BookmarksPage() {
         </AlertDialogPopup>
       </AlertDialog>
 
-      {/* Reader Panel */}
-      {selectedEntryId && showReader && (
+      {/* Reader Panel - Entry from feed */}
+      {selectedEntryId && (
         <div key={selectedEntryId} className="reader-transition flex min-w-0 flex-1 flex-col">
           {isLoadingEntry ? (
             <ArticleReaderSkeleton />
@@ -448,7 +495,6 @@ export default function BookmarksPage() {
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
               showCloseButton
-              showFullscreenButton={!isMobile}
               hideReadStatus
             />
           ) : (
@@ -471,13 +517,29 @@ export default function BookmarksPage() {
           )}
         </div>
       )}
+
+      {/* Reader Panel - URL bookmark with extracted content */}
+      {selectedBookmark && (
+        <div key={selectedBookmark.id} className="reader-transition flex min-w-0 flex-1 flex-col">
+          <ArticleReader
+            entry={convertBookmarkToEntry(selectedBookmark)}
+            onClose={() => {
+              setSelectedBookmark(null)
+              setIsFullscreen(false)
+            }}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+            showCloseButton
+            hideReadStatus
+          />
+        </div>
+      )}
     </div>
   )
 }
 
 interface BookmarkCardProps {
   bookmark: Bookmark
-  isSelected?: boolean
   onClick: () => void
   onDelete: () => void
   onEdit: () => void
@@ -490,7 +552,6 @@ interface BookmarkCardProps {
 
 function BookmarkCard({
   bookmark,
-  isSelected = false,
   onClick,
   onDelete,
   onEdit,
@@ -539,11 +600,7 @@ function BookmarkCard({
 
   return (
     <div
-      className={`card-hover animate-fade-in group relative overflow-hidden rounded-xl border p-4 transition-all ${
-        isSelected
-          ? 'border-primary/50 bg-primary/5 ring-primary/20 ring-1 ring-inset'
-          : 'border-border bg-card'
-      }`}
+      className="card-hover animate-fade-in border-border bg-card group relative overflow-hidden rounded-xl border p-4 transition-all"
       style={style}
     >
       {/* Clickable Title */}
@@ -742,6 +799,264 @@ function BookmarkCardSkeleton() {
         <Skeleton className="h-5 w-12 rounded-full" />
         <Skeleton className="h-5 w-16 rounded-full" />
       </div>
+    </div>
+  )
+}
+
+/**
+ * Compact list item for list view
+ */
+function BookmarkListItem({
+  bookmark,
+  onClick,
+  onDelete,
+  onEdit,
+  allTags,
+  onAddTag,
+  onRemoveTag,
+  onCreateTag,
+  style,
+}: BookmarkCardProps) {
+  const { t } = useTranslation('bookmarks')
+  const [tagSearch, setTagSearch] = useState('')
+  const [isCreatingTag, setIsCreatingTag] = useState(false)
+
+  // Filter tags based on search
+  const filteredTags = allTags.filter((tag) =>
+    tag.name.toLowerCase().includes(tagSearch.toLowerCase())
+  )
+
+  // Check if search matches any existing tag
+  const exactMatch = allTags.some((tag) => tag.name.toLowerCase() === tagSearch.toLowerCase())
+
+  // Current bookmark tag IDs
+  const bookmarkTagIds = bookmark.tags.map((t) => t.id)
+
+  const handleTagToggle = async (tagId: string, isSelected: boolean) => {
+    if (isSelected) {
+      await onRemoveTag(bookmark.id, tagId)
+    } else {
+      await onAddTag(bookmark.id, tagId)
+    }
+  }
+
+  const handleCreateNewTag = async () => {
+    if (!tagSearch.trim() || exactMatch) return
+    setIsCreatingTag(true)
+    try {
+      const newTagId = await onCreateTag(tagSearch.trim())
+      if (newTagId) {
+        await onAddTag(bookmark.id, newTagId)
+      }
+      setTagSearch('')
+    } finally {
+      setIsCreatingTag(false)
+    }
+  }
+
+  return (
+    <div
+      className="card-hover animate-fade-in border-border bg-card group flex items-center gap-4 rounded-lg border px-4 py-3 transition-all"
+      style={style}
+    >
+      {/* Main content - clickable */}
+      <button onClick={onClick} className="min-w-0 flex-1 text-left">
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-foreground hover:text-primary line-clamp-1 font-medium transition-colors">
+              {bookmark.title}
+            </h3>
+            {bookmark.excerpt && (
+              <p className="text-muted-foreground mt-0.5 line-clamp-1 text-sm">
+                {stripHtmlTags(bookmark.excerpt)}
+              </p>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {/* Tags */}
+      <div className="hidden shrink-0 items-center gap-1 md:flex">
+        {bookmark.tags.slice(0, 2).map((tag) => (
+          <span
+            key={tag.id}
+            className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
+          >
+            {tag.color && (
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+            )}
+            {tag.name}
+          </span>
+        ))}
+        {bookmark.tags.length > 2 && (
+          <span className="text-muted-foreground text-xs">+{bookmark.tags.length - 2}</span>
+        )}
+
+        {/* Tag Combobox */}
+        <Menu>
+          <MenuTrigger
+            className="border-muted-foreground/30 text-muted-foreground hover:border-primary hover:text-primary inline-flex items-center gap-0.5 rounded-full border border-dashed px-1.5 py-0.5 text-xs opacity-0 transition-all group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Tags className="h-3 w-3" />
+            <Plus className="h-2.5 w-2.5" />
+          </MenuTrigger>
+          <MenuPopup align="end" sideOffset={4} className="w-56">
+            {/* Search Input */}
+            <div className="p-2">
+              <div className="relative">
+                <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder={t('placeholders.searchTag')}
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  className="border-input placeholder:text-muted-foreground/60 focus:border-primary h-8 w-full rounded-md border bg-transparent pr-3 pl-8 text-sm focus-visible:!shadow-none"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && tagSearch.trim() && !exactMatch) {
+                      e.preventDefault()
+                      handleCreateNewTag()
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <MenuSeparator />
+
+            {/* Tag List */}
+            <div className="max-h-48 overflow-y-auto py-1">
+              {filteredTags.length === 0 && !tagSearch.trim() && (
+                <div className="text-muted-foreground px-2 py-3 text-center text-xs">
+                  {t('tags.noTagsYet')}
+                </div>
+              )}
+
+              {filteredTags.map((tag) => {
+                const isSelected = bookmarkTagIds.includes(tag.id)
+                return (
+                  <MenuCheckboxItem
+                    key={tag.id}
+                    checked={isSelected}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      handleTagToggle(tag.id, isSelected)
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      {tag.color && (
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                      )}
+                      {tag.name}
+                    </span>
+                  </MenuCheckboxItem>
+                )
+              })}
+
+              {/* Create New Tag Option */}
+              {tagSearch.trim() && !exactMatch && (
+                <>
+                  {filteredTags.length > 0 && <MenuSeparator />}
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleCreateNewTag()
+                    }}
+                    disabled={isCreatingTag}
+                    className="text-primary cursor-pointer"
+                  >
+                    {isCreatingTag ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {t('tags.creating')}
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4" />
+                        {t('tags.create', { name: tagSearch.trim() })}
+                      </>
+                    )}
+                  </MenuItem>
+                </>
+              )}
+            </div>
+          </MenuPopup>
+        </Menu>
+      </div>
+
+      {/* Date and source indicator */}
+      <div className="text-muted-foreground hidden shrink-0 items-center gap-2 text-xs sm:flex">
+        <span>{format(new Date(bookmark.created_at), 'MMM d, yyyy')}</span>
+        {bookmark.entry_id && (
+          <span className="text-primary/70" title={t('common.savedFromFeed')}>
+            <FileText className="h-3 w-3" />
+          </span>
+        )}
+        {bookmark.folders.length > 0 && (
+          <span className="flex items-center gap-0.5" title="In folders">
+            <FolderOpen className="h-3 w-3" />
+            {bookmark.folders.length}
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onEdit()
+          }}
+          className="hover:bg-accent hover:text-foreground rounded p-1.5"
+          title={t('common.edit')}
+        >
+          <Edit3 className="h-4 w-4" />
+        </button>
+        {bookmark.url && (
+          <a
+            href={bookmark.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="hover:bg-accent hover:text-foreground rounded p-1.5"
+            title={t('common.openExternalLink')}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="text-destructive hover:bg-destructive/10 rounded p-1.5"
+          title={t('common.delete')}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BookmarkListItemSkeleton() {
+  return (
+    <div className="border-border bg-card flex items-center gap-4 rounded-lg border px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <Skeleton className="mb-1 h-5 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+      <div className="hidden gap-1 sm:flex">
+        <Skeleton className="h-5 w-12 rounded-full" />
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </div>
+      <Skeleton className="hidden h-4 w-20 sm:block" />
     </div>
   )
 }
@@ -1442,52 +1757,5 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
         </DialogFooter>
       </DialogPopup>
     </Dialog>
-  )
-}
-
-/**
- * Resize handle for dragging to resize panels.
- */
-function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
-  const [isDragging, setIsDragging] = useState(false)
-  const startXRef = useRef(0)
-
-  useEffect(() => {
-    if (!isDragging) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - startXRef.current
-      startXRef.current = e.clientX
-      onResize(delta)
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [isDragging, onResize])
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    startXRef.current = e.clientX
-    setIsDragging(true)
-  }
-
-  return (
-    <div
-      className={`group relative w-1 cursor-col-resize transition-colors ${
-        isDragging ? 'bg-primary' : 'bg-border hover:bg-primary/50'
-      }`}
-      onMouseDown={handleMouseDown}
-    >
-      <div className="absolute inset-y-0 -right-1 -left-1" />
-    </div>
   )
 }

@@ -82,14 +82,79 @@ from glean_database import models
 
 ## Logging
 
+### Using the Unified Logger
+
+**Always use the unified logger from `glean_core`, never use `print()` in production code.**
+
 ```python
 from glean_core import get_logger
+
 logger = get_logger(__name__)
-logger.info("Message", extra={"context": "data"})
 ```
 
-- Request ID auto-added in API logs
-- Configure via `LOG_LEVEL`, `LOG_FILE` env vars
+### Log Levels
+
+Use appropriate log levels for different scenarios:
+
+```python
+# DEBUG - Detailed diagnostic information (use sparingly)
+logger.debug("Parsed metadata", extra={"title": title, "author": author})
+
+# INFO - General informational messages about normal operations
+logger.info("Starting feed fetch", extra={"feed_id": feed_id})
+logger.info("Successfully processed entry", extra={"entry_id": entry_id, "title": title})
+
+# WARNING - Potentially problematic situations that don't prevent operation
+logger.warning("Feed not modified (304)", extra={"feed_id": feed_id})
+logger.warning("Failed to extract full text, using summary", extra={"url": url})
+
+# ERROR - Error events that still allow the application to continue
+logger.error("Feed not found", extra={"feed_id": feed_id})
+logger.error("HTTP error fetching bookmark", extra={"status_code": 404})
+
+# EXCEPTION - Exception with full traceback (use in except blocks)
+try:
+    # ... some operation
+except Exception as e:
+    logger.exception("Failed to process feed", extra={"feed_id": feed_id})
+    raise
+```
+
+### Structured Logging with `extra`
+
+**Always use the `extra` parameter for context data** - this enables structured logging and better log analysis:
+
+```python
+# ✅ Good - Structured logging
+logger.info(
+    "Feed fetched successfully",
+    extra={
+        "feed_id": feed_id,
+        "url": feed.url,
+        "new_entries": new_entries,
+        "total_entries": total_entries,
+    },
+)
+
+# ❌ Bad - String interpolation
+logger.info(f"Feed {feed_id} fetched: {new_entries} new entries")
+```
+
+### Guidelines
+
+1. **Never use `print()`** in production code (`apps/`, `packages/`)
+2. **Use `print()` only in**:
+   - Test files (`tests/`)
+   - CLI scripts (`scripts/`)
+   - Docstring examples
+3. **Include context** in `extra` parameter (IDs, counts, URLs, etc.)
+4. **Request ID is auto-added** in API logs for request tracing
+5. **Keep messages concise** - put details in `extra`
+
+### Configuration
+
+- `LOG_LEVEL` - Set logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`)
+- `LOG_FILE` - Optional log file path for file output
 
 ## Testing
 

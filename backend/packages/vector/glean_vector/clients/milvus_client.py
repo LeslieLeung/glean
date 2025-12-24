@@ -364,7 +364,7 @@ class MilvusClient:
         except MilvusException as e:
             # If index creation fails, log but don't fail the whole operation
             # Indexes are optional for basic functionality
-            print(f"Warning: Failed to create scalar indexes: {e}")
+            logger.warning("Failed to create scalar indexes", extra={"error": str(e)})
 
         collection.load()  # type: ignore[unused-coroutine]
         return collection
@@ -427,7 +427,7 @@ class MilvusClient:
                 collection.create_index("user_id", index_name="idx_user_id")  # type: ignore[unused-coroutine]
         except MilvusException as e:
             # If index creation fails, log but don't fail the whole operation
-            print(f"Warning: Failed to create user_id index: {e}")
+            logger.warning("Failed to create user_id index", extra={"error": str(e)})
 
         collection.load()  # type: ignore[reportUnknownMemberType]
         return collection

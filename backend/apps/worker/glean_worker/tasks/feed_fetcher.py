@@ -11,11 +11,14 @@ from arq import Retry
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core import get_logger
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
 from glean_database.session import get_session_context
-from glean_rss import fetch_feed, parse_feed
+from glean_rss import fetch_and_extract_fulltext, fetch_feed, parse_feed, postprocess_html
+
+logger = get_logger(__name__)
 
 
 async def _is_vectorization_enabled(session: AsyncSession) -> bool:
@@ -39,7 +42,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
     Returns:
         Dictionary with fetch results.
     """
-    print(f"[fetch_feed_task] Starting fetch for feed_id: {feed_id}")
+    logger.info("Starting feed fetch", extra={"feed_id": feed_id})
     async with get_session_context() as session:
         try:
             # Get feed from database
@@ -48,41 +51,54 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             feed = result.scalar_one_or_none()
 
             if not feed:
-                print(f"[fetch_feed_task] ERROR: Feed not found: {feed_id}")
+                logger.error("Feed not found", extra={"feed_id": feed_id})
                 return {"status": "error", "message": "Feed not found"}
 
-            print(f"[fetch_feed_task] Fetching feed: {feed.url}")
+            logger.info("Fetching feed", extra={"feed_id": feed_id, "url": feed.url})
 
             # Fetch feed content
-            print(f"[fetch_feed_task] Requesting feed: {feed.url}")
+            logger.debug("Requesting feed", extra={"url": feed.url})
             fetch_result = await fetch_feed(feed.url, feed.etag, feed.last_modified)
 
             if fetch_result is None:
                 # Not modified (304)
-                print(f"[fetch_feed_task] Feed not modified (304): {feed.url}")
+                logger.info("Feed not modified (304)", extra={"feed_id": feed_id, "url": feed.url})
                 feed.last_fetched_at = datetime.now(UTC)
                 return {"status": "not_modified", "new_entries": 0}
 
-            print("[fetch_feed_task] Feed content received, parsing...")
+            logger.debug("Feed content received, parsing...", extra={"feed_id": feed_id})
 
             content, cache_headers = fetch_result
 
             # Parse feed
-            print("[fetch_feed_task] Parsing feed content...")
+            logger.debug("Parsing feed content...", extra={"feed_id": feed_id})
             parsed_feed = await parse_feed(content, feed.url)
-            print(
-                f"[fetch_feed_task] Parsed feed: {parsed_feed.title}, {len(parsed_feed.entries)} entries"
+            logger.info(
+                "Parsed feed",
+                extra={
+                    "feed_id": feed_id,
+                    "title": parsed_feed.title,
+                    "entries_count": len(parsed_feed.entries),
+                },
             )
 
             # Update feed metadata
-            print(f"[fetch_feed_task] DEBUG: parsed_feed.icon_url = {parsed_feed.icon_url!r}")
-            print(f"[fetch_feed_task] DEBUG: feed.icon_url (before) = {feed.icon_url!r}")
+            logger.debug(
+                "Feed metadata",
+                extra={
+                    "feed_id": feed_id,
+                    "parsed_icon_url": parsed_feed.icon_url,
+                    "current_icon_url": feed.icon_url,
+                },
+            )
             feed.title = parsed_feed.title or feed.title
             feed.description = parsed_feed.description or feed.description
             feed.site_url = parsed_feed.site_url or feed.site_url
             feed.language = parsed_feed.language or feed.language
             feed.icon_url = parsed_feed.icon_url or feed.icon_url
-            print(f"[fetch_feed_task] DEBUG: feed.icon_url (after) = {feed.icon_url!r}")
+            logger.debug(
+                "Updated feed metadata", extra={"feed_id": feed_id, "icon_url": feed.icon_url}
+            )
             feed.status = FeedStatus.ACTIVE
             feed.error_count = 0
             feed.fetch_error_message = None
@@ -109,6 +125,41 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 if existing_entry:
                     continue
 
+                # Determine content: fetch full text if feed only provides summary
+                entry_content = parsed_entry.content
+                if not parsed_entry.has_full_content and parsed_entry.url:
+                    logger.info(
+                        "Entry has no full content, fetching from URL",
+                        extra={"feed_id": feed_id, "url": parsed_entry.url},
+                    )
+                    try:
+                        extracted_content = await fetch_and_extract_fulltext(parsed_entry.url)
+                        if extracted_content:
+                            entry_content = extracted_content
+                            logger.info(
+                                "Successfully extracted full text",
+                                extra={
+                                    "feed_id": feed_id,
+                                    "content_length": len(extracted_content),
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                "Full text extraction returned empty, using summary",
+                                extra={"feed_id": feed_id},
+                            )
+                    except Exception as extract_err:
+                        logger.warning(
+                            "Full text extraction failed, using summary",
+                            extra={"feed_id": feed_id, "error": str(extract_err)},
+                        )
+                else:
+                    # Process content from feed to fix backtick formatting etc.
+                    if entry_content:
+                        entry_content = await postprocess_html(
+                            entry_content, base_url=parsed_entry.url
+                        )
+
                 # Create new entry
                 entry = Entry(
                     feed_id=feed.id,
@@ -116,7 +167,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     url=parsed_entry.url,
                     title=parsed_entry.title,
                     author=parsed_entry.author,
-                    content=parsed_entry.content,
+                    content=entry_content,
                     summary=parsed_entry.summary,
                     published_at=parsed_entry.published_at,
                 )
@@ -127,7 +178,10 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 # M3: Queue embedding task for new entry (only if vectorization enabled)
                 if ctx.get("milvus_client") and await _is_vectorization_enabled(session):
                     await ctx["redis"].enqueue_job("generate_entry_embedding", entry.id)
-                    print(f"[fetch_feed_task] Queued embedding task for entry: {entry.id}")
+                    logger.debug(
+                        "Queued embedding task for entry",
+                        extra={"feed_id": feed_id, "entry_id": entry.id},
+                    )
 
                 # Track latest entry time
                 if parsed_entry.published_at and (
@@ -142,8 +196,14 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             # Schedule next fetch (15 minutes from now)
             feed.next_fetch_at = datetime.now(UTC) + timedelta(minutes=15)
 
-            print(
-                f"[fetch_feed_task] SUCCESS: Feed {feed.url} - {new_entries} new entries out of {len(parsed_feed.entries)} total"
+            logger.info(
+                "Successfully fetched feed",
+                extra={
+                    "feed_id": feed_id,
+                    "url": feed.url,
+                    "new_entries": new_entries,
+                    "total_entries": len(parsed_feed.entries),
+                },
             )
             return {
                 "status": "success",
@@ -153,8 +213,9 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             }
 
         except Exception as e:
-            print(
-                f"[fetch_feed_task] ERROR: Failed to fetch feed {feed_id}: {type(e).__name__}: {str(e)}"
+            logger.exception(
+                "Failed to fetch feed",
+                extra={"feed_id": feed_id},
             )
             # Update feed error status
             stmt = select(Feed).where(Feed.id == feed_id)
@@ -168,19 +229,27 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
 
                 # Disable feed after 10 consecutive errors
                 if feed.error_count >= 10:
-                    print(f"[fetch_feed_task] DISABLED: Feed {feed.url} disabled after 10 errors")
+                    logger.warning(
+                        "Feed disabled after 10 consecutive errors",
+                        extra={"feed_id": feed_id, "url": feed.url},
+                    )
                     feed.status = FeedStatus.ERROR
 
                 # Schedule retry with exponential backoff
                 retry_minutes = min(60, 15 * (2 ** min(feed.error_count - 1, 5)))
                 feed.next_fetch_at = datetime.now(UTC) + timedelta(minutes=retry_minutes)
 
-                print(
-                    f"[fetch_feed_task] Scheduling retry in {retry_minutes} minutes (error count: {feed.error_count})"
+                logger.info(
+                    "Scheduling retry with exponential backoff",
+                    extra={
+                        "feed_id": feed_id,
+                        "retry_minutes": retry_minutes,
+                        "error_count": feed.error_count,
+                    },
                 )
 
             # Retry the task
-            print("[fetch_feed_task] Retrying task in 5 minutes...")
+            logger.info("Retrying task in 5 minutes", extra={"feed_id": feed_id})
             raise Retry(defer=timedelta(minutes=5)) from None
 
 
@@ -194,7 +263,7 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
     Returns:
         Dictionary with fetch statistics.
     """
-    print("[fetch_all_feeds] Starting to fetch all active feeds")
+    logger.info("Starting to fetch all active feeds")
     async with get_session_context() as session:
         # Get all active feeds that are due for fetching
         now = datetime.now(UTC)
@@ -205,14 +274,14 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
         result = await session.execute(stmt)
         feeds = result.scalars().all()
 
-        print(f"[fetch_all_feeds] Found {len(feeds)} feeds to fetch")
+        logger.info("Found feeds to fetch", extra={"count": len(feeds)})
 
         # Queue fetch tasks for each feed
         for feed in feeds:
-            print(f"[fetch_all_feeds] Queueing feed: {feed.url} (ID: {feed.id})")
+            logger.debug("Queueing feed", extra={"feed_id": feed.id, "url": feed.url})
             await ctx["redis"].enqueue_job("fetch_feed_task", feed.id)
 
-        print(f"[fetch_all_feeds] Queued {len(feeds)} feeds for fetching")
+        logger.info("Queued feeds for fetching", extra={"count": len(feeds)})
         return {"feeds_queued": len(feeds)}
 
 
@@ -226,7 +295,7 @@ async def scheduled_fetch(ctx: dict[str, Any]) -> dict[str, int]:
     Returns:
         Dictionary with fetch statistics.
     """
-    print("[scheduled_fetch] Running scheduled feed fetch (every 15 minutes)")
+    logger.info("Running scheduled feed fetch (every 15 minutes)")
     return await fetch_all_feeds(ctx)
 
 

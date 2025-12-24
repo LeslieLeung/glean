@@ -3,9 +3,17 @@
 Create initial admin user.
 
 Usage:
+    # From project root (development)
     python scripts/create-admin.py
     python scripts/create-admin.py --username admin --password AdminPass123! --role super_admin
     python scripts/create-admin.py --username admin --password NewPass123! --force  # Recreate without prompt
+
+    # From backend directory (development)
+    cd backend && uv run python ../scripts/create-admin.py
+
+    # In Docker container
+    docker exec -it glean-backend /app/scripts/create-admin-docker.sh
+    docker exec -it glean-backend uv run python scripts/create-admin.py --username admin --password MySecurePass!
 """
 
 import argparse
@@ -15,9 +23,22 @@ import os
 import sys
 from pathlib import Path
 
-# Add backend to path
-backend_path = Path(__file__).parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
+# Handle both local development and Docker container paths
+# In Docker: /app is the working directory, scripts/ is at /app/scripts/
+# In development: running from project root, backend is in backend/
+current_file = Path(__file__).resolve()
+script_dir = current_file.parent
+
+if script_dir.name == "scripts":
+    # Check if we're in Docker (/app/scripts/) or project root (./scripts/)
+    parent_dir = script_dir.parent
+    if parent_dir.name == "app":
+        # Docker container: /app/scripts/create-admin.py
+        backend_path = parent_dir
+    else:
+        # Project root: ./scripts/create-admin.py
+        backend_path = parent_dir / "backend"
+    sys.path.insert(0, str(backend_path))
 
 # Imports below need to come after sys.path modification
 from sqlalchemy import delete, select  # noqa: E402
@@ -39,8 +60,8 @@ def hash_password_sha256(password: str) -> str:
 
 async def create_admin(
     username: str, password: str, role: str, force: bool = False
-) -> None:
-    """Create an admin user."""
+) -> bool:
+    """Create an admin user. Returns True if successful."""
     # Hash the password with SHA256 to match frontend behavior
     # Frontend sends SHA256(password), so we need to store bcrypt(SHA256(password))
     hashed_password = hash_password_sha256(password)
@@ -59,7 +80,7 @@ async def create_admin(
     except ValueError:
         print(f"Invalid role: {role}")
         print(f"Valid roles: {', '.join([r.value for r in AdminRole])}")
-        return
+        return False
 
     # Create admin
     async for session in get_session():
@@ -76,18 +97,24 @@ async def create_admin(
                 # Force flag is set, delete without asking
                 should_delete = True
             else:
-                # Ask user for confirmation
-                print(f"⚠️  Admin user '{username}' already exists.")
-                print(f"   ID: {existing_admin.id}")
-                print(
-                    f"   Role: {existing_admin.role if isinstance(existing_admin.role, str) else existing_admin.role.value}"
-                )
-                response = (
-                    input("\n   Do you want to delete and recreate? [y/N]: ")
-                    .strip()
-                    .lower()
-                )
-                should_delete = response in ("y", "yes")
+                # Ask user for confirmation (only in interactive mode)
+                if sys.stdin.isatty():
+                    print(f"⚠️  Admin user '{username}' already exists.")
+                    print(f"   ID: {existing_admin.id}")
+                    print(
+                        f"   Role: {existing_admin.role if isinstance(existing_admin.role, str) else existing_admin.role.value}"
+                    )
+                    response = (
+                        input("\n   Do you want to delete and recreate? [y/N]: ")
+                        .strip()
+                        .lower()
+                    )
+                    should_delete = response in ("y", "yes")
+                else:
+                    # Non-interactive mode (e.g., Docker entrypoint)
+                    print(f"⚠️  Admin user '{username}' already exists.")
+                    print("   Use --force flag to recreate, or choose a different username.")
+                    return False
 
             if should_delete:
                 await session.execute(
@@ -97,7 +124,7 @@ async def create_admin(
                 print(f"   🗑️  Deleted existing admin user '{username}'.")
             else:
                 print("   ❌ Aborted. No changes made.")
-                return
+                return False
 
         # Create new admin
         try:
@@ -110,10 +137,17 @@ async def create_admin(
                 f"   Role: {admin.role if isinstance(admin.role, str) else admin.role.value}"
             )
             print(f"   ID: {admin.id}")
+            return True
         except Exception as e:
             await session.rollback()
-            print(f"❌ Error creating admin user: {e}")
-            raise
+            error_msg = str(e)
+            if "duplicate key" in error_msg or "already exists" in error_msg:
+                print(f"⚠️  Admin user '{username}' already exists.")
+                print("   Use --force flag to recreate, or choose a different username.")
+                return False
+            else:
+                print(f"❌ Error creating admin user: {e}")
+                raise
 
 
 def main():
@@ -141,7 +175,8 @@ def main():
     args = parser.parse_args()
 
     print(f"Creating admin user: {args.username}")
-    asyncio.run(create_admin(args.username, args.password, args.role, args.force))
+    success = asyncio.run(create_admin(args.username, args.password, args.role, args.force))
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

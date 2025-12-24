@@ -72,6 +72,7 @@ class BookmarkResponse(BaseModel):
     url: str | None
     title: str
     excerpt: str | None
+    content: str | None  # Full article content (HTML) for in-app reading
     snapshot_status: str
     folders: list[BookmarkFolderSimple] = []
     tags: list[BookmarkTagSimple] = []

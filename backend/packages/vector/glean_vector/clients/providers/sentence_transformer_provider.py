@@ -4,7 +4,11 @@ import asyncio
 import threading
 from typing import Any
 
+from glean_core import get_logger
+
 from .base import EmbeddingProvider
+
+logger = get_logger(__name__)
 
 # Global lock and cache for model loading to prevent concurrent loading issues
 _model_lock = threading.Lock()
@@ -108,7 +112,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
                 return True
 
         except Exception as e:
-            print(f"Device {device} test failed: {e}")
+            logger.debug("Device test failed", extra={"device": device, "error": str(e)})
 
         return False
 
@@ -137,7 +141,9 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
         for device in devices_to_try:
             try:
-                print(f"Attempting to load model on {device}...")
+                logger.info(
+                    "Attempting to load model", extra={"model": self.model, "device": device}
+                )
 
                 # Try loading with model_kwargs first (sentence-transformers >= 3.0)
                 try:
@@ -158,15 +164,23 @@ class SentenceTransformerProvider(EmbeddingProvider):
                 # Test encode to ensure it works
                 _ = model.encode("test", convert_to_numpy=True)
 
-                print(f"Successfully loaded model on {device}")
+                logger.info(
+                    "Successfully loaded model", extra={"model": self.model, "device": device}
+                )
                 return model, device
 
             except Exception as e:
                 error_str = str(e).lower()
                 if "meta tensor" in error_str or "cannot copy out of meta" in error_str:
-                    print(f"Meta tensor error on {device}, trying next device...")
+                    logger.warning(
+                        "Meta tensor error, trying next device",
+                        extra={"device": device, "model": self.model},
+                    )
                 else:
-                    print(f"Error loading on {device}: {e}")
+                    logger.warning(
+                        "Error loading model on device",
+                        extra={"device": device, "model": self.model, "error": str(e)},
+                    )
                 last_error = e
                 continue
 
@@ -201,7 +215,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
                 # Detect available devices
                 self._device_info = self._detect_available_devices()
-                print(f"Device detection: {self._device_info}")
+                logger.debug("Device detection completed", extra={"device_info": self._device_info})
 
                 # Determine target device
                 if self.device and self.device != "auto":
@@ -211,7 +225,10 @@ class SentenceTransformerProvider(EmbeddingProvider):
 
                 # Test if target device actually works
                 if target_device != "cpu" and not self._test_device_compatibility(target_device):
-                    print(f"Device {target_device} failed compatibility test, falling back to CPU")
+                    logger.warning(
+                        "Device failed compatibility test, falling back to CPU",
+                        extra={"device": target_device},
+                    )
                     target_device = "cpu"
 
                 # Load model with fallback
@@ -230,9 +247,13 @@ class SentenceTransformerProvider(EmbeddingProvider):
                 )
 
                 if actual_dim != self.dimension:
-                    print(
-                        f"Warning: Model {self.model} produces {actual_dim}D embeddings, "
-                        f"but expected {self.dimension}D. Updating dimension."
+                    logger.warning(
+                        "Model dimension mismatch, updating",
+                        extra={
+                            "model": self.model,
+                            "actual_dimension": actual_dim,
+                            "expected_dimension": self.dimension,
+                        },
                     )
                     self.dimension = actual_dim
 
@@ -244,9 +265,9 @@ class SentenceTransformerProvider(EmbeddingProvider):
                     "dimension": self.dimension,
                 }
 
-                print(
-                    f"Model {self.model} loaded successfully on {self.device} "
-                    f"(dimension: {self.dimension})"
+                logger.info(
+                    "Model loaded successfully",
+                    extra={"model": self.model, "device": self.device, "dimension": self.dimension},
                 )
 
         return self._model
@@ -338,7 +359,7 @@ class SentenceTransformerProvider(EmbeddingProvider):
                 except ImportError:
                     pass
             _model_cache.clear()
-        print("Model cache cleared")
+        logger.info("Model cache cleared")
 
     def get_device_info(self) -> dict[str, Any]:
         """

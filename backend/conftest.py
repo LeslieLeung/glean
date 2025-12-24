@@ -44,8 +44,15 @@ mock_redis = MockArqRedis()
 # Test database URL - check TEST_DATABASE_URL first, then DATABASE_URL, then fallback to default
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    os.getenv("DATABASE_URL", "postgresql+asyncpg://glean:devpassword@localhost:5432/glean_test"),
+    os.getenv("DATABASE_URL", "postgresql+asyncpg://glean:devpassword@localhost:5433/glean_test"),
 )
+
+# Safety check: ensure tests only run on a test database
+if "_test" not in TEST_DATABASE_URL and "/test" not in TEST_DATABASE_URL:
+    raise RuntimeError(
+        f"Safety check failed: TEST_DATABASE_URL must point to a test database "
+        f"(name should contain 'test'). Current: {TEST_DATABASE_URL}"
+    )
 
 
 @pytest.fixture(scope="session")

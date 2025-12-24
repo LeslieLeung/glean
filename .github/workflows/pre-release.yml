@@ -270,60 +270,59 @@ jobs:
           name: "${{ steps.release_type.outputs.emoji }} ${{ github.ref_name }} (${{ steps.release_type.outputs.type }})"
           body: |
             ## ${{ steps.release_type.outputs.emoji }} This is a ${{ steps.release_type.outputs.type }}
-            
-            > **Warning**: This is a pre-release version intended for testing purposes only. 
+
+            > **Warning**: This is a pre-release version intended for testing purposes only.
             > Do not use in production environments.
-            
+
             ## Docker Images
-            
+
             This pre-release includes the following Docker images:
-            
+
             ```bash
             # Pull images
             docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-backend:${{ github.ref_name }}
             docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}
             docker pull ghcr.io/${{ env.IMAGE_PREFIX }}-admin:${{ github.ref_name }}
             ```
-            
+
             ## Testing with Docker Compose
-            
+
             Create a `docker-compose.override.yml` file:
-            
+
             ```yaml
             version: '3.8'
-            
+
             services:
               backend:
                 image: ghcr.io/${{ env.IMAGE_PREFIX }}-backend:${{ github.ref_name }}
-              
+
               web:
                 image: ghcr.io/${{ env.IMAGE_PREFIX }}-web:${{ github.ref_name }}
-              
+
               admin:
                 image: ghcr.io/${{ env.IMAGE_PREFIX }}-admin:${{ github.ref_name }}
             ```
-            
+
             Then run:
-            
+
             ```bash
             docker compose up -d
             ```
-            
+
             ## Desktop Apps
-            
+
             Download the desktop application for your platform from the assets below.
-            
+
             **Note**: Desktop apps for pre-release versions will NOT auto-update.
-            
+
             ## Feedback
-            
+
             Found an issue? Please report it at:
             https://github.com/${{ github.repository }}/issues
-            
+
             ---
-            
+
             ## Changelog
-            
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
