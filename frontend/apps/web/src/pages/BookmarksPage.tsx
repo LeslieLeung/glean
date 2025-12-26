@@ -216,228 +216,228 @@ export default function BookmarksPage() {
       {/* Bookmark List - Hidden when reader is active */}
       {!hasActiveReader && (
         <div className="flex min-w-0 flex-1 flex-col">
-            {/* Header */}
-            <header className="border-border bg-card border-b px-4 py-3 sm:px-6 sm:py-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
-                <h1 className="font-display text-foreground shrink-0 text-xl font-bold">
-                  {t('title')}
-                </h1>
-                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-                  {/* View Toggle */}
-                  <div className="border-border flex shrink-0 rounded-lg border p-0.5">
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`rounded-md p-1.5 transition-colors ${
-                        viewMode === 'grid'
-                          ? 'bg-muted text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      title={t('view.grid')}
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`rounded-md p-1.5 transition-colors ${
-                        viewMode === 'list'
-                          ? 'bg-muted text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
-                      title={t('view.list')}
-                    >
-                      <List className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="relative w-full sm:w-64">
-                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 h-4 w-4 -translate-y-1/2" />
-                    <Input
-                      type="text"
-                      placeholder={t('placeholders.searchBookmarks')}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full [&_input]:pl-9"
-                    />
-                  </div>
-                  <Button
-                    onClick={() => setShowCreateBookmark(true)}
-                    className="w-full shrink-0 whitespace-nowrap sm:w-auto"
+          {/* Header */}
+          <header className="border-border bg-card border-b px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+              <h1 className="font-display text-foreground shrink-0 text-xl font-bold">
+                {t('title')}
+              </h1>
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+                {/* View Toggle */}
+                <div className="border-border flex shrink-0 rounded-lg border p-0.5">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`rounded-md p-1.5 transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title={t('view.grid')}
                   >
-                    <Plus className="h-4 w-4" />
-                    {t('actions.addBookmark')}
-                  </Button>
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`rounded-md p-1.5 transition-colors ${
+                      viewMode === 'list'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    title={t('view.list')}
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
                 </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 h-4 w-4 -translate-y-1/2" />
+                  <Input
+                    type="text"
+                    placeholder={t('placeholders.searchBookmarks')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full [&_input]:pl-9"
+                  />
+                </div>
+                <Button
+                  onClick={() => setShowCreateBookmark(true)}
+                  className="w-full shrink-0 whitespace-nowrap sm:w-auto"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('actions.addBookmark')}
+                </Button>
               </div>
+            </div>
 
-              {/* Active filters */}
-              {(selectedFolder || selectedTag || searchQuery) && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground text-xs">{t('filters.label')}</span>
-                  {selectedFolder && (
-                    <Badge variant="secondary" className="gap-1">
-                      <FolderOpen className="h-3 w-3" />
-                      {findFolderName(bookmarkFolders, selectedFolder)}
-                      <button
-                        onClick={() => clearFilter('folder')}
-                        className="hover:text-foreground ml-1"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {selectedTag &&
-                    (() => {
-                      const tag = tags.find((t) => t.id === selectedTag)
-                      return tag ? (
-                        <Badge variant="secondary" className="gap-1">
-                          <Tag className="h-3 w-3" />
-                          {tag.name}
-                          <button
-                            onClick={() => clearFilter('tag')}
-                            className="hover:text-foreground ml-1"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ) : null
-                    })()}
-                  {searchQuery && (
-                    <Badge variant="secondary" className="gap-1">
-                      <Search className="h-3 w-3" />
-                      &quot;{searchQuery}&quot;
-                      <button
-                        onClick={() => clearFilter('search')}
-                        className="hover:text-foreground ml-1"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </header>
-
-            {/* Bookmarks Grid/List */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-              <div
-                key={`${selectedFolder || 'all'}-${selectedTag || 'none'}-${viewMode}`}
-                className="feed-content-transition"
-              >
-                {loading ? (
-                  viewMode === 'grid' ? (
-                    <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <BookmarkCardSkeleton key={i} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <BookmarkListItemSkeleton key={i} />
-                      ))}
-                    </div>
-                  )
-                ) : bookmarks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="bg-muted mb-4 flex h-16 w-16 items-center justify-center rounded-full">
-                      <BookmarkIcon className="text-muted-foreground h-8 w-8" />
-                    </div>
-                    <p className="text-muted-foreground">{t('empty.noBookmarks')}</p>
-                    <p className="text-muted-foreground/60 mt-1 text-xs">
-                      {t('empty.noBookmarksDescription')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => setShowCreateBookmark(true)}
+            {/* Active filters */}
+            {(selectedFolder || selectedTag || searchQuery) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground text-xs">{t('filters.label')}</span>
+                {selectedFolder && (
+                  <Badge variant="secondary" className="gap-1">
+                    <FolderOpen className="h-3 w-3" />
+                    {findFolderName(bookmarkFolders, selectedFolder)}
+                    <button
+                      onClick={() => clearFilter('folder')}
+                      className="hover:text-foreground ml-1"
                     >
-                      <Plus className="h-4 w-4" />
-                      {t('empty.addFirstBookmark')}
-                    </Button>
-                  </div>
-                ) : viewMode === 'grid' ? (
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {selectedTag &&
+                  (() => {
+                    const tag = tags.find((t) => t.id === selectedTag)
+                    return tag ? (
+                      <Badge variant="secondary" className="gap-1">
+                        <Tag className="h-3 w-3" />
+                        {tag.name}
+                        <button
+                          onClick={() => clearFilter('tag')}
+                          className="hover:text-foreground ml-1"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ) : null
+                  })()}
+                {searchQuery && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Search className="h-3 w-3" />
+                    &quot;{searchQuery}&quot;
+                    <button
+                      onClick={() => clearFilter('search')}
+                      className="hover:text-foreground ml-1"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+              </div>
+            )}
+          </header>
+
+          {/* Bookmarks Grid/List */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+            <div
+              key={`${selectedFolder || 'all'}-${selectedTag || 'none'}-${viewMode}`}
+              className="feed-content-transition"
+            >
+              {loading ? (
+                viewMode === 'grid' ? (
                   <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                    {bookmarks.map((bookmark, index) => (
-                      <BookmarkCard
-                        key={bookmark.id}
-                        bookmark={bookmark}
-                        onClick={() => handleBookmarkClick(bookmark)}
-                        onDelete={() => setDeleteConfirmId(bookmark.id)}
-                        onEdit={() => setEditingBookmark(bookmark)}
-                        allTags={tags}
-                        onAddTag={async (bookmarkId, tagId) => {
-                          await bookmarkAddTag(bookmarkId, tagId)
-                        }}
-                        onRemoveTag={async (bookmarkId, tagId) => {
-                          await bookmarkRemoveTag(bookmarkId, tagId)
-                        }}
-                        onCreateTag={async (name) => {
-                          const tag = await createTag({ name })
-                          return tag?.id ?? null
-                        }}
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                      />
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <BookmarkCardSkeleton key={i} />
                     ))}
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {bookmarks.map((bookmark, index) => (
-                      <BookmarkListItem
-                        key={bookmark.id}
-                        bookmark={bookmark}
-                        onClick={() => handleBookmarkClick(bookmark)}
-                        onDelete={() => setDeleteConfirmId(bookmark.id)}
-                        onEdit={() => setEditingBookmark(bookmark)}
-                        allTags={tags}
-                        onAddTag={async (bookmarkId, tagId) => {
-                          await bookmarkAddTag(bookmarkId, tagId)
-                        }}
-                        onRemoveTag={async (bookmarkId, tagId) => {
-                          await bookmarkRemoveTag(bookmarkId, tagId)
-                        }}
-                        onCreateTag={async (name) => {
-                          const tag = await createTag({ name })
-                          return tag?.id ?? null
-                        }}
-                        style={{ animationDelay: `${index * 0.03}s` }}
-                      />
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <BookmarkListItemSkeleton key={i} />
                     ))}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Pagination */}
-            {pages > 1 && (
-              <div className="border-border bg-card flex items-center justify-between border-t px-6 py-4">
-                <span className="text-muted-foreground text-sm">
-                  {t('pagination.showing', { count: bookmarks.length, total })}
-                </span>
-                <div className="flex items-center gap-2">
+                )
+              ) : bookmarks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="bg-muted mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                    <BookmarkIcon className="text-muted-foreground h-8 w-8" />
+                  </div>
+                  <p className="text-muted-foreground">{t('empty.noBookmarks')}</p>
+                  <p className="text-muted-foreground/60 mt-1 text-xs">
+                    {t('empty.noBookmarksDescription')}
+                  </p>
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handlePageChange(page - 1)}
-                    disabled={page === 1}
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => setShowCreateBookmark(true)}
                   >
-                    <ChevronLeft className="h-4 w-4" />
-                    {t('pagination.previous')}
-                  </Button>
-                  <span className="text-muted-foreground text-sm">
-                    {page} / {pages}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handlePageChange(page + 1)}
-                    disabled={page === pages}
-                  >
-                    {t('pagination.next')}
-                    <ChevronRight className="h-4 w-4" />
+                    <Plus className="h-4 w-4" />
+                    {t('empty.addFirstBookmark')}
                   </Button>
                 </div>
-              </div>
-            )}
+              ) : viewMode === 'grid' ? (
+                <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                  {bookmarks.map((bookmark, index) => (
+                    <BookmarkCard
+                      key={bookmark.id}
+                      bookmark={bookmark}
+                      onClick={() => handleBookmarkClick(bookmark)}
+                      onDelete={() => setDeleteConfirmId(bookmark.id)}
+                      onEdit={() => setEditingBookmark(bookmark)}
+                      allTags={tags}
+                      onAddTag={async (bookmarkId, tagId) => {
+                        await bookmarkAddTag(bookmarkId, tagId)
+                      }}
+                      onRemoveTag={async (bookmarkId, tagId) => {
+                        await bookmarkRemoveTag(bookmarkId, tagId)
+                      }}
+                      onCreateTag={async (name) => {
+                        const tag = await createTag({ name })
+                        return tag?.id ?? null
+                      }}
+                      style={{ animationDelay: `${index * 0.05}s` }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {bookmarks.map((bookmark, index) => (
+                    <BookmarkListItem
+                      key={bookmark.id}
+                      bookmark={bookmark}
+                      onClick={() => handleBookmarkClick(bookmark)}
+                      onDelete={() => setDeleteConfirmId(bookmark.id)}
+                      onEdit={() => setEditingBookmark(bookmark)}
+                      allTags={tags}
+                      onAddTag={async (bookmarkId, tagId) => {
+                        await bookmarkAddTag(bookmarkId, tagId)
+                      }}
+                      onRemoveTag={async (bookmarkId, tagId) => {
+                        await bookmarkRemoveTag(bookmarkId, tagId)
+                      }}
+                      onCreateTag={async (name) => {
+                        const tag = await createTag({ name })
+                        return tag?.id ?? null
+                      }}
+                      style={{ animationDelay: `${index * 0.03}s` }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Pagination */}
+          {pages > 1 && (
+            <div className="border-border bg-card flex items-center justify-between border-t px-6 py-4">
+              <span className="text-muted-foreground text-sm">
+                {t('pagination.showing', { count: bookmarks.length, total })}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePageChange(page - 1)}
+                  disabled={page === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  {t('pagination.previous')}
+                </Button>
+                <span className="text-muted-foreground text-sm">
+                  {page} / {pages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handlePageChange(page + 1)}
+                  disabled={page === pages}
+                >
+                  {t('pagination.next')}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Create Bookmark Dialog */}

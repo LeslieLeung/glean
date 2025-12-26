@@ -35,7 +35,6 @@ const store = new Store<StoreType>({
 })
 
 let mainWindow: BrowserWindow | null = null
-let configWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -133,12 +132,6 @@ function createApplicationMenu() {
             submenu: [
               { role: 'about' as const },
               { type: 'separator' as const },
-              {
-                label: 'Preferences...',
-                accelerator: 'CommandOrControl+,',
-                click: () => createConfigWindow(),
-              },
-              { type: 'separator' as const },
               { role: 'services' as const },
               { type: 'separator' as const },
               { role: 'hide' as const },
@@ -153,19 +146,7 @@ function createApplicationMenu() {
     // File menu
     {
       label: 'File',
-      submenu: [
-        ...(!isMac
-          ? [
-              {
-                label: 'Preferences...',
-                accelerator: 'CommandOrControl+,',
-                click: () => createConfigWindow(),
-              },
-              { type: 'separator' as const },
-            ]
-          : []),
-        isMac ? { role: 'close' as const } : { role: 'quit' as const },
-      ],
+      submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }],
     },
     // Edit menu
     {
@@ -225,86 +206,6 @@ function createApplicationMenu() {
 
   const menu = Menu.buildFromTemplate(template)
   Menu.setApplicationMenu(menu)
-}
-
-// Check backend connection
-async function checkBackendConnection(apiUrl: string): Promise<boolean> {
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
-
-    const response = await fetch(`${apiUrl}/api/health`, {
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeoutId)
-    return response.ok
-  } catch (error) {
-    console.error('[Main] Backend connection check failed:', error)
-    return false
-  }
-}
-
-// Create configuration window
-function createConfigWindow() {
-  console.log('[Main] Creating config window...')
-
-  // If config window is already open, focus it
-  if (configWindow) {
-    configWindow.focus()
-    return
-  }
-
-  configWindow = new BrowserWindow({
-    width: 480,
-    height: 420,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 16 } : undefined,
-    webPreferences: {
-      preload: path.join(__dirname, 'config-preload.mjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: true,
-    },
-    title: 'Glean - Backend Configuration',
-    backgroundColor: '#1a1a1a',
-    show: false, // Don't show initially, wait for fade-in animation after loading
-    center: true,
-    opacity: 0, // Initial opacity is 0
-  })
-
-  // Load configuration page
-  configWindow.loadFile(path.join(__dirname, '../electron/config.html'))
-
-  // Show window with fade-in animation after page loads
-  configWindow.once('ready-to-show', () => {
-    if (!configWindow) return
-
-    configWindow.show()
-
-    // Fade-in animation (from 0 to 1, lasting 300ms)
-    let opacity = 0
-    const fadeIn = setInterval(() => {
-      opacity += 0.05
-      if (opacity >= 1) {
-        opacity = 1
-        clearInterval(fadeIn)
-      }
-      configWindow?.setOpacity(opacity)
-    }, 15) // 15ms * 20 steps = 300ms
-  })
-
-  if (isDev) {
-    configWindow.webContents.openDevTools()
-  }
-
-  configWindow.on('closed', () => {
-    configWindow = null
-  })
 }
 
 function createWindow() {
@@ -399,26 +300,18 @@ function createWindow() {
 }
 
 // App ready
-app.whenReady().then(async () => {
-  console.log('[Main] App ready, checking backend connection...')
+app.whenReady().then(() => {
+  console.log('[Main] App ready, creating main window...')
 
   // Create application menu
   createApplicationMenu()
 
-  // Get configured API URL
+  // Log configured API URL for debugging
   const apiUrl = store.get('apiUrl')
   console.log('[Main] Configured API URL:', apiUrl)
 
-  // Check backend connection
-  const isConnected = await checkBackendConnection(apiUrl)
-
-  if (isConnected) {
-    console.log('[Main] Backend is reachable, opening main window')
-    createWindow()
-  } else {
-    console.log('[Main] Backend is not reachable, showing config window')
-    createConfigWindow()
-  }
+  // Directly open main window - user can configure server from login page
+  createWindow()
 
   // Check for updates after a short delay (only in production)
   if (!isDev) {
@@ -470,28 +363,6 @@ ipcMain.handle('get-platform', () => {
     version: app.getVersion(),
     name: app.getName(),
   }
-})
-
-// IPC handler: open main window (called from config window)
-ipcMain.on('open-main-window', () => {
-  console.log('[Main] Received request to open main window')
-
-  // Close config window
-  if (configWindow) {
-    configWindow.close()
-    configWindow = null
-  }
-
-  // Open main window
-  if (!mainWindow) {
-    createWindow()
-  }
-})
-
-// IPC handler: open config window (called from main window or menu)
-ipcMain.on('open-config-window', () => {
-  console.log('[Main] Received request to open config window')
-  createConfigWindow()
 })
 
 // IPC handler: get access token
