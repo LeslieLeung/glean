@@ -27,13 +27,28 @@ Includes Milvus for Phase 3 features (smart recommendations, preference learning
 # Download docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
+# (Optional) Create .env file to customize admin credentials
+cat > .env << EOF
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=$(openssl rand -base64 24)
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# ⚠️ IMPORTANT: Save the generated passwords before proceeding!
+cat .env
+
 # Start all services
 docker compose up -d
 
 # Access:
 # - Web App: http://localhost
-# - Admin Dashboard: http://localhost:3001
+# - Admin Dashboard: http://localhost:3001 (default: admin / Admin123!)
 ```
+
+**Default admin account**: If you don't create a `.env` file, the default credentials are:
+- Username: `admin`
+- Password: `Admin123!`
+- ⚠️ **Change this password in production!**
 
 ### Lite Deployment (Without Milvus)
 
@@ -43,13 +58,30 @@ For lighter deployments if you don't need Phase 3 features:
 # Download lite version
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
 
+# (Optional) Create .env file to customize admin credentials
+cat > .env << EOF
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=$(openssl rand -base64 24)
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# ⚠️ IMPORTANT: Save the generated passwords
+cat .env
+
 # Start services
 docker compose up -d
 ```
 
-**Next steps:**
-1. Create an admin account (see [Admin Account Management](#admin-account-management))
-2. Configure environment variables for production (see [Environment Configuration](#environment-configuration))
+**Default admin account**: If you don't create a `.env` file, the default credentials are:
+- Username: `admin`
+- Password: `Admin123!`
+- Dashboard: http://localhost:3001
+- ⚠️ **Change this password in production!**
+
+**Next steps**:
+1. Log in to admin dashboard at http://localhost:3001
+2. Change the default password
+3. Configure additional environment variables for production (see [Environment Configuration](#environment-configuration))
 
 ### Testing Pre-release Versions
 
@@ -334,14 +366,38 @@ For complete configuration reference, see [.env.example](.env.example).
 
 ## Admin Account Management
 
-### Auto-Create on First Startup
+Glean automatically creates a default admin account on first startup. You can customize the credentials or disable auto-creation if needed.
 
-Set environment variables in `.env`:
+### Default Admin Account
+
+**By default**, when you start Glean for the first time, an admin account is automatically created with:
+
+- **Username**: `admin`
+- **Password**: `Admin123!`
+- **Role**: `super_admin`
+
+⚠️ **Security Warning**: Change the default password immediately in production environments!
+
+You can verify the admin account was created by checking the logs:
 
 ```bash
-CREATE_ADMIN=true
+docker compose logs backend | grep "Admin Account Created"
+```
+
+### Method 1: Customize Admin Credentials (Recommended for Production)
+
+To use custom credentials instead of the defaults, set environment variables in `.env` **before** starting services:
+
+```bash
+# Admin credentials (customize these!)
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=YourSecurePassword123!
+
+# Optional: specify role (default: super_admin)
+ADMIN_ROLE=super_admin
+
+# Optional: disable auto-creation (if you want to create manually)
+# CREATE_ADMIN=false
 ```
 
 Then start services:
@@ -353,24 +409,153 @@ docker compose up -d
 docker compose logs backend | grep "Admin Account Created"
 ```
 
-### Manual Creation After Deployment
+**Important notes**:
+- Admin account is created automatically on first startup
+- Default credentials are `admin / Admin123!` - **change this in production!**
+- Credentials are displayed during startup - check logs with `docker compose logs backend`
+- If admin already exists, no new admin will be created (no error)
+- To disable auto-creation, set `CREATE_ADMIN=false` in `.env`
+- The auto-creation runs during container startup via `entrypoint.sh`
+
+**Example output**:
+```
+==============================================
+  Admin Account Created Successfully!
+==============================================
+  Username: admin
+  Password: Admin123!
+  Role: super_admin
+==============================================
+
+  Please save these credentials securely!
+  Change the default password in production!
+==============================================
+```
+
+### Method 2: Manual Creation After Deployment
+
+**Best for**: Creating additional admins, resetting credentials
+
+#### Option A: Simple wrapper (generates random password)
 
 ```bash
-# Generate random password (recommended)
+# Generate secure random password automatically
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 
-# Specify custom credentials
+# With custom username
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername
+
+# With custom username and password
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
+
+# With custom username, password, and role
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123! admin
 ```
+
+The script will display the credentials after successful creation.
+
+#### Option B: Direct Python script (more control)
+
+```bash
+# Basic usage
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password MySecurePass123!
+
+# Force recreate if admin exists (no confirmation prompt)
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password NewPassword123! --force
+
+# Specify custom role
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password Pass123! --role admin
+```
+
+**Script options**:
+- `--username`: Admin username (default: `admin`)
+- `--password`: Admin password (default: `Admin123!`)
+- `--role`: Admin role - `super_admin` or `admin` (default: `super_admin`)
+- `--force`, `-f`: Force recreate if user exists (skip confirmation)
 
 ### Password Requirements
 
-Admin passwords must meet the following criteria:
-- At least 8 characters long
-- Contains at least one uppercase letter
-- Contains at least one lowercase letter
-- Contains at least one number
-- Contains at least one special character
+All admin passwords must meet these security criteria:
+
+- ✅ **Minimum length**: 8 characters
+- ✅ **Uppercase letter**: At least one (A-Z)
+- ✅ **Lowercase letter**: At least one (a-z)
+- ✅ **Number**: At least one (0-9)
+- ✅ **Special character**: At least one (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
+
+**Valid password examples**:
+```
+✓ Admin123!
+✓ MySecure@Pass2024
+✓ P@ssw0rd!Strong
+✓ Glean#Admin456
+```
+
+**Invalid password examples**:
+```
+✗ admin123      (missing uppercase and special character)
+✗ ADMIN123!     (missing lowercase)
+✗ Admin!        (too short, missing number)
+✗ Admin123      (missing special character)
+```
+
+### Security Best Practices
+
+1. **Use strong passwords**: Generate random passwords with `openssl rand -base64 24`
+2. **Change default password**: Never use `Admin123!` in production
+3. **Disable auto-creation**: Set `CREATE_ADMIN=false` after first startup
+4. **Limit admin accounts**: Only create for authorized personnel
+5. **Use unique usernames**: Avoid generic names like "admin" in production
+6. **Rotate passwords regularly**: Update passwords periodically
+7. **Monitor access**: Review admin login logs for suspicious activity
+8. **Secure the admin port**: Use firewall rules to restrict access to port 3001
+
+### Admin Roles
+
+Glean supports two admin roles:
+
+| Role          | Description            | Permissions                      |
+| ------------- | ---------------------- | -------------------------------- |
+| `super_admin` | Super administrator    | Full system access (recommended) |
+| `admin`       | Standard administrator | Standard admin access            |
+
+*Note: Currently, both roles have identical permissions. Role-based permission differentiation will be implemented in future releases.*
+
+### Accessing Admin Dashboard
+
+After creating an admin account, access the admin dashboard at:
+
+- **Default**: http://localhost:3001
+- **Custom port**: http://localhost:${ADMIN_PORT} (if `ADMIN_PORT` is set in `.env`)
+
+Login with your admin credentials to manage users and view system statistics.
+
+### Troubleshooting
+
+**Admin already exists error**:
+```bash
+# Use --force flag to recreate
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password NewPass123! --force
+```
+
+**Cannot connect to database**:
+```bash
+# Verify database is running
+docker compose ps postgres
+
+# Check database health
+docker exec -it glean-postgres pg_isready -U glean
+```
+
+**Password validation failed**:
+- Ensure password meets all requirements (8+ chars, mixed case, number, special char)
+- Check for unsupported special characters
+
+For more detailed admin setup instructions, see [docs/admin-setup.md](docs/admin-setup.md).
 
 ## Updating Glean
 

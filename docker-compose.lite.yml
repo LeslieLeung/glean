@@ -13,8 +13,8 @@
 #   - ADMIN_PORT: Admin dashboard port (default: 3001)
 #   - POSTGRES_DB/USER/PASSWORD: Database credentials
 #   - SECRET_KEY: JWT signing key
-#   - CREATE_ADMIN: Create admin account on startup (default: false)
-#   - ADMIN_USERNAME/PASSWORD: Admin credentials
+#   - CREATE_ADMIN: Create admin account on startup (default: true)
+#   - ADMIN_USERNAME/PASSWORD: Admin credentials (default: admin/Admin123!)
 #   - DEBUG: Enable debug mode (default: false)
 
 services:
@@ -62,10 +62,10 @@ services:
       DEBUG: ${DEBUG:-false}
       # Only backend runs migrations to avoid race conditions
       RUN_MIGRATIONS: "true"
-      # Admin auto-creation (set to true for first startup)
-      CREATE_ADMIN: ${CREATE_ADMIN:-false}
+      # Admin auto-creation (enabled by default, set to false to disable)
+      CREATE_ADMIN: ${CREATE_ADMIN:-true}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
       ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

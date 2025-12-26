@@ -47,8 +47,13 @@ docker compose up -d
 
 # 访问：
 # - Web 应用: http://localhost
-# - 管理后台: http://localhost:3001
+# - 管理后台: http://localhost:3001（默认：admin/Admin123!）
 ```
+
+**默认管理员账号**：系统会自动创建管理员账号：
+- 用户名：`admin`
+- 密码：`Admin123!`
+- ⚠️ **生产环境请立即修改此密码！**
 
 **精简部署**（不包含 Milvus，如果不需要 Phase 3 功能）：
 
@@ -58,33 +63,37 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compo
 
 # 启动 Glean
 docker compose up -d
+
+# 管理后台: http://localhost:3001（默认：admin/Admin123!）
 ```
 
-### 创建管理员账号
+### 自定义管理员账号（可选）
 
-首次启动后，创建管理员账号以访问管理后台：
-
-```bash
-# 生成随机密码（推荐）
-docker exec -it glean-backend /app/scripts/create-admin-docker.sh
-
-# 或指定自定义凭据
-docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
-```
-
-也可以在首次启动时使用环境变量创建管理员：
+如需使用自定义管理员凭据而非默认值，在启动**之前**创建 `.env` 文件：
 
 ```bash
-# 在 .env 中设置管理员凭据
-CREATE_ADMIN=true
+# 在 .env 中设置自定义管理员凭据
+cat > .env << EOF
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=YourSecurePassword123!
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# 启动服务
+docker compose up -d
+```
+
+如需禁用自动创建并手动创建管理员：
+
+```bash
+# 在 .env 中禁用自动创建
+echo "CREATE_ADMIN=false" >> .env
 
 # 启动服务
 docker compose up -d
 
-# 查看日志确认
-docker compose logs backend | grep "Admin Account Created"
+# 手动创建管理员
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 ```
 
 ## 配置说明
@@ -97,13 +106,14 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 **重要配置项（需修改）：**
 
-| 变量                | 说明             | 默认值                              |
-| ------------------- | ---------------- | ----------------------------------- |
-| `SECRET_KEY`        | JWT 签名密钥     | **生产环境必须修改！**              |
-| `POSTGRES_PASSWORD` | 数据库密码       | `glean`（**生产环境必须修改！**）   |
-| `WEB_PORT`          | Web 界面端口     | `80`                                |
-| `ADMIN_PORT`        | 管理后台端口     | `3001`                              |
-| `CREATE_ADMIN`      | 自动创建管理员   | `false`（首次启动设为 `true`）      |
+| 变量                | 说明           | 默认值                            |
+| ------------------- | -------------- | --------------------------------- |
+| `SECRET_KEY`        | JWT 签名密钥   | **生产环境必须修改！**            |
+| `POSTGRES_PASSWORD` | 数据库密码     | `glean`（**生产环境必须修改！**） |
+| `ADMIN_PASSWORD`    | 管理员密码     | `Admin123!`（**必须修改！**）     |
+| `WEB_PORT`          | Web 界面端口   | `80`                              |
+| `ADMIN_PORT`        | 管理后台端口   | `3001`                            |
+| `CREATE_ADMIN`      | 自动创建管理员 | `true`（设为 `false` 可禁用）     |
 
 所有配置选项请参见 [.env.example](.env.example)。
 

@@ -233,10 +233,12 @@ cd frontend/apps/web && pnpm test
 - Password: TestPass123!
 - Feed: https://ameow.xyz/feed.xml
 
-**Admin Dashboard**:
-- URL: http://localhost:3001
-- Create admin: `cd backend && uv run python ../scripts/create-admin.py`
-- Default: admin / Admin123!
+**Admin Account**:
+- See [docs/admin-setup.md](docs/admin-setup.md) for detailed setup instructions
+- Quick setup: `python scripts/create-admin.py`
+- Docker setup: Set `CREATE_ADMIN=true` in `.env` or use `docker exec -it glean-backend /app/scripts/create-admin-docker.sh`
+- Default credentials (development only): admin / Admin123!
+- Dashboard URL: http://localhost:3001
 
 ## CI Compliance
 

@@ -47,8 +47,13 @@ docker compose up -d
 
 # Access:
 # - Web App: http://localhost
-# - Admin Dashboard: http://localhost:3001
+# - Admin Dashboard: http://localhost:3001 (default: admin/Admin123!)
 ```
+
+**Default Admin Account**: An admin account is automatically created with:
+- Username: `admin`
+- Password: `Admin123!`
+- ⚠️ **Change this password in production!**
 
 **Lite Deployment** (without Milvus, if you don't need Phase 3 features):
 
@@ -58,33 +63,37 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compo
 
 # Start Glean
 docker compose up -d
+
+# Admin Dashboard: http://localhost:3001 (default: admin/Admin123!)
 ```
 
-### Create Admin Account
+### Customize Admin Account (Optional)
 
-After first startup, create an admin account to access the dashboard:
-
-```bash
-# Generate random password (recommended)
-docker exec -it glean-backend /app/scripts/create-admin-docker.sh
-
-# Or specify custom credentials
-docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
-```
-
-Alternatively, create admin on first startup using environment variables:
+To use custom admin credentials instead of the defaults, create a `.env` file **before** starting:
 
 ```bash
-# Set admin credentials in .env
-CREATE_ADMIN=true
+# Set custom admin credentials in .env
+cat > .env << EOF
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=YourSecurePassword123!
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# Start services
+docker compose up -d
+```
+
+To disable auto-creation and create admin manually:
+
+```bash
+# Disable auto-creation in .env
+echo "CREATE_ADMIN=false" >> .env
 
 # Start services
 docker compose up -d
 
-# Check logs to confirm
-docker compose logs backend | grep "Admin Account Created"
+# Create admin manually
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 ```
 
 ## Configuration
@@ -97,13 +106,14 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 **Important settings to change:**
 
-| Variable            | Description          | Default                              |
-| ------------------- | -------------------- | ------------------------------------ |
-| `SECRET_KEY`        | JWT signing key      | **Must change in production!**       |
-| `POSTGRES_PASSWORD` | Database password    | `glean` (**Change in production!**)  |
-| `WEB_PORT`          | Web interface port   | `80`                                 |
-| `ADMIN_PORT`        | Admin dashboard port | `3001`                               |
-| `CREATE_ADMIN`      | Auto-create admin    | `false` (set `true` for first start) |
+| Variable            | Description          | Default                             |
+| ------------------- | -------------------- | ----------------------------------- |
+| `SECRET_KEY`        | JWT signing key      | **Must change in production!**      |
+| `POSTGRES_PASSWORD` | Database password    | `glean` (**Change in production!**) |
+| `ADMIN_PASSWORD`    | Admin password       | `Admin123!` (**Change!**)           |
+| `WEB_PORT`          | Web interface port   | `80`                                |
+| `ADMIN_PORT`        | Admin dashboard port | `3001`                              |
+| `CREATE_ADMIN`      | Auto-create admin    | `true` (set `false` to disable)     |
 
 For all configuration options, see [.env.example](.env.example).
 

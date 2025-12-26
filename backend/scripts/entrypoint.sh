@@ -47,7 +47,7 @@ fi
 # Create admin user if requested
 if [ "$CREATE_ADMIN" = "true" ] || [ "$CREATE_ADMIN" = "1" ]; then
     ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-    ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(openssl rand -base64 12)}
+    ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin123!}
     ADMIN_ROLE=${ADMIN_ROLE:-super_admin}
 
     echo "Creating admin user..."
@@ -62,7 +62,7 @@ if [ "$CREATE_ADMIN" = "true" ] || [ "$CREATE_ADMIN" = "1" ]; then
         echo "=============================================="
         echo ""
         echo "  Please save these credentials securely!"
-        echo "  This password will NOT be shown again."
+        echo "  Change the default password in production!"
         echo "=============================================="
     fi
 fi

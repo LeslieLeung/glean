@@ -27,6 +27,17 @@
 # 下载 docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
+# 创建 .env 文件并配置管理员凭据（可选但推荐）
+cat > .env << EOF
+CREATE_ADMIN=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=$(openssl rand -base64 24)
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# ⚠️ 重要：在继续之前保存生成的密码！
+cat .env
+
 # 启动所有服务
 docker compose up -d
 
@@ -34,6 +45,8 @@ docker compose up -d
 # - Web 应用: http://localhost
 # - 管理后台: http://localhost:3001
 ```
+
+**重要提示**：请在继续之前安全地保存您的管理员凭据。它们仅在启动时显示一次。
 
 ### 精简部署（不含 Milvus）
 
@@ -43,13 +56,25 @@ docker compose up -d
 # 下载精简版
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
 
+# （可选）创建 .env 文件并配置管理员凭据
+cat > .env << EOF
+CREATE_ADMIN=true
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=$(openssl rand -base64 24)
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# ⚠️ 重要：保存生成的密码
+cat .env
+
 # 启动服务
 docker compose up -d
 ```
 
 **后续步骤：**
-1. 创建管理员账号（参见[管理员账号管理](#管理员账号管理)）
-2. 配置生产环境变量（参见[环境配置](#环境配置)）
+1. 如果未使用自动创建，请手动创建管理员账号：`docker exec -it glean-backend /app/scripts/create-admin-docker.sh`
+2. 访问管理后台：http://localhost:3001
+3. 配置生产环境的其他环境变量（参见[环境配置](#环境配置)）
 
 ### 测试预发布版本
 
@@ -335,14 +360,38 @@ docker compose --profile milvus up -d
 
 ## 管理员账号管理
 
-### 首次启动时自动创建
+Glean 在首次启动时会自动创建默认管理员账号。您可以自定义凭据或根据需要禁用自动创建。
 
-在 `.env` 中设置环境变量：
+### 默认管理员账号
+
+**默认情况下**，首次启动 Glean 时会自动创建管理员账号：
+
+- **用户名**：`admin`
+- **密码**：`Admin123!`
+- **角色**：`super_admin`
+
+⚠️ **安全警告**：生产环境请立即修改默认密码！
+
+您可以通过查看日志来验证管理员账号是否创建成功：
 
 ```bash
-CREATE_ADMIN=true
+docker compose logs backend | grep "Admin Account Created"
+```
+
+### 方法 1：自定义管理员凭据（生产环境推荐）
+
+如需使用自定义凭据而非默认值，在启动服务**之前**在 `.env` 文件中设置环境变量：
+
+```bash
+# 管理员凭据（请自定义！）
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=YourSecurePassword123!
+
+# 可选：指定角色（默认：super_admin）
+ADMIN_ROLE=super_admin
+
+# 可选：禁用自动创建（如果要手动创建）
+# CREATE_ADMIN=false
 ```
 
 然后启动服务：
@@ -354,24 +403,153 @@ docker compose up -d
 docker compose logs backend | grep "Admin Account Created"
 ```
 
-### 部署后手动创建
+**重要提示**：
+- 管理员账号在首次启动时自动创建
+- 默认凭据为 `admin / Admin123!` - **生产环境请修改！**
+- 启动时会显示凭据 - 可通过 `docker compose logs backend` 查看日志
+- 如果管理员已存在，不会创建新管理员（不会报错）
+- 如需禁用自动创建，在 `.env` 中设置 `CREATE_ADMIN=false`
+- 自动创建在容器启动时通过 `entrypoint.sh` 执行
+
+**示例输出**：
+```
+==============================================
+  管理员账号创建成功！
+==============================================
+  用户名: admin
+  密码: Admin123!
+  角色: super_admin
+==============================================
+
+  请安全保存这些凭据！
+  生产环境请修改默认密码！
+==============================================
+```
+
+### 方法 2：部署后手动创建
+
+**适用于**：创建额外的管理员、重置凭据
+
+#### 选项 A：简单封装脚本（生成随机密码）
 
 ```bash
-# 生成随机密码（推荐）
+# 自动生成安全的随机密码
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh
 
-# 指定自定义凭据
+# 使用自定义用户名
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername
+
+# 使用自定义用户名和密码
 docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123!
+
+# 使用自定义用户名、密码和角色
+docker exec -it glean-backend /app/scripts/create-admin-docker.sh myusername MySecurePass123! admin
 ```
+
+脚本将在成功创建后显示凭据。
+
+#### 选项 B：直接使用 Python 脚本（更多控制）
+
+```bash
+# 基本用法
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password MySecurePass123!
+
+# 强制重建（如果管理员已存在，无需确认）
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password NewPassword123! --force
+
+# 指定自定义角色
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password Pass123! --role admin
+```
+
+**脚本选项**：
+- `--username`：管理员用户名（默认：`admin`）
+- `--password`：管理员密码（默认：`Admin123!`）
+- `--role`：管理员角色 - `super_admin` 或 `admin`（默认：`super_admin`）
+- `--force`, `-f`：强制重建，如果用户已存在（跳过确认）
 
 ### 密码要求
 
-管理员密码必须满足以下条件：
-- 至少 8 个字符
-- 包含至少一个大写字母
-- 包含至少一个小写字母
-- 包含至少一个数字
-- 包含至少一个特殊字符
+所有管理员密码必须满足以下安全条件：
+
+- ✅ **最小长度**：8 个字符
+- ✅ **大写字母**：至少一个 (A-Z)
+- ✅ **小写字母**：至少一个 (a-z)
+- ✅ **数字**：至少一个 (0-9)
+- ✅ **特殊字符**：至少一个 (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
+
+**有效密码示例**：
+```
+✓ Admin123!
+✓ MySecure@Pass2024
+✓ P@ssw0rd!Strong
+✓ Glean#Admin456
+```
+
+**无效密码示例**：
+```
+✗ admin123      (缺少大写字母和特殊字符)
+✗ ADMIN123!     (缺少小写字母)
+✗ Admin!        (太短，缺少数字)
+✗ Admin123      (缺少特殊字符)
+```
+
+### 安全最佳实践
+
+1. **使用强密码**：使用 `openssl rand -base64 24` 生成随机密码
+2. **更改默认密码**：生产环境中切勿使用 `Admin123!`
+3. **禁用自动创建**：首次启动后设置 `CREATE_ADMIN=false`
+4. **限制管理员账号**：仅为授权人员创建
+5. **使用唯一用户名**：生产环境避免使用 "admin" 等通用名称
+6. **定期轮换密码**：定期更新密码
+7. **监控访问**：定期审查管理员登录日志，查找可疑活动
+8. **保护管理员端口**：使用防火墙规则限制对端口 3001 的访问
+
+### 管理员角色
+
+Glean 支持两种管理员角色：
+
+| 角色          | 描述       | 权限                     |
+| ------------- | ---------- | ------------------------ |
+| `super_admin` | 超级管理员 | 完全系统访问权限（推荐） |
+| `admin`       | 标准管理员 | 标准管理员访问权限       |
+
+*注意：目前两种角色拥有相同的权限。基于角色的权限差异化将在未来版本中实现。*
+
+### 访问管理后台
+
+创建管理员账号后，访问管理后台：
+
+- **默认地址**：http://localhost:3001
+- **自定义端口**：http://localhost:${ADMIN_PORT}（如果在 `.env` 中设置了 `ADMIN_PORT`）
+
+使用您的管理员凭据登录以管理用户和查看系统统计信息。
+
+### 故障排查
+
+**管理员已存在错误**：
+```bash
+# 使用 --force 标志重建
+docker exec -it glean-backend uv run python scripts/create-admin.py \
+  --username admin --password NewPass123! --force
+```
+
+**无法连接到数据库**：
+```bash
+# 验证数据库是否运行
+docker compose ps postgres
+
+# 检查数据库健康状态
+docker exec -it glean-postgres pg_isready -U glean
+```
+
+**密码验证失败**：
+- 确保密码满足所有要求（8+ 字符、大小写混合、数字、特殊字符）
+- 检查是否使用了不支持的特殊字符
+
+更详细的管理员设置说明，请参阅 [docs/admin-setup.md](docs/admin-setup.md)。
 
 ## 更新 Glean
 
