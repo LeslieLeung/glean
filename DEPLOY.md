@@ -476,32 +476,6 @@ docker exec -it glean-backend uv run python scripts/create-admin.py \
 - `--role`: Admin role - `super_admin` or `admin` (default: `super_admin`)
 - `--force`, `-f`: Force recreate if user exists (skip confirmation)
 
-### Password Requirements
-
-All admin passwords must meet these security criteria:
-
-- ✅ **Minimum length**: 8 characters
-- ✅ **Uppercase letter**: At least one (A-Z)
-- ✅ **Lowercase letter**: At least one (a-z)
-- ✅ **Number**: At least one (0-9)
-- ✅ **Special character**: At least one (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
-
-**Valid password examples**:
-```
-✓ Admin123!
-✓ MySecure@Pass2024
-✓ P@ssw0rd!Strong
-✓ Glean#Admin456
-```
-
-**Invalid password examples**:
-```
-✗ admin123      (missing uppercase and special character)
-✗ ADMIN123!     (missing lowercase)
-✗ Admin!        (too short, missing number)
-✗ Admin123      (missing special character)
-```
-
 ### Security Best Practices
 
 1. **Use strong passwords**: Generate random passwords with `openssl rand -base64 24`

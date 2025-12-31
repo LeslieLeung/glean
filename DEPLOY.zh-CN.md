@@ -470,32 +470,6 @@ docker exec -it glean-backend uv run python scripts/create-admin.py \
 - `--role`：管理员角色 - `super_admin` 或 `admin`（默认：`super_admin`）
 - `--force`, `-f`：强制重建，如果用户已存在（跳过确认）
 
-### 密码要求
-
-所有管理员密码必须满足以下安全条件：
-
-- ✅ **最小长度**：8 个字符
-- ✅ **大写字母**：至少一个 (A-Z)
-- ✅ **小写字母**：至少一个 (a-z)
-- ✅ **数字**：至少一个 (0-9)
-- ✅ **特殊字符**：至少一个 (`!@#$%^&*()_+-=[]{}|;:,.<>?`)
-
-**有效密码示例**：
-```
-✓ Admin123!
-✓ MySecure@Pass2024
-✓ P@ssw0rd!Strong
-✓ Glean#Admin456
-```
-
-**无效密码示例**：
-```
-✗ admin123      (缺少大写字母和特殊字符)
-✗ ADMIN123!     (缺少小写字母)
-✗ Admin!        (太短，缺少数字)
-✗ Admin123      (缺少特殊字符)
-```
-
 ### 安全最佳实践
 
 1. **使用强密码**：使用 `openssl rand -base64 24` 生成随机密码
