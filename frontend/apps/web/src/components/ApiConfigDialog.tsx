@@ -17,6 +17,7 @@ import {
 import { Server, Loader2, CheckCircle, XCircle, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import { createNamedLogger } from '@glean/logger'
+import type { HealthCheckResponse } from '@glean/types'
 
 const logger = createNamedLogger({ name: 'ApiConfigDialog' })
 
@@ -42,7 +43,9 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   const [originalUrl, setOriginalUrl] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'idle' })
   const [isSaving, setIsSaving] = useState(false)
+  const [isReloading, setIsReloading] = useState(false)
   const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shouldReloadRef = useRef(false)
 
   // Load current API URL when dialog opens
   useEffect(() => {
@@ -64,15 +67,31 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
     }
   }, [open, t])
 
-  // Cleanup timeout on unmount to prevent memory leaks
+  // Cleanup timeout when dialog closes or component unmounts
+  // This prevents race conditions where the dialog closes but reload still happens
   useEffect(() => {
-    return () => {
+    if (!open) {
+      // Reset all state when dialog closes
+      setConnectionStatus({ status: 'idle' })
+      setIsReloading(false)
+      setIsSaving(false)
+      shouldReloadRef.current = false
+      // Clear any pending reload timeout
       if (reloadTimeoutRef.current) {
         clearTimeout(reloadTimeoutRef.current)
         reloadTimeoutRef.current = null
       }
     }
-  }, [])
+
+    return () => {
+      // Cleanup on unmount
+      shouldReloadRef.current = false
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current)
+        reloadTimeoutRef.current = null
+      }
+    }
+  }, [open])
 
   // Early return if not in Electron environment (after all hooks)
   if (!window.electronAPI?.isElectron) {
@@ -130,7 +149,13 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
 
       if (response.ok) {
         try {
-          const data = await response.json()
+          const data = (await response.json()) as HealthCheckResponse
+
+          // Runtime validation: ensure response has expected structure
+          if (!data || typeof data.status !== 'string') {
+            throw new Error('Invalid health check response format')
+          }
+
           setConnectionStatus({
             status: 'success',
             message: t('config.connectionSuccess'),
@@ -181,10 +206,20 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
           status: 'success',
           message: t('config.saveSuccess'),
         })
+        // Set isReloading flag to track reload state (for UI updates)
+        setIsReloading(true)
+        // Set ref to allow reload (checked in timeout callback)
+        shouldReloadRef.current = true
         // Settings are persisted synchronously via electron-store before the promise resolves.
         // Wait briefly for user to see success message, then reload to apply the new configuration.
         reloadTimeoutRef.current = setTimeout(() => {
-          globalThis.location.reload()
+          // Only reload if:
+          // 1. Dialog hasn't been closed (checked via ref)
+          // 2. Component hasn't unmounted (ref is reset in cleanup)
+          // 3. User hasn't cancelled the reload somehow
+          if (shouldReloadRef.current) {
+            globalThis.location.reload()
+          }
         }, 800)
       } else {
         setConnectionStatus({
@@ -220,8 +255,16 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
     }
   }
 
+  const handleOpenChange = (newOpen: boolean) => {
+    // Prevent closing dialog during reload to avoid race conditions
+    if (isReloading && !newOpen) {
+      return
+    }
+    setOpen(newOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={children} />
       <DialogPopup className="sm:max-w-md">
         <DialogHeader>
@@ -249,6 +292,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
                 }}
                 placeholder="http://localhost:8000"
                 className="w-full"
+                disabled={isReloading}
               />
               <p className="text-muted-foreground text-xs">{t('config.urlHint')}</p>
             </div>
@@ -274,13 +318,13 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
         </DialogPanel>
 
         <DialogFooter variant="bare">
-          <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+          <DialogClose className={buttonVariants({ variant: 'ghost' })} disabled={isReloading}>
             {t('config.cancel')}
           </DialogClose>
           <Button
             variant="outline"
             onClick={testConnection}
-            disabled={connectionStatus.status === 'testing' || !apiUrl.trim()}
+            disabled={connectionStatus.status === 'testing' || !apiUrl.trim() || isReloading}
           >
             {connectionStatus.status === 'testing' ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -289,8 +333,8 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
             )}
             {t('config.testConnection')}
           </Button>
-          <Button onClick={handleSave} disabled={isSaving || !hasChanges}>
-            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          <Button onClick={handleSave} disabled={isSaving || !hasChanges || isReloading}>
+            {(isSaving || isReloading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {t('config.saveAndReload')}
           </Button>
         </DialogFooter>

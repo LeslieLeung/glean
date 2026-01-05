@@ -35,6 +35,12 @@ export interface ApiError {
   code?: string
 }
 
+/** Health check response */
+export interface HealthCheckResponse {
+  status: string
+  version?: string
+}
+
 /** Login request */
 export interface LoginRequest {
   email: string
