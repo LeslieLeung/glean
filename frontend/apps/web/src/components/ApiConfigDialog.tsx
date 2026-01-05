@@ -14,7 +14,7 @@ import {
   Label,
   buttonVariants,
 } from '@glean/ui'
-import { Server, Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
+import { Server, Loader2, CheckCircle, XCircle, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import { createNamedLogger } from '@glean/logger'
 
@@ -25,7 +25,7 @@ interface ApiConfigDialogProps {
 }
 
 interface ConnectionStatus {
-  status: 'idle' | 'testing' | 'success' | 'error'
+  status: 'idle' | 'testing' | 'success' | 'error' | 'warning'
   message?: string
   version?: string
 }
@@ -45,7 +45,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
 
   // Load current API URL when dialog opens
   useEffect(() => {
-    if (open && window.electronAPI) {
+    if (open && window.electronAPI?.isElectron) {
       window.electronAPI
         .getApiUrl()
         .then((url) => {
@@ -63,10 +63,32 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
     }
   }, [open, t])
 
+  // Early return if not in Electron environment (after all hooks)
+  if (!window.electronAPI?.isElectron) {
+    return null
+  }
+
   const isValidUrl = (url: string): boolean => {
     try {
       const parsed = new URL(url)
-      return ['http:', 'https:'].includes(parsed.protocol)
+      // Only allow http and https protocols
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return false
+      }
+      // Reject URLs with path components (should be root URL only)
+      if (parsed.pathname !== '/' && parsed.pathname !== '') {
+        return false
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const isInsecureUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'http:' && parsed.hostname !== 'localhost'
     } catch {
       return false
     }
@@ -84,7 +106,12 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
       return
     }
 
-    setConnectionStatus({ status: 'testing' })
+    // Warn about insecure HTTP URLs (non-localhost)
+    if (isInsecureUrl(url)) {
+      setConnectionStatus({ status: 'warning', message: t('config.insecureWarning') })
+    } else {
+      setConnectionStatus({ status: 'testing' })
+    }
 
     try {
       const response = await fetch(`${url}/api/health`, {
@@ -93,12 +120,20 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setConnectionStatus({
-          status: 'success',
-          message: t('config.connectionSuccess'),
-          version: data.version,
-        })
+        try {
+          const data = await response.json()
+          setConnectionStatus({
+            status: 'success',
+            message: t('config.connectionSuccess'),
+            version: data.version,
+          })
+        } catch (parseError) {
+          logger.error('Failed to parse server response', { parseError, url })
+          setConnectionStatus({
+            status: 'error',
+            message: t('config.invalidResponse'),
+          })
+        }
       } else {
         setConnectionStatus({
           status: 'error',
@@ -115,7 +150,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   }
 
   const handleSave = async () => {
-    if (!window.electronAPI) return
+    if (!window.electronAPI?.isElectron) return
 
     const url = apiUrl.trim()
     if (!url) {
@@ -137,15 +172,16 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
           status: 'success',
           message: t('config.saveSuccess'),
         })
-        // Give user feedback before reloading
-        setTimeout(() => {
-          window.location.reload()
-        }, 500)
+        // Wait for user to see success message, then reload
+        // The promise has already resolved, ensuring settings are persisted
+        await new Promise((resolve) => setTimeout(resolve, 800))
+        window.location.reload()
       } else {
         setConnectionStatus({
           status: 'error',
           message: t('config.saveFailed'),
         })
+        setIsSaving(false)
       }
     } catch (error) {
       logger.error('Failed to save API URL', { error, url })
@@ -153,7 +189,6 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
         status: 'error',
         message: t('config.saveFailed'),
       })
-    } finally {
       setIsSaving(false)
     }
   }
@@ -201,13 +236,16 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
                     ? 'border-border bg-muted/50 text-muted-foreground'
                     : connectionStatus.status === 'success'
                       ? 'border-success/30 bg-success/10 text-success'
-                      : 'border-destructive/30 bg-destructive/10 text-destructive'
+                      : connectionStatus.status === 'warning'
+                        ? 'border-warning/30 bg-warning/10 text-warning'
+                        : 'border-destructive/30 bg-destructive/10 text-destructive'
                 }`}
               >
                 {connectionStatus.status === 'testing' && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
                 {connectionStatus.status === 'success' && <CheckCircle className="h-4 w-4" />}
+                {connectionStatus.status === 'warning' && <AlertTriangle className="h-4 w-4" />}
                 {connectionStatus.status === 'error' && <XCircle className="h-4 w-4" />}
                 <span>
                   {connectionStatus.message}
