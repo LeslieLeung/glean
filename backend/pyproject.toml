@@ -1,6 +1,6 @@
 [project]
 name = "glean-backend"
-version = "0.2.3"
+version = "0.2.4-alpha.1"
 description = "Glean Backend - Personal Knowledge Management Tool"
 requires-python = ">=3.11"
 readme = "README.md"

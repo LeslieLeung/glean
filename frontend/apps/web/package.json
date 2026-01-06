@@ -1,7 +1,7 @@
 {
   "name": "@glean/web",
   "productName": "Glean",
-  "version": "0.2.3",
+  "version": "0.2.4-alpha.1",
   "description": "Glean - Personal Knowledge Management and RSS Reader",
   "author": {
     "name": "Leslie Leung",

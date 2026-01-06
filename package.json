@@ -1,6 +1,6 @@
 {
   "name": "glean",
-  "version": "0.2.3",
+  "version": "0.2.4-alpha.1",
   "private": true,
   "scripts": {
     "dev": "concurrently --handle-input --kill-others --kill-signal SIGINT --kill-timeout 5000 -n api,worker,web,admin -c blue,green,yellow,magenta \"make api\" \"make worker\" \"make web\" \"make admin\"",
