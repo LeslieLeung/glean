@@ -40,7 +40,7 @@ from sqlalchemy import delete, select  # noqa: E402
 
 from glean_core.services import AdminService  # noqa: E402
 from glean_database.models.admin import AdminRole, AdminUser  # noqa: E402
-from glean_database.session import get_session, init_database  # noqa: E402
+from glean_database.session import get_session_context, init_database  # noqa: E402
 
 
 def hash_password_sha256(password: str) -> str:
@@ -76,7 +76,7 @@ async def create_admin(username: str, password: str, role: str, force: bool = Fa
         return False
 
     # Create admin
-    async for session in get_session():
+    async with get_session_context() as session:
         service = AdminService(session)
 
         # Check if admin user already exists
@@ -130,9 +130,6 @@ async def create_admin(username: str, password: str, role: str, force: bool = Fa
             else:
                 print(f"❌ Error creating admin user: {e}")
             return False
-
-    # Fallback return (should never be reached)
-    return False
 
 
 def main():
