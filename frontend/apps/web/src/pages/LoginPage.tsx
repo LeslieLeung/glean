@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { Rss, AlertCircle, Sparkles } from 'lucide-react'
+import { Rss, AlertCircle, Sparkles, Server } from 'lucide-react'
 import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glean/ui'
 import { useTranslation } from '@glean/i18n'
+import { ApiConfigDialog } from '../components/ApiConfigDialog'
 
 /**
  * Login page.
@@ -153,6 +154,18 @@ export default function LoginPage() {
               <span aria-hidden="true">→</span>
             </Link>
           </div>
+
+          {/* Server configuration - Electron only */}
+          {window.electronAPI?.isElectron && (
+            <div className="border-border mt-6 flex justify-center border-t pt-6">
+              <ApiConfigDialog>
+                <button className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-xs transition-colors">
+                  <Server className="h-3.5 w-3.5" />
+                  {t('config.configureServer')}
+                </button>
+              </ApiConfigDialog>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

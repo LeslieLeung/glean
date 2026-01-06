@@ -1,5 +1,6 @@
 {
   "name": "@glean/web",
+  "productName": "Glean",
   "version": "0.2.3",
   "description": "Glean - Personal Knowledge Management and RSS Reader",
   "author": {

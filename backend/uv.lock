@@ -687,7 +687,7 @@ requires-dist = [
 
 [[package]]
 name = "glean-backend"
-version = "0.2.3a3"
+version = "0.2.3"
 source = { virtual = "." }
 dependencies = [
     { name = "python-dotenv" },
