@@ -292,7 +292,7 @@ export default function SettingsPage() {
           <Label className="text-muted-foreground mb-6 block text-sm font-medium">
             {t('appearance.chooseTheme')}
           </Label>
-          <div className="stagger-children grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="stagger-children grid w-full grid-cols-1 gap-6 sm:grid-cols-3">
             {themeOptions.map(({ value, icon: Icon, label, description, preview }, index) => (
               <button
                 key={value}
