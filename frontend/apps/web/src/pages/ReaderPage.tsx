@@ -147,6 +147,10 @@ export default function ReaderPage() {
     feed_id: selectedFeedId,
     folder_id: selectedFolderId,
     ...getFilterParams(),
+    // The 'view' parameter differentiates 'smart' from 'unread' filters:
+    // - 'smart': sorted by preference_score (descending)
+    // - 'timeline': sorted by published_at (descending)
+    // Both 'smart' and 'unread' filters use is_read: false, but differ in sort order
     view: isSmartView || filterType === 'smart' ? 'smart' : 'timeline',
   })
 
@@ -201,8 +205,8 @@ export default function ReaderPage() {
           }
         : selectedEntry
 
-    if (isSmartView) {
-      // For Smart view, insert based on ORIGINAL preference_score to maintain correct order
+    if (isSmartView || filterType === 'smart') {
+      // For Smart view or Smart filter, insert based on ORIGINAL preference_score to maintain correct order
       // Use the saved original score, not the current score (which may have changed after like/dislike)
       const selectedScore =
         originalData?.id === selectedEntryId
