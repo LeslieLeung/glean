@@ -218,7 +218,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
           // 2. Component hasn't unmounted (ref is reset in cleanup)
           // 3. User hasn't cancelled the reload somehow
           if (shouldReloadRef.current) {
-            globalThis.location.reload()
+            window.location.reload()
           }
         }, 800)
       } else {

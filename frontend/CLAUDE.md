@@ -100,6 +100,44 @@ The same pattern applies to `DialogClose`.
 - Use `react-refresh/only-export-components` for HMR compatibility
 - React hooks rules enforced
 
+## `window` vs `globalThis`
+
+Follow these rules for choosing between `window` and `globalThis`:
+
+```tsx
+// ✅ Use window for browser-specific APIs (DOM/BOM)
+window.addEventListener('resize', handleResize)
+window.removeEventListener('resize', handleResize)
+window.dispatchEvent(new CustomEvent('myEvent'))
+window.location.href = '/login'
+window.location.reload()
+window.isSecureContext
+window.innerWidth
+window.matchMedia('(prefers-color-scheme: dark)')
+window.electronAPI  // Custom browser API
+
+// ✅ Use globalThis only when code might run in multiple environments
+// (e.g., shared code between browser and Node.js)
+if (typeof globalThis !== 'undefined') {
+  // Cross-platform code
+}
+
+// ❌ Bad - Don't use globalThis for browser-specific APIs
+globalThis.location.reload()      // Use window.location
+globalThis.addEventListener(...)  // Use window.addEventListener
+```
+
+**Best Practice**:
+- **Default to `window`**: When using browser-specific APIs (DOM, BOM, Web APIs)
+- **Use `globalThis`**: Only when code needs to run in multiple environments (browser + Node.js)
+- **Type safety**: `window` provides better TypeScript support for browser APIs
+
+**Rationale**:
+- This is a browser-only frontend application
+- `window` is the idiomatic and correct choice for browser APIs
+- `window` provides proper TypeScript DOM types
+- `globalThis` should be reserved for truly cross-platform code
+
 ## Logging
 
 ```typescript

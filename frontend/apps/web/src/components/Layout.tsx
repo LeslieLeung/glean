@@ -70,11 +70,7 @@ export function Layout() {
 
   useEffect(() => {
     const checkPlatform = async () => {
-      const electron = (
-        globalThis as typeof globalThis & {
-          electronAPI?: { isElectron?: boolean; getPlatform?: () => Promise<{ platform: string }> }
-        }
-      ).electronAPI
+      const electron = window.electronAPI
       if (electron?.isElectron) {
         try {
           const platformInfo = await electron.getPlatform?.()
@@ -385,9 +381,9 @@ export function Layout() {
     const handleOpenSidebar = () => {
       setIsMobileSidebarOpen(true)
     }
-    globalThis.addEventListener('openMobileSidebar', handleOpenSidebar)
+    window.addEventListener('openMobileSidebar', handleOpenSidebar)
     return () => {
-      globalThis.removeEventListener('openMobileSidebar', handleOpenSidebar)
+      window.removeEventListener('openMobileSidebar', handleOpenSidebar)
     }
   }, [])
 
@@ -398,12 +394,12 @@ export function Layout() {
     const handleShowArticle = () => setIsReadingArticle(true)
     const handleHideArticle = () => setIsReadingArticle(false)
 
-    globalThis.addEventListener('showArticleReader', handleShowArticle)
-    globalThis.addEventListener('hideArticleReader', handleHideArticle)
+    window.addEventListener('showArticleReader', handleShowArticle)
+    window.addEventListener('hideArticleReader', handleHideArticle)
 
     return () => {
-      globalThis.removeEventListener('showArticleReader', handleShowArticle)
-      globalThis.removeEventListener('hideArticleReader', handleHideArticle)
+      window.removeEventListener('showArticleReader', handleShowArticle)
+      window.removeEventListener('hideArticleReader', handleHideArticle)
     }
   }, [])
 

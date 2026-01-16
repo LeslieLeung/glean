@@ -19,7 +19,7 @@ import encHex from 'crypto-js/enc-hex'
  * - localhost (http://localhost, http://127.0.0.1)
  *
  * We use multiple checks for maximum compatibility:
- * 1. globalThis.isSecureContext - the standard way to detect secure context
+ * 1. window.isSecureContext - the standard way to detect secure context
  * 2. Check if crypto.subtle exists and has the digest function
  *
  * On plain HTTP with non-localhost domains, crypto.subtle is undefined.
@@ -27,8 +27,8 @@ import encHex from 'crypto-js/enc-hex'
 function isWebCryptoAvailable(): boolean {
   try {
     // First check: use isSecureContext if available (most reliable)
-    if (typeof globalThis !== 'undefined' && 'isSecureContext' in globalThis) {
-      if (!globalThis.isSecureContext) {
+    if (typeof window !== 'undefined' && 'isSecureContext' in window) {
+      if (!window.isSecureContext) {
         return false
       }
     }
