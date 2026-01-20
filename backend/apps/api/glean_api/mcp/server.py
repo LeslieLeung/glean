@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.session import get_session_context
 
+from ..config import settings
 from .auth import APITokenVerifier
 
 
@@ -44,11 +45,10 @@ def create_mcp_server() -> FastMCP:
         Configured FastMCP server instance.
     """
     # Configure authentication settings for token-based auth
-    # Note: issuer_url and resource_server_url are required but not used
-    # when using a custom TokenVerifier
+    # URLs are configurable via MCP_ISSUER_URL and MCP_RESOURCE_SERVER_URL environment variables
     auth_settings = AuthSettings(
-        issuer_url=AnyHttpUrl("http://localhost:8000"),
-        resource_server_url=AnyHttpUrl("http://localhost:8000/mcp"),
+        issuer_url=AnyHttpUrl(settings.mcp_issuer_url),
+        resource_server_url=AnyHttpUrl(settings.mcp_resource_server_url),
     )
 
     mcp = FastMCP(

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
         jwt_access_token_expire_minutes: Access token expiration time.
         jwt_refresh_token_expire_days: Refresh token expiration time.
         cors_origins: List of allowed CORS origins.
+        mcp_issuer_url: MCP server issuer URL for authentication.
+        mcp_resource_server_url: MCP server resource server URL.
     """
 
     model_config = SettingsConfigDict(
@@ -55,6 +57,10 @@ class Settings(BaseSettings):
 
     # CORS settings
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
+
+    # MCP Server settings
+    mcp_issuer_url: str = "http://localhost:8000"
+    mcp_resource_server_url: str = "http://localhost:8000/mcp"
 
 
 @lru_cache

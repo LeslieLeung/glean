@@ -21,6 +21,20 @@ from ..server import MCPContext
 logger = get_logger(__name__)
 
 
+def escape_like_pattern(pattern: str) -> str:
+    """
+    Escape special LIKE wildcards in a search pattern.
+
+    Args:
+        pattern: The search pattern to escape.
+
+    Returns:
+        Escaped pattern safe for use in LIKE queries.
+    """
+    # Escape % and _ characters to prevent LIKE injection
+    return pattern.replace("%", r"\%").replace("_", r"\_")
+
+
 async def search_entries(
     ctx: Context[ServerSession, MCPContext],
     query: str,
@@ -48,6 +62,12 @@ async def search_entries(
     if not user_id:
         return [{"error": "Invalid authentication token"}]
 
+    # Validate search query
+    if not query or len(query) < 2:
+        return [{"error": "Search query must be at least 2 characters"}]
+    if len(query) > 200:
+        return [{"error": "Search query must be at most 200 characters"}]
+
     # Clamp limit
     limit = max(1, min(limit, 100))
 
@@ -60,8 +80,9 @@ async def search_entries(
         if not feed_ids:
             return []
 
-        # Build search query
-        search_term = f"%{query.lower()}%"
+        # Build search query with escaped wildcards
+        escaped_query = escape_like_pattern(query.lower())
+        search_term = f"%{escaped_query}%"
         stmt = (
             select(Entry, UserEntry, Feed.title.label("feed_title"))
             .join(Feed, Entry.feed_id == Feed.id)
@@ -222,6 +243,15 @@ async def list_entries_by_date(
         end_dt = end_dt.replace(hour=23, minute=59, second=59)
     except ValueError:
         return [{"error": "Invalid date format. Use YYYY-MM-DD."}]
+
+    # Validate date range
+    if start_dt > end_dt:
+        return [{"error": "Start date must be before or equal to end date."}]
+
+    # Limit date range to 1 year to prevent excessive queries
+    date_range_days = (end_dt - start_dt).days
+    if date_range_days > 365:
+        return [{"error": "Date range cannot exceed 365 days."}]
 
     # Clamp limit
     limit = max(1, min(limit, 200))

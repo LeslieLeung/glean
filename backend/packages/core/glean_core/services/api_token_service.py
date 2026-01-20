@@ -67,8 +67,12 @@ class APITokenService:
             is_revoked=False,
         )
         self.session.add(token)
-        await self.session.commit()
-        await self.session.refresh(token)
+        try:
+            await self.session.commit()
+            await self.session.refresh(token)
+        except Exception:
+            await self.session.rollback()
+            raise
 
         return APITokenCreateResponse(
             id=token.id,
@@ -105,14 +109,19 @@ class APITokenService:
         tokens = result.scalars().all()
 
         # Verify hash for each matching token
+        # Use constant-time comparison to prevent timing attacks
+        matched_token = None
         for token in tokens:
             if verify_password(plain_token, token.token_hash):
                 # Check expiration
                 if token.expires_at and token.expires_at < datetime.now(UTC):
-                    return None
-                return token
+                    # Store None if expired, but continue checking all tokens
+                    pass
+                elif matched_token is None:
+                    # Only store the first valid match
+                    matched_token = token
 
-        return None
+        return matched_token
 
     async def update_last_used(self, token_id: str) -> None:
         """
@@ -124,8 +133,12 @@ class APITokenService:
         stmt = (
             update(APIToken).where(APIToken.id == token_id).values(last_used_at=datetime.now(UTC))
         )
-        await self.session.execute(stmt)
-        await self.session.commit()
+        try:
+            await self.session.execute(stmt)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
 
     async def list_tokens(self, user_id: str) -> APITokenListResponse:
         """
@@ -181,7 +194,11 @@ class APITokenService:
             raise ValueError("Token not found")
 
         token.is_revoked = True
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            raise
         return True
 
     async def get_user_id_from_token(self, plain_token: str) -> str | None:

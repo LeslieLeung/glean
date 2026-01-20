@@ -161,6 +161,7 @@
       "title": "How to use with MCP",
       "description": "Add your API token to your MCP client configuration to enable AI assistants to search and retrieve articles from your subscriptions.",
       "configTitle": "Claude Desktop Configuration",
+      "urlNote": "Note: Replace the URL with your actual backend API address (e.g., http://localhost:8000/mcp/mcp for local development, or https://your-domain.com/mcp/mcp for production).",
       "tools": "Available tools:",
       "toolSearch": "Search articles by keyword",
       "toolGet": "Get full article details",

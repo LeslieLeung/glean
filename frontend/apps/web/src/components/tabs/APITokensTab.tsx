@@ -236,6 +236,10 @@ export function APITokensTab() {
 }`}
             </pre>
           </div>
+          <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-500">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{t('apiTokens.mcpGuide.urlNote')}</p>
+          </div>
           <p>{t('apiTokens.mcpGuide.tools')}</p>
           <ul className="list-inside list-disc space-y-1">
             <li>

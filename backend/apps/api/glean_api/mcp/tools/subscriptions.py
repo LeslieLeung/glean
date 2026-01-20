@@ -63,21 +63,28 @@ async def list_subscriptions(
         result = await session.execute(stmt)
         subscriptions = result.scalars().all()
 
+        # Get unread counts for all feeds in a single query
+        feed_ids = [sub.feed_id for sub in subscriptions]
+        unread_counts_stmt = (
+            select(
+                Entry.feed_id,
+                func.count(Entry.id).label("unread_count"),
+            )
+            .where(Entry.feed_id.in_(feed_ids))
+            .outerjoin(
+                UserEntry,
+                (UserEntry.entry_id == Entry.id) & (UserEntry.user_id == user_id),
+            )
+            .where((UserEntry.is_read.is_(False)) | (UserEntry.is_read.is_(None)))
+            .group_by(Entry.feed_id)
+        )
+        unread_result = await session.execute(unread_counts_stmt)
+        unread_counts_by_feed = {row[0]: row[1] for row in unread_result.all()}
+
         # Build response with unread counts
         responses: list[dict[str, str | int | None]] = []
         for sub in subscriptions:
-            # Count unread entries
-            unread_stmt = (
-                select(func.count(Entry.id))
-                .where(Entry.feed_id == sub.feed_id)
-                .outerjoin(
-                    UserEntry,
-                    (UserEntry.entry_id == Entry.id) & (UserEntry.user_id == user_id),
-                )
-                .where((UserEntry.is_read.is_(False)) | (UserEntry.is_read.is_(None)))
-            )
-            unread_result = await session.execute(unread_stmt)
-            unread_count = unread_result.scalar() or 0
+            unread_count = unread_counts_by_feed.get(sub.feed_id, 0)
 
             responses.append(
                 {
