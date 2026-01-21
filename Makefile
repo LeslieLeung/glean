@@ -150,7 +150,8 @@ test-db-up:
 
 test-db-down:
 	@echo "🛑 Stopping test database..."
-	@docker compose -f docker-compose.test.yml down
+	@docker compose -f docker-compose.test.yml down -v
+	@echo "✅ Test database stopped and volumes removed"
 
 test: test-db-up
 	@echo "🧪 Running tests..."
@@ -193,9 +194,6 @@ pre-commit-run:
 # =============================================================================
 # Other
 # =============================================================================
-
-verify:
-	@./scripts/verify-m0.sh
 
 clean:
 	@echo "🧹 Cleaning generated files..."

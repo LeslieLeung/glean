@@ -47,62 +47,77 @@ class TestSearchEntriesValidation:
     @pytest.mark.asyncio
     async def test_search_query_too_short(self, db_session: AsyncSession, test_user):
         """Test that search queries less than 2 characters are rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import search_entries
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
         # Try to search with 1 character
-        result = await search_entries(None, "a", None, 20)
+        result = await search_entries(None, "a", None, 20)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "at least 2 characters" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "at least 2 characters" in error_msg
 
     @pytest.mark.asyncio
     async def test_search_query_too_long(self, db_session: AsyncSession, test_user):
         """Test that search queries longer than 200 characters are rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import search_entries
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
         # Try to search with 201 characters
         long_query = "x" * 201
-        result = await search_entries(None, long_query, None, 20)
+        result = await search_entries(None, long_query, None, 20)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "at most 200 characters" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "at most 200 characters" in error_msg
 
     @pytest.mark.asyncio
     async def test_search_query_empty_string(self, db_session: AsyncSession, test_user):
         """Test that empty search queries are rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import search_entries
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
-        result = await search_entries(None, "", None, 20)
+        result = await search_entries(None, "", None, 20)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "at least 2 characters" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "at least 2 characters" in error_msg
 
 
 class TestListEntriesByDateValidation:
@@ -111,131 +126,192 @@ class TestListEntriesByDateValidation:
     @pytest.mark.asyncio
     async def test_invalid_date_format(self, db_session: AsyncSession, test_user):
         """Test that invalid date formats are rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import list_entries_by_date
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
-        result = await list_entries_by_date(None, "invalid-date", "2024-01-02", None, None, 50)
+        result = await list_entries_by_date(None, "invalid-date", "2024-01-02", None, None, 50)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "Invalid date format" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "Invalid date format" in error_msg
 
     @pytest.mark.asyncio
     async def test_start_date_after_end_date(self, db_session: AsyncSession, test_user):
         """Test that start date after end date is rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import list_entries_by_date
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
-        result = await list_entries_by_date(None, "2024-01-02", "2024-01-01", None, None, 50)
+        result = await list_entries_by_date(None, "2024-01-02", "2024-01-01", None, None, 50)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "Start date must be before or equal to end date" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "Start date must be before or equal to end date" in error_msg
 
     @pytest.mark.asyncio
     async def test_date_range_exceeds_limit(self, db_session: AsyncSession, test_user):
         """Test that date ranges exceeding 365 days are rejected."""
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import list_entries_by_date
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
-        result = await list_entries_by_date(None, "2023-01-01", "2024-01-02", None, None, 50)
+        result = await list_entries_by_date(None, "2023-01-01", "2024-01-02", None, None, 50)  # type: ignore[arg-type]
 
         assert isinstance(result, list)
         assert len(result) == 1
         assert "error" in result[0]
-        assert "cannot exceed 365 days" in result[0]["error"]
+        error_msg = result[0].get("error")
+        assert isinstance(error_msg, str)
+        assert "cannot exceed 365 days" in error_msg
 
 
 class TestSearchEntriesLikeInjection:
     """Test LIKE injection prevention in search."""
 
     @pytest.mark.asyncio
-    async def test_search_with_percent_wildcard(
-        self, db_session: AsyncSession, test_user, test_feed
-    ):
+    async def test_search_with_percent_wildcard(self, mcp_db_session: AsyncSession):
         """Test that % wildcards are escaped in search queries."""
         from datetime import UTC, datetime
 
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import search_entries
+        from glean_core.schemas.user import UserCreate
+        from glean_core.services.user_service import UserService
+
+        # Create user
+        user_service = UserService(mcp_db_session)
+        user = await user_service.create_user(
+            UserCreate(email="test_like@example.com", name="Test User", password="TestPass123")
+        )
+        await mcp_db_session.commit()
+
+        # Create feed
+        feed = Feed(
+            url="https://example.com/feed.xml",
+            title="Test Feed",
+            description="A test RSS feed",
+            status="active",
+        )
+        mcp_db_session.add(feed)
+        await mcp_db_session.flush()
 
         # Create subscription
-        subscription = Subscription(user_id=str(test_user.id), feed_id=str(test_feed.id))
-        db_session.add(subscription)
+        subscription = Subscription(user_id=str(user.id), feed_id=str(feed.id))
+        mcp_db_session.add(subscription)
 
         # Create entries
         entry1 = Entry(
-            feed_id=str(test_feed.id),
-            title="Test Entry with %",
+            feed_id=str(feed.id),
+            title="Test Entry with 50%",
             url="https://example.com/1",
             content="Content with % symbol",
             summary="Summary",
             published_at=datetime.now(UTC),
         )
         entry2 = Entry(
-            feed_id=str(test_feed.id),
+            feed_id=str(feed.id),
             title="Test Entry without wildcard",
             url="https://example.com/2",
             content="Normal content",
             summary="Summary",
             published_at=datetime.now(UTC),
         )
-        db_session.add_all([entry1, entry2])
-        await db_session.commit()
+        mcp_db_session.add_all([entry1, entry2])
+        await mcp_db_session.commit()
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
-        # Search for literal % character
-        result = await search_entries(None, "%", None, 20)
+        # Search for literal % character - use "50%" to test escaping
+        # Without escaping, "%" would match all entries as a wildcard
+        # With proper escaping, it should only match entries containing literal "%"
+        result = await search_entries(None, "50%", None, 20)  # type: ignore[arg-type]
 
         # Should only match entry1, not all entries
         assert isinstance(result, list)
-        assert len(result) == 1
-        assert "%" in result[0]["title"]
+        if result and "error" in result[0]:
+            raise AssertionError(f"Search returned error: {result[0]['error']}")
+        assert len(result) == 1, f"Expected 1 result, got {len(result)}: {result}"
+        title = result[0].get("title")
+        assert isinstance(title, str), (
+            f"Title should be string, got: {title}, full result: {result[0]}"
+        )
+        assert "50%" in title
 
     @pytest.mark.asyncio
-    async def test_search_with_underscore_wildcard(
-        self, db_session: AsyncSession, test_user, test_feed
-    ):
+    async def test_search_with_underscore_wildcard(self, mcp_db_session: AsyncSession):
         """Test that _ wildcards are escaped in search queries."""
         from datetime import UTC, datetime
 
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.entries import search_entries
+        from glean_core.schemas.user import UserCreate
+        from glean_core.services.user_service import UserService
+
+        # Create user
+        user_service = UserService(mcp_db_session)
+        user = await user_service.create_user(
+            UserCreate(email="test_like2@example.com", name="Test User", password="TestPass123")
+        )
+        await mcp_db_session.commit()
+
+        # Create feed
+        feed = Feed(
+            url="https://example.com/feed2.xml",
+            title="Test Feed",
+            description="A test RSS feed",
+            status="active",
+        )
+        mcp_db_session.add(feed)
+        await mcp_db_session.flush()
 
         # Create subscription
-        subscription = Subscription(user_id=str(test_user.id), feed_id=str(test_feed.id))
-        db_session.add(subscription)
+        subscription = Subscription(user_id=str(user.id), feed_id=str(feed.id))
+        mcp_db_session.add(subscription)
 
         # Create entries
         entry1 = Entry(
-            feed_id=str(test_feed.id),
+            feed_id=str(feed.id),
             title="test_entry",
             url="https://example.com/1",
             content="Content",
@@ -243,60 +319,78 @@ class TestSearchEntriesLikeInjection:
             published_at=datetime.now(UTC),
         )
         entry2 = Entry(
-            feed_id=str(test_feed.id),
+            feed_id=str(feed.id),
             title="testXentry",
             url="https://example.com/2",
             content="Content",
             summary="Summary",
             published_at=datetime.now(UTC),
         )
-        db_session.add_all([entry1, entry2])
-        await db_session.commit()
+        mcp_db_session.add_all([entry1, entry2])
+        await mcp_db_session.commit()
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
         # Search for literal _ character
-        result = await search_entries(None, "test_", None, 20)
+        result = await search_entries(None, "test_", None, 20)  # type: ignore[arg-type]
 
         # Should only match entry1 (test_entry), not entry2 (testXentry)
         assert isinstance(result, list)
         assert len(result) == 1
-        assert "test_entry" in result[0]["title"]
+        title = result[0].get("title")
+        assert isinstance(title, str)
+        assert "test_entry" in title
 
 
 class TestSubscriptionsN1Query:
     """Test that subscriptions list doesn't have N+1 query problem."""
 
     @pytest.mark.asyncio
-    async def test_list_subscriptions_no_n1_query(self, db_session: AsyncSession, test_user):
+    async def test_list_subscriptions_no_n1_query(self, mcp_db_session: AsyncSession):
         """Test that listing subscriptions uses efficient queries."""
         from datetime import UTC, datetime
 
-        from mcp.server.auth.middleware.auth_context import set_access_token
-        from mcp.server.models import AccessToken
+        from mcp.server.auth.middleware.auth_context import auth_context_var
+        from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+        from mcp.server.auth.provider import AccessToken
 
         from glean_api.mcp.tools.subscriptions import list_subscriptions
+        from glean_core.schemas.user import UserCreate
+        from glean_core.services.user_service import UserService
+
+        # Create user
+        user_service = UserService(mcp_db_session)
+        user = await user_service.create_user(
+            UserCreate(email="test_n1@example.com", name="Test User", password="TestPass123")
+        )
+        await mcp_db_session.commit()
 
         # Create multiple feeds and subscriptions
+        # Use unique URLs to avoid conflicts with other tests
+        import uuid
+
+        feed_suffix = str(uuid.uuid4())[:8]
         feeds = []
         for i in range(10):
             feed = Feed(
-                url=f"https://example.com/feed{i}.xml",
+                url=f"https://example.com/n1test-{feed_suffix}-feed{i}.xml",
                 title=f"Feed {i}",
                 description=f"Test feed {i}",
                 status="active",
             )
-            db_session.add(feed)
+            mcp_db_session.add(feed)
             feeds.append(feed)
 
-        await db_session.flush()
+        await mcp_db_session.flush()
 
         # Create subscriptions for all feeds
         for feed in feeds:
-            subscription = Subscription(user_id=str(test_user.id), feed_id=str(feed.id))
-            db_session.add(subscription)
+            subscription = Subscription(user_id=str(user.id), feed_id=str(feed.id))
+            mcp_db_session.add(subscription)
 
         # Create entries for each feed
         for feed in feeds:
@@ -309,16 +403,18 @@ class TestSubscriptionsN1Query:
                     summary="Summary",
                     published_at=datetime.now(UTC),
                 )
-                db_session.add(entry)
+                mcp_db_session.add(entry)
 
-        await db_session.commit()
+        await mcp_db_session.commit()
 
         # Mock authentication
-        access_token = AccessToken(scopes=[f"user:{test_user.id}"])
-        set_access_token(access_token)
+        access_token = AccessToken(
+            token="test-token", client_id="test-client", scopes=[f"user:{user.id}"]
+        )
+        auth_context_var.set(AuthenticatedUser(access_token))
 
         # List subscriptions
-        result = await list_subscriptions(None, None)
+        result = await list_subscriptions(None, None)  # type: ignore[arg-type]
 
         # Verify results
         assert isinstance(result, list)
