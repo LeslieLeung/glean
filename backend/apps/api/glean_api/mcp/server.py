@@ -51,6 +51,10 @@ def create_mcp_server() -> FastMCP:
         resource_server_url=AnyHttpUrl(settings.mcp_resource_server_url),
     )
 
+    # Use host="0.0.0.0" to disable automatic DNS rebinding protection
+    # which only allows localhost by default. This is necessary for Docker
+    # deployments where the service is accessed via proxy (nginx).
+    # Security is handled at the nginx/reverse proxy layer.
     mcp = FastMCP(
         name="Glean MCP Server",
         instructions="""
@@ -63,6 +67,7 @@ Available tools:
 - list_entries_by_date: List articles within a date range
 - list_subscriptions: List your RSS feed subscriptions
         """.strip(),
+        host="0.0.0.0",
         lifespan=mcp_lifespan,
         auth=auth_settings,
         token_verifier=APITokenVerifier(),
