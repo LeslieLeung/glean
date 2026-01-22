@@ -161,7 +161,7 @@
       "title": "如何使用 MCP",
       "description": "将您的 API 令牌添加到 MCP 客户端配置中，以便 AI 助手可以搜索和检索您订阅的文章。",
       "configTitle": "Claude Desktop 配置",
-      "urlNote": "注意：请将 URL 替换为您实际的后端 API 地址（本地开发使用 http://localhost:8000/mcp/mcp，生产环境使用 https://your-domain.com/mcp/mcp）。",
+      "urlNote": "提示：使用 Docker 部署时，上方配置中的 URL 可直接使用（已自动填入当前域名）。自托管用户请确保 nginx 已配置 /mcp 路径代理。",
       "tools": "可用工具：",
       "toolSearch": "按关键词搜索文章",
       "toolGet": "获取文章详情",
