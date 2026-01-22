@@ -83,7 +83,7 @@ services:
       - glean-dev-network
 
   milvus:
-    image: milvusdb/milvus:v2.6.6
+    image: milvusdb/milvus:v2.6.9
     container_name: glean-dev-milvus
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
