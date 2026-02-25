@@ -9,8 +9,9 @@ from glean_core import get_logger
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.session import get_session_context
-from glean_vector.clients.milvus_client import MilvusClient
 from glean_vector.services.preference_service import PreferenceService
+
+from ._vector_client import ensure_vector_client
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,9 +86,12 @@ async def update_user_preference(
     Raises:
         Retry: If vectorization is temporarily unavailable
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"success": False, "user_id": user_id, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        error = "Vector backend unavailable"
+        if vector_error:
+            error = f"{error}: {vector_error}"
+        return {"success": False, "user_id": user_id, "error": error}
 
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
@@ -102,8 +106,8 @@ async def update_user_preference(
             logger.debug(f"Vectorization disabled, skipping preference update for {user_id}")
             return {"success": False, "user_id": user_id, "error": str(e)}
 
-        # Ensure Milvus collections exist with correct model from database config
-        await milvus_client.ensure_collections(
+        # Ensure vector storage exists with correct model from database config
+        await vector_client.ensure_collections(
             config.dimension,
             config.provider,
             config.model,
@@ -111,7 +115,7 @@ async def update_user_preference(
 
         preference_service = PreferenceService(
             db_session=session,
-            milvus_client=milvus_client,
+            vector_client=vector_client,
             redis_client=redis_client,
         )
 
@@ -141,9 +145,12 @@ async def rebuild_user_preference(
     Raises:
         Retry: If vectorization is temporarily unavailable
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"success": False, "user_id": user_id, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        error = "Vector backend unavailable"
+        if vector_error:
+            error = f"{error}: {vector_error}"
+        return {"success": False, "user_id": user_id, "error": error}
 
     # Get Redis client from worker context (provided by arq)
     redis_client = ctx.get("redis")
@@ -158,8 +165,8 @@ async def rebuild_user_preference(
             logger.debug(f"Vectorization disabled, skipping preference rebuild for {user_id}")
             return {"success": False, "user_id": user_id, "error": str(e)}
 
-        # Ensure Milvus collections exist with correct model from database config
-        await milvus_client.ensure_collections(
+        # Ensure vector storage exists with correct model from database config
+        await vector_client.ensure_collections(
             config.dimension,
             config.provider,
             config.model,
@@ -167,7 +174,7 @@ async def rebuild_user_preference(
 
         preference_service = PreferenceService(
             db_session=session,
-            milvus_client=milvus_client,
+            vector_client=vector_client,
             redis_client=redis_client,
         )
 

@@ -219,7 +219,7 @@ async def get_score_service(
     Get score service instance for real-time preference scoring.
 
     Returns:
-    - ScoreService if vectorization is enabled and Milvus is available
+    - ScoreService if vectorization is enabled and vector backend is available
     - SimpleScoreService if vectorization is disabled
     - None if there's an error
     """
@@ -239,16 +239,16 @@ async def get_score_service(
 
     # Vectorization enabled - try to use vector scoring
     try:
-        from glean_vector.clients.milvus_client import MilvusClient
+        from glean_vector.clients import create_vector_store_client
         from glean_vector.services.score_service import ScoreService
 
-        milvus_client = MilvusClient()
-        milvus_client.connect()
-        await milvus_client.ensure_collections(config.dimension, config.provider, config.model)
+        vector_client = create_vector_store_client()
+        vector_client.connect()
+        await vector_client.ensure_collections(config.dimension, config.provider, config.model)
 
-        return ScoreService(db_session=session, milvus_client=milvus_client)
+        return ScoreService(db_session=session, vector_client=vector_client)
     except Exception:
-        # Milvus not available, fall back to simple scoring
+        # Vector backend not available, fall back to simple scoring
         return SimpleScoreService(session)
 
 

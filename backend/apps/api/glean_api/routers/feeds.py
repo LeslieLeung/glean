@@ -248,7 +248,7 @@ async def delete_subscription(
             subscription_id, current_user.id
         )
 
-        # Queue Milvus embedding cleanup if feed was orphaned
+        # Queue vector embedding cleanup if feed was orphaned
         if orphaned_feed_id and entry_ids:
             await redis.enqueue_job("cleanup_orphan_embeddings", orphaned_feed_id, entry_ids)
     except ValueError as e:
@@ -280,7 +280,7 @@ async def batch_delete_subscriptions(
         data.subscription_ids, current_user.id
     )
 
-    # Queue Milvus embedding cleanup for each orphaned feed
+    # Queue vector embedding cleanup for each orphaned feed
     for feed_id, entry_ids in orphaned_feeds.items():
         if entry_ids:
             await redis.enqueue_job("cleanup_orphan_embeddings", feed_id, entry_ids)

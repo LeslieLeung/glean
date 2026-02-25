@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.models import Entry, UserPreferenceStats
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.services.score_service import ScoreService
 
 
@@ -18,9 +18,9 @@ def mock_db_session():
 
 
 @pytest.fixture
-def mock_milvus_client():
-    """Create a mock Milvus client."""
-    client = MagicMock(spec=MilvusClient)
+def mock_vector_client():
+    """Create a mock vector client."""
+    client = MagicMock(spec=VectorStoreClient)
     return client
 
 
@@ -46,7 +46,7 @@ def mock_user_stats():
 
 @pytest.mark.asyncio
 async def test_calculate_score_caches_user_stats(
-    mock_db_session, mock_milvus_client, mock_entry, mock_user_stats
+    mock_db_session, mock_vector_client, mock_entry, mock_user_stats
 ):
     """Test that calculate_score caches UserPreferenceStats to avoid N+1 queries."""
     # Setup mocks - return a coroutine-like object that resolves correctly
@@ -63,13 +63,13 @@ async def test_calculate_score_caches_user_stats(
 
     mock_db_session.execute = mock_execute
 
-    mock_milvus_client.get_entry_embedding.return_value = [0.1] * 768
-    mock_milvus_client.get_user_preferences.return_value = {
+    mock_vector_client.get_entry_embedding.return_value = [0.1] * 768
+    mock_vector_client.get_user_preferences.return_value = {
         "positive": {"embedding": [0.2] * 768, "sample_count": 10},
         "negative": {"embedding": [0.1] * 768, "sample_count": 5},
     }
 
-    service = ScoreService(db_session=mock_db_session, milvus_client=mock_milvus_client)
+    service = ScoreService(db_session=mock_db_session, vector_client=mock_vector_client)
 
     # Call calculate_score multiple times for the same user
     await service.calculate_score("user-1", "entry-1", entry=mock_entry)
@@ -81,7 +81,7 @@ async def test_calculate_score_caches_user_stats(
 
 
 @pytest.mark.asyncio
-async def test_get_user_stats_cache_works(mock_db_session, mock_milvus_client, mock_user_stats):
+async def test_get_user_stats_cache_works(mock_db_session, mock_vector_client, mock_user_stats):
     """Test that _get_user_stats properly caches results."""
     # Setup mock
     mock_result = MagicMock()
@@ -95,7 +95,7 @@ async def test_get_user_stats_cache_works(mock_db_session, mock_milvus_client, m
 
     mock_db_session.execute = mock_execute
 
-    service = ScoreService(db_session=mock_db_session, milvus_client=mock_milvus_client)
+    service = ScoreService(db_session=mock_db_session, vector_client=mock_vector_client)
 
     # Call _get_user_stats multiple times
     stats1 = await service._get_user_stats("user-1")
@@ -111,7 +111,7 @@ async def test_get_user_stats_cache_works(mock_db_session, mock_milvus_client, m
 
 @pytest.mark.asyncio
 async def test_batch_calculate_scores_populates_cache(
-    mock_db_session, mock_milvus_client, mock_user_stats
+    mock_db_session, mock_vector_client, mock_user_stats
 ):
     """Test that batch_calculate_scores populates the cache."""
     # Setup mocks
@@ -126,10 +126,10 @@ async def test_batch_calculate_scores_populates_cache(
 
     mock_db_session.execute = mock_execute
 
-    mock_milvus_client.get_user_preferences.return_value = {
+    mock_vector_client.get_user_preferences.return_value = {
         "positive": {"embedding": [0.2] * 768, "sample_count": 10},
     }
-    mock_milvus_client.batch_get_entry_embeddings.return_value = {
+    mock_vector_client.batch_get_entry_embeddings.return_value = {
         "entry-1": [0.1] * 768,
         "entry-2": [0.15] * 768,
     }
@@ -145,7 +145,7 @@ async def test_batch_calculate_scores_populates_cache(
     entry2.feed_id = "feed-2"
     entry2.author = "Author 2"
 
-    service = ScoreService(db_session=mock_db_session, milvus_client=mock_milvus_client)
+    service = ScoreService(db_session=mock_db_session, vector_client=mock_vector_client)
 
     # Call batch_calculate_scores
     await service.batch_calculate_scores("user-1", [entry1, entry2])
@@ -159,7 +159,7 @@ async def test_batch_calculate_scores_populates_cache(
 
 
 @pytest.mark.asyncio
-async def test_cache_isolates_different_users(mock_db_session, mock_milvus_client, mock_entry):
+async def test_cache_isolates_different_users(mock_db_session, mock_vector_client, mock_entry):
     """Test that cache correctly isolates stats for different users."""
     # Setup mocks for two different users
     stats_user1 = MagicMock(spec=UserPreferenceStats)
@@ -179,7 +179,7 @@ async def test_cache_isolates_different_users(mock_db_session, mock_milvus_clien
 
     mock_db_session.execute = mock_execute
 
-    service = ScoreService(db_session=mock_db_session, milvus_client=mock_milvus_client)
+    service = ScoreService(db_session=mock_db_session, vector_client=mock_vector_client)
 
     # Get stats for both users
     stats1 = await service._get_user_stats("user-1")

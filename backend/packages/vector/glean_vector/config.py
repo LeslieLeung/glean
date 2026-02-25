@@ -49,6 +49,35 @@ class MilvusConfig(BaseSettings):
     prefs_collection: str = "user_preferences"
 
 
+class VectorBackendConfig(BaseSettings):
+    """Vector backend selector configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VECTOR_",
+        env_file=str(_env_file) if _env_file.exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    backend: str = "milvus"
+
+
+class PgVectorConfig(BaseSettings):
+    """pgvector backend configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PGVECTOR_",
+        env_file=str(_env_file) if _env_file.exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    database_url: str = ""
+    entries_table: str = "entry_embeddings"
+    prefs_table: str = "user_preference_vectors"
+    metadata_table: str = "vector_store_metadata"
+
+
 class PreferenceConfig(BaseSettings):
     """Preference calculation configuration."""
 
@@ -85,6 +114,8 @@ class ScoreConfig(BaseSettings):
 # Global config instances
 embedding_config = EmbeddingConfig()
 milvus_config = MilvusConfig()
+vector_backend_config = VectorBackendConfig()
+pgvector_config = PgVectorConfig()
 preference_config = PreferenceConfig()
 score_config = ScoreConfig()
 

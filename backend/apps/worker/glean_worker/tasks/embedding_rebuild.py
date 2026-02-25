@@ -1,21 +1,48 @@
 """Embedding rebuild task."""
 
+import contextlib
+import time
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import get_logger
-from glean_core.schemas.config import EmbeddingConfig as EmbeddingConfigSchema
-from glean_core.schemas.config import VectorizationStatus
+from glean_core.redis_keys import RedisKeys
 from glean_core.services import TypedConfigService
 from glean_core.services.system_config_service import SystemConfigService
 from glean_database.models import Entry, UserPreferenceStats
 from glean_database.session import get_session_context
-from glean_vector.clients.milvus_client import MilvusClient
 from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 from glean_vector.config import embedding_config as env_embedding_config
 
+from ._vector_client import ensure_vector_client
+
 logger = get_logger(__name__)
+
+REBUILD_BATCH_SIZE = 200
+
+
+async def _find_duplicate_entry_ids(session: AsyncSession) -> list[str]:
+    """Return entry IDs that belong to duplicate (feed_id, guid) groups."""
+    duplicate_pairs = (
+        select(Entry.feed_id, Entry.guid)
+        .where(Entry.guid.is_not(None))
+        .group_by(Entry.feed_id, Entry.guid)
+        .having(func.count(Entry.id) > 1)
+        .subquery()
+    )
+
+    duplicate_ids_result = await session.execute(
+        select(Entry.id)
+        .join(
+            duplicate_pairs,
+            (Entry.feed_id == duplicate_pairs.c.feed_id) & (Entry.guid == duplicate_pairs.c.guid),
+        )
+        .order_by(Entry.feed_id, Entry.guid, Entry.created_at, Entry.id)
+    )
+    return [row[0] for row in duplicate_ids_result.all()]
 
 
 async def rebuild_embeddings(
@@ -27,30 +54,47 @@ async def rebuild_embeddings(
     Steps:
       1) Load embedding config (payload passed or system config / env fallback)
       2) Update status to REBUILDING
-      3) Recreate Milvus collections if dimension changed
+      3) Recreate vector collections if dimension changed
       4) Mark all entries pending
       5) Enqueue embedding jobs in batches
       6) Enqueue user preference rebuild jobs
       7) Keep status as REBUILDING (will be set to IDLE when all done)
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"success": False, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        if vector_error:
+            return {"success": False, "error": f"Vector backend unavailable: {vector_error}"}
+        return {"success": False, "error": "Vector backend unavailable"}
 
     redis = ctx.get("redis")
     if not redis:
         return {"success": False, "error": "Redis unavailable"}
 
+    # Distributed lock prevents concurrent rebuilds (e.g. duplicate job enqueue)
+    lock = redis.lock(RedisKeys.REBUILD_LOCK_KEY, timeout=RedisKeys.REBUILD_LOCK_TIMEOUT)
+    acquired = await lock.acquire(blocking=False)
+    if not acquired:
+        logger.warning("Rebuild already in progress (lock held), skipping")
+        return {"success": False, "error": "Rebuild already in progress"}
+
+    try:
+        return await _rebuild_embeddings_locked(vector_client, redis, config)
+    finally:
+        with contextlib.suppress(Exception):
+            await lock.release()
+
+
+async def _rebuild_embeddings_locked(
+    vector_client: Any,
+    redis: Any,
+    config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Inner rebuild logic — must be called with the distributed lock held."""
     async with get_session_context() as session:
-        # Update status to REBUILDING so embedding tasks can proceed
+        # Mark rebuild started (sets rebuild_id, rebuild_started_at, status=REBUILDING)
         config_service = TypedConfigService(session)
-        await config_service.update(
-            EmbeddingConfigSchema,
-            status=VectorizationStatus.REBUILDING,
-        )
-        # Commit status change BEFORE modifying Milvus to prevent inconsistent state
-        # If recreate_collections succeeds but later operations fail,
-        # we need the REBUILDING status to be persisted so that retries work correctly
+        await config_service.start_rebuild()
+        # Commit status change BEFORE modifying vector data to prevent inconsistent state
         await session.commit()
 
         # Load config
@@ -59,7 +103,6 @@ async def rebuild_embeddings(
             config = await scs.get_config("embedding.config")
 
         if not config:
-            # Fallback to env defaults
             env_conf = env_embedding_config.model_dump()
             config = {
                 "provider": env_conf["provider"],
@@ -75,34 +118,67 @@ async def rebuild_embeddings(
         )
         dimension = settings.dimension
 
-        # Recreate Milvus collections (drop + create) for new model
-        # This also drops user_preferences collection, so we need to rebuild them
-        # NOTE: This is a point of no return - if this succeeds, old embeddings are gone.
-        # The REBUILDING status is already committed, so retries will work correctly.
-        await milvus_client.recreate_collections(dimension, settings.provider, settings.model)
-        logger.info(f"Recreated Milvus collections with dimension={dimension}")
+        # Recreate vector storage (drop + create) for new model
+        # NOTE: Point of no return — old embeddings are gone after this.
+        await vector_client.recreate_collections(dimension, settings.provider, settings.model)
+        logger.info(f"Recreated vector collections with dimension={dimension}")
 
-        # Mark all entries pending for new model (new transaction)
-        await session.execute(
-            update(Entry).values(
-                embedding_status="pending",
-                embedding_error=None,
+        # Mark all entries pending for new model
+        # If historical duplicate (feed_id, guid) rows exist, a full-table update can
+        # trigger uq_feed_guid conflicts. We skip those rows as a safe fallback.
+        duplicate_entry_ids: list[str] = []
+        try:
+            await session.execute(
+                update(Entry).values(
+                    embedding_status="pending",
+                    embedding_error=None,
+                )
             )
-        )
+        except IntegrityError:
+            # Rollback FIRST — asyncpg rejects any SQL while a transaction is in
+            # the failed state, so we must clear it before querying for duplicates.
+            await session.rollback()
+            duplicate_entry_ids = await _find_duplicate_entry_ids(session)
+            if not duplicate_entry_ids:
+                raise
+
+            logger.warning(
+                "Detected duplicate (feed_id, guid) entries during rebuild; "
+                "skipping them for this run",
+                extra={"duplicate_entry_count": len(duplicate_entry_ids)},
+            )
+            await session.execute(
+                update(Entry)
+                .where(Entry.id.not_in(duplicate_entry_ids))
+                .values(
+                    embedding_status="pending",
+                    embedding_error=None,
+                )
+            )
         await session.commit()
 
-        # Enqueue embedding jobs in batches
-        total_result = await session.execute(select(Entry.id))
-        entry_ids = [row[0] for row in total_result.all()]
+        # Count pending entries
+        total_result = await session.execute(
+            select(func.count()).select_from(Entry).where(Entry.embedding_status == "pending")
+        )
+        total_pending: int = total_result.scalar_one()
 
-        for entry_id in entry_ids:
-            await redis.enqueue_job("generate_entry_embedding", entry_id)
+        # Enqueue batch embedding jobs (much more efficient than one job per entry)
+        num_batches = max(1, (total_pending + REBUILD_BATCH_SIZE - 1) // REBUILD_BATCH_SIZE)
+        batch_prefix = f"rebuild_{int(time.time())}"
+        for i in range(num_batches):
+            await redis.enqueue_job(
+                "batch_generate_embeddings",
+                REBUILD_BATCH_SIZE,
+                _job_id=f"{batch_prefix}_{i}",
+            )
 
-        logger.info(f"Enqueued {len(entry_ids)} embedding jobs")
+        logger.info(
+            "Enqueued batch embedding jobs for rebuild",
+            extra={"total_pending": total_pending, "num_batches": num_batches},
+        )
 
-        # Enqueue user preference rebuild jobs for all users with preference data
-        # User preference vectors were deleted when collections were recreated,
-        # so we need to rebuild them from historical feedback
+        # Enqueue user preference rebuild jobs
         users_result = await session.execute(select(UserPreferenceStats.user_id).distinct())
         user_ids = [row[0] for row in users_result.all()]
 
@@ -111,13 +187,14 @@ async def rebuild_embeddings(
 
         logger.info(f"Enqueued {len(user_ids)} preference rebuild jobs")
 
-        # Keep status as REBUILDING - the status API will automatically
-        # update to IDLE when all pending entries are processed
-        # Note: We don't set to IDLE here because tasks are still in queue
+        # Status stays REBUILDING — the maintenance cron will transition
+        # to IDLE when all entries reach a terminal state.
 
         return {
             "success": True,
-            "queued_entries": len(entry_ids),
+            "queued_entries": total_pending,
+            "queued_batches": num_batches,
             "queued_preferences": len(user_ids),
             "dimension": dimension,
+            "skipped_duplicate_entries": len(duplicate_entry_ids),
         }

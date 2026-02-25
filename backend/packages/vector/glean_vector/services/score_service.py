@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.models import Entry, UserPreferenceStats
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.config import preference_config
 
 
@@ -22,17 +22,17 @@ class ScoreService:
     def __init__(
         self,
         db_session: AsyncSession,
-        milvus_client: MilvusClient,
+        vector_client: VectorStoreClient,
     ) -> None:
         """
         Initialize score service.
 
         Args:
             db_session: Database session
-            milvus_client: Milvus vector database client
+            vector_client: Vector database client
         """
         self.db = db_session
-        self.milvus = milvus_client
+        self.vector_client = vector_client
         self.pref_config = preference_config
         self._user_stats_cache: dict[str, UserPreferenceStats | None] = {}
 
@@ -62,8 +62,8 @@ class ScoreService:
         Returns:
             Dictionary with score and factors
         """
-        # Get entry embedding from Milvus
-        embedding = await self.milvus.get_entry_embedding(entry_id)
+        # Get entry embedding from vector backend
+        embedding = await self.vector_client.get_entry_embedding(entry_id)
         if not embedding:
             # Entry not embedded yet, return default
             return {
@@ -82,7 +82,7 @@ class ScoreService:
                 }
 
         # Get user preferences
-        prefs = await self.milvus.get_user_preferences(user_id)
+        prefs = await self.vector_client.get_user_preferences(user_id)
 
         if not prefs.get("positive") and not prefs.get("negative"):
             # No preference model yet
@@ -194,7 +194,7 @@ class ScoreService:
         scores: dict[str, float] = {}
 
         # Get user preferences once
-        prefs = await self.milvus.get_user_preferences(user_id)
+        prefs = await self.vector_client.get_user_preferences(user_id)
 
         # Get affinity stats once (and cache for any subsequent individual calls)
         stats = await self._get_user_stats(user_id)
@@ -225,7 +225,7 @@ class ScoreService:
 
         # Get all entry embeddings in batch
         entry_ids = [entry.id for entry in entries]
-        embeddings = await self.milvus.batch_get_entry_embeddings(entry_ids)
+        embeddings = await self.vector_client.batch_get_entry_embeddings(entry_ids)
 
         # Calculate scores
         for entry in entries:

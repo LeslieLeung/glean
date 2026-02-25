@@ -147,7 +147,7 @@ class TestUpdateUserPreference:
     async def test_validating_state_propagates_retry(self):
         """When vectorization is validating, Retry exception should propagate to arq."""
         # Arrange
-        ctx = {"milvus_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.VALIDATING,
@@ -177,7 +177,7 @@ class TestUpdateUserPreference:
     async def test_disabled_state_returns_error_without_retry(self):
         """When vectorization is disabled, should return error dict without raising Retry."""
         # Arrange
-        ctx = {"milvus_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,
@@ -214,7 +214,7 @@ class TestRebuildUserPreference:
     async def test_error_state_propagates_retry(self):
         """When vectorization is in ERROR state, Retry exception should propagate."""
         # Arrange
-        ctx = {"milvus_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.ERROR,
@@ -243,7 +243,7 @@ class TestRebuildUserPreference:
     async def test_disabled_state_returns_error_without_retry(self):
         """When vectorization is disabled, should return error dict without raising Retry."""
         # Arrange
-        ctx = {"milvus_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,

@@ -757,8 +757,15 @@ async def update_embedding_config(
     if updated.enabled and config_changed:
         # Generate new version and trigger rebuild
         await config_service.update_embedding_version()
-        await config_service.update(EmbeddingConfig, status=VectorizationStatus.VALIDATING)
+        await config_service.update(
+            EmbeddingConfig,
+            status=VectorizationStatus.VALIDATING,
+            last_error=None,
+            error_count=0,
+        )
         await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+        # Re-read for response
+        updated = await config_service.get(EmbeddingConfig)
 
     return TypedEmbeddingConfigResponse.from_config(updated)
 
@@ -772,7 +779,7 @@ async def enable_embedding(
     """
     Enable vectorization.
 
-    Validates provider and Milvus connection, then triggers rebuild.
+    Validates provider and configured vector backend, then triggers rebuild.
     """
     from glean_core.schemas.config import (
         EmbeddingConfig,
@@ -789,11 +796,13 @@ async def enable_embedding(
     if config.enabled:
         return TypedEmbeddingConfigResponse.from_config(config)
 
-    # Enable and set to validating
+    # Enable and set to validating, clear stale error fields
     updated = await config_service.update(
         EmbeddingConfig,
         enabled=True,
         status=VectorizationStatus.VALIDATING,
+        last_error=None,
+        error_count=0,
     )
 
     # Trigger validation and rebuild in background
@@ -839,7 +848,7 @@ async def validate_embedding_config(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
     """
-    Test provider and Milvus connection without saving.
+    Test provider and configured vector backend connection without saving.
 
     Returns validation results.
     """
@@ -889,10 +898,15 @@ async def trigger_embedding_rebuild(
             detail="Rebuild already in progress",
         )
 
-    # Generate new version and trigger rebuild
+    # Generate new version and trigger rebuild, clear stale error fields
     await config_service.update_embedding_version()
-    await config_service.update(EmbeddingConfig, status=VectorizationStatus.VALIDATING)
-    await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+    await config_service.update(
+        EmbeddingConfig,
+        status=VectorizationStatus.VALIDATING,
+        last_error=None,
+        error_count=0,
+    )
+    await redis_pool.enqueue_job("validate_and_rebuild_embeddings", True)
 
     return {"message": "Rebuild triggered", "status": "validating"}
 
@@ -949,15 +963,15 @@ async def get_embedding_status(
     # Get progress from entry counts
     progress = await admin_service.get_embedding_progress()
 
-    # Auto-complete rebuild if all entries are processed
+    # Auto-complete rebuild if all entries reached terminal state
     current_status = config.status
     if config.status == VectorizationStatus.REBUILDING:
-        total = progress.get("total", 0)
+        pending = progress.get("pending", 0)
+        processing = progress.get("processing", 0)
         done = progress.get("done", 0)
         failed = progress.get("failed", 0)
 
-        # If all entries are processed (done + failed == total), mark as complete
-        if total > 0 and (done + failed) >= total:
+        if pending == 0 and processing == 0 and (done + failed) > 0:
             await config_service.complete_rebuild()
             current_status = VectorizationStatus.IDLE
 

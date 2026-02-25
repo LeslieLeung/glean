@@ -1,5 +1,6 @@
 """Embedding generation service."""
 
+import contextlib
 import re
 from datetime import datetime
 
@@ -9,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from glean_core import get_logger
 from glean_database.models import Entry
 from glean_vector.clients.embedding_client import EmbeddingClient
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 
 logger = get_logger(__name__)
 
@@ -21,7 +22,7 @@ class EmbeddingService:
     Handles the complete embedding lifecycle:
     1. Extract text from entry
     2. Generate embedding via API
-    3. Store in Milvus
+    3. Store in vector backend
     4. Update entry status in PostgreSQL
     """
 
@@ -29,7 +30,7 @@ class EmbeddingService:
         self,
         db_session: AsyncSession,
         embedding_client: EmbeddingClient,
-        milvus_client: MilvusClient,
+        vector_client: VectorStoreClient,
     ) -> None:
         """
         Initialize embedding service.
@@ -37,11 +38,11 @@ class EmbeddingService:
         Args:
             db_session: Database session
             embedding_client: Embedding API client
-            milvus_client: Milvus vector database client
+            vector_client: Vector database client
         """
         self.db = db_session
         self.embedding_client = embedding_client
-        self.milvus = milvus_client
+        self.vector_client = vector_client
 
     def _extract_text(self, entry: Entry) -> str:
         """
@@ -105,6 +106,10 @@ class EmbeddingService:
         entry = result.scalar_one_or_none()
 
         if not entry:
+            logger.warning(
+                "Entry not found for embedding generation",
+                extra={"entry_id": entry_id},
+            )
             return False
 
         # Skip if already processed
@@ -119,23 +124,23 @@ class EmbeddingService:
         )
         await self.db.flush()
 
+        # Extract text (content-level issue → return False, no exception)
+        text = self._extract_text(entry)
+        word_count = self._calculate_word_count(text)
+
+        if not text:
+            await self._mark_failed(entry_id, "No text content to embed")
+            return False
+
         try:
-            # Extract text
-            text = self._extract_text(entry)
-            word_count = self._calculate_word_count(text)
-
-            if not text:
-                await self._mark_failed(entry_id, "No text content to embed")
-                return False
-
-            # Generate embedding
+            # Generate embedding via provider API
             embedding, _ = await self.embedding_client.generate_embedding(text)
 
             # Detect language (simple heuristic)
             language = self._detect_language(text)
 
-            # Store in Milvus
-            await self.milvus.insert_entry_embedding(
+            # Store in vector backend
+            await self.vector_client.insert_entry_embedding(
                 entry_id=entry_id,
                 embedding=embedding,
                 feed_id=entry.feed_id,
@@ -161,9 +166,11 @@ class EmbeddingService:
             return True
 
         except Exception as e:
+            # Infrastructure error (API / vector backend) – mark the entry
+            # as failed but re-raise so the worker circuit breaker can react.
             logger.error(f"Failed to generate embedding for entry {entry_id}: {e}")
-            await self._mark_failed(entry_id, str(e))
-            return False
+            await self._mark_failed_safe(entry_id, str(e))
+            raise
 
     async def _mark_failed(self, entry_id: str, error: str) -> None:
         """Mark entry embedding as failed."""
@@ -173,6 +180,29 @@ class EmbeddingService:
             .values(embedding_status="failed", embedding_error=error)
         )
         await self.db.flush()
+
+    async def _mark_failed_safe(self, entry_id: str, error: str) -> None:
+        """Mark entry as failed, recovering from a poisoned session if needed.
+
+        When a prior flush/execute fails, asyncpg puts the connection into a
+        failed-transaction state where all subsequent SQL is rejected.  This
+        helper rolls back the aborted transaction before retrying the UPDATE so
+        that the failure is recorded even after an infrastructure error.
+
+        Side-effect: a rollback discards any unflushed changes on the session
+        (the caller should commit per-entry to minimise data loss).
+        """
+        try:
+            await self._mark_failed(entry_id, error)
+        except Exception:
+            try:
+                await self.db.rollback()
+                await self._mark_failed(entry_id, error)
+            except Exception:
+                logger.warning(
+                    "Could not mark entry as failed after session recovery",
+                    extra={"entry_id": entry_id},
+                )
 
     def _detect_language(self, text: str) -> str:
         """
@@ -201,29 +231,62 @@ class EmbeddingService:
         """
         Generate embeddings for pending entries in batch.
 
+        Uses SELECT FOR UPDATE SKIP LOCKED so that concurrent workers each
+        claim disjoint sets of entries and no entry is processed twice (or
+        left permanently pending because every job grabbed the same rows).
+
+        Each entry is committed independently so that a single failure
+        doesn't poison the session for remaining entries.
+
         Args:
             limit: Maximum number of entries to process
 
         Returns:
             Dictionary with processed and failed counts
         """
-        # Get pending entries
-        result = await self.db.execute(
-            select(Entry)
+        # Atomically claim pending entries.  Rows locked by another concurrent
+        # worker are skipped, ensuring each worker gets a unique slice.
+        claim_result = await self.db.execute(
+            select(Entry.id)
             .where(Entry.embedding_status == "pending")
             .order_by(Entry.created_at.desc())
             .limit(limit)
+            .with_for_update(skip_locked=True)
         )
-        entries = result.scalars().all()
+        entry_ids = [row[0] for row in claim_result.all()]
+
+        if not entry_ids:
+            return {"processed": 0, "failed": 0}
+
+        # Mark all claimed entries as processing and commit to make the
+        # claim durable.  This also releases the FOR UPDATE locks; since
+        # the status is now 'processing', no other worker will pick them up.
+        await self.db.execute(
+            update(Entry)
+            .where(Entry.id.in_(entry_ids))
+            .values(embedding_status="processing", embedding_error=None)
+        )
+        await self.db.commit()
 
         processed = 0
         failed = 0
 
-        for entry in entries:
-            success = await self.generate_embedding(entry.id)
-            if success:
-                processed += 1
-            else:
+        for entry_id in entry_ids:
+            try:
+                success = await self.generate_embedding(entry_id)
+                await self.db.commit()
+                if success:
+                    processed += 1
+                else:
+                    failed += 1
+            except Exception:
+                # Infrastructure error.  generate_embedding already tried
+                # _mark_failed_safe (which may have rolled back).  Ensure
+                # any pending changes are either committed or rolled back
+                # so the next iteration starts with a clean session.
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                await self._try_mark_failed_and_commit(entry_id, "Infrastructure error")
                 failed += 1
 
         return {"processed": processed, "failed": failed}
@@ -232,32 +295,61 @@ class EmbeddingService:
         """
         Retry failed embeddings.
 
+        Uses SELECT FOR UPDATE SKIP LOCKED to avoid concurrent retriers
+        picking up the same entries.  Each entry is committed independently.
+
         Args:
             limit: Maximum number of entries to retry
 
         Returns:
             Dictionary with processed and failed counts
         """
-        # Get failed entries (not recently failed)
-        result = await self.db.execute(
-            select(Entry)
+        claim_result = await self.db.execute(
+            select(Entry.id)
             .where(Entry.embedding_status == "failed")
             .order_by(Entry.updated_at.asc())
             .limit(limit)
+            .with_for_update(skip_locked=True)
         )
-        entries = result.scalars().all()
+        entry_ids = [row[0] for row in claim_result.all()]
+
+        if not entry_ids:
+            return {"processed": 0, "failed": 0}
+
+        await self.db.execute(
+            update(Entry)
+            .where(Entry.id.in_(entry_ids))
+            .values(embedding_status="processing", embedding_error=None)
+        )
+        await self.db.commit()
 
         processed = 0
         failed = 0
 
-        for entry in entries:
-            success = await self.generate_embedding(entry.id)
-            if success:
-                processed += 1
-            else:
+        for entry_id in entry_ids:
+            try:
+                success = await self.generate_embedding(entry_id)
+                await self.db.commit()
+                if success:
+                    processed += 1
+                else:
+                    failed += 1
+            except Exception:
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                await self._try_mark_failed_and_commit(entry_id, "Infrastructure error (retry)")
                 failed += 1
 
         return {"processed": processed, "failed": failed}
+
+    async def _try_mark_failed_and_commit(self, entry_id: str, error: str) -> None:
+        """Best-effort: mark entry failed and commit in a fresh transaction."""
+        try:
+            await self._mark_failed(entry_id, error)
+            await self.db.commit()
+        except Exception:
+            with contextlib.suppress(Exception):
+                await self.db.rollback()
 
     async def delete_embedding(self, entry_id: str) -> None:
         """
@@ -266,8 +358,8 @@ class EmbeddingService:
         Args:
             entry_id: Entry UUID
         """
-        # Delete from Milvus
-        await self.milvus.delete_entry_embedding(entry_id)
+        # Delete from vector backend
+        await self.vector_client.delete_entry_embedding(entry_id)
 
         # Update entry status
         await self.db.execute(

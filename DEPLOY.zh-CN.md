@@ -19,17 +19,16 @@
 
 ## 快速部署
 
-### 完整部署（推荐）
+### 使用 pgvector（推荐）
 
-包含 Milvus，支持 Phase 3 功能（智能推荐、偏好学习）：
+使用 PostgreSQL 内置的 pgvector 扩展进行向量存储，无需额外的基础设施：
 
 ```bash
-# 下载 docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+# 下载 pgvector 版本
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # 创建 .env 文件并配置管理员凭据（可选但推荐）
 cat > .env << EOF
-CREATE_ADMIN=true
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$(openssl rand -base64 24)
 SECRET_KEY=$(openssl rand -base64 32)
@@ -43,38 +42,49 @@ docker compose up -d
 
 # 访问：
 # - Web 应用: http://localhost
-# - 管理后台: http://localhost:3001
+# - 管理后台: http://localhost:3001（默认：admin / Admin123!）
 ```
 
-**重要提示**：请在继续之前安全地保存您的管理员凭据。它们仅在启动时显示一次。
+**默认管理员账号**：如果未创建 `.env` 文件，默认凭据为：
+- 用户名：`admin`
+- 密码：`Admin123!`
+- ⚠️ **生产环境请修改此密码！**
 
-### 精简部署（不含 Milvus）
+**后续步骤：**
+1. 访问管理后台：http://localhost:3001
+2. 修改默认密码
+3. 配置生产环境的其他环境变量（参见[环境配置](#环境配置)）
 
-如果不需要 Phase 3 功能，可以使用精简版：
+### 使用 Milvus
+
+使用独立的 Milvus 向量数据库进行向量存储：
 
 ```bash
-# 下载精简版
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
+# 下载 docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
-# （可选）创建 .env 文件并配置管理员凭据
+# 创建 .env 文件并配置管理员凭据（可选但推荐）
 cat > .env << EOF
-CREATE_ADMIN=true
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=$(openssl rand -base64 24)
 SECRET_KEY=$(openssl rand -base64 32)
 EOF
 
-# ⚠️ 重要：保存生成的密码
+# ⚠️ 重要：在继续之前保存生成的密码！
 cat .env
 
-# 启动服务
+# 启动所有服务
 docker compose up -d
+
+# 访问：
+# - Web 应用: http://localhost
+# - 管理后台: http://localhost:3001（默认：admin / Admin123!）
 ```
 
-**后续步骤：**
-1. 如果未使用自动创建，请手动创建管理员账号：`docker exec -it glean-backend /app/scripts/create-admin-docker.sh`
-2. 访问管理后台：http://localhost:3001
-3. 配置生产环境的其他环境变量（参见[环境配置](#环境配置)）
+**默认管理员账号**：如果未创建 `.env` 文件，默认凭据为：
+- 用户名：`admin`
+- 密码：`Admin123!`
+- ⚠️ **生产环境请修改此密码！**
 
 ### 测试预发布版本
 
@@ -227,9 +237,33 @@ docker compose logs backend | grep "Admin Account Created"
 
 ## 服务架构
 
-### 完整部署
+### 使用 pgvector（推荐）
 
-Glean 由 Docker Compose 编排的 9 个服务组成：
+使用带 pgvector 扩展的 PostgreSQL 进行向量存储（共 6 个服务）。使用 `docker-compose.pgvector.yml` 配置。
+
+**服务：**
+
+| 服务       | 容器名称       | 说明                           | 依赖关系        |
+| ---------- | -------------- | ------------------------------ | --------------- |
+| postgres   | glean-postgres | PostgreSQL 16（含 pgvector）   | -               |
+| redis      | glean-redis    | Redis 8 任务队列               | -               |
+| backend    | glean-backend  | FastAPI REST API 服务器        | postgres, redis |
+| worker     | glean-worker   | arq 后台工作进程（订阅源同步） | postgres, redis |
+| web        | glean-web      | React Web 前端（nginx）        | backend         |
+| admin      | glean-admin    | 管理后台（nginx）              | backend         |
+
+**数据持久化：**
+- `postgres_data` - PostgreSQL 数据库文件（包含向量数据）
+- `redis_data` - Redis 持久化（AOF）
+- `glean_logs` - 应用日志（backend + worker）
+
+**网络：**
+- 所有服务通过 `glean-network` 桥接网络通信
+- 仅 `web`（端口 80）和 `admin`（端口 3001）暴露到宿主机
+
+### 使用 Milvus
+
+使用独立的 Milvus 向量数据库（共 9 个服务）。使用 `docker-compose.yml` 配置。
 
 **核心服务：**
 
@@ -242,7 +276,7 @@ Glean 由 Docker Compose 编排的 9 个服务组成：
 | web        | glean-web      | React Web 前端（nginx）        | backend         |
 | admin      | glean-admin    | 管理后台（nginx）              | backend         |
 
-**Milvus 服务（Phase 3 功能）：**
+**Milvus 服务：**
 
 | 服务          | 容器名称            | 说明                       | 依赖关系           |
 | ------------- | ------------------- | -------------------------- | ------------------ |
@@ -256,10 +290,6 @@ Glean 由 Docker Compose 编排的 9 个服务组成：
 3. `worker` 在后端健康后启动
 4. `web` 和 `admin` 在后端就绪后启动
 5. `milvus-etcd` 和 `milvus-minio` 并行启动，然后是 `milvus`
-
-### 精简部署
-
-不包含 Milvus 服务（共 6 个服务）。使用 `docker-compose.lite.yml` 配置。
 
 **数据持久化：**
 - `postgres_data` - PostgreSQL 数据库文件
@@ -311,16 +341,29 @@ Glean 由 Docker Compose 编排的 9 个服务组成：
 | `LOG_RETENTION`   | `30 days`                 | 日志保留期限                  |
 | `LOG_COMPRESSION` | `gz`                      | 日志压缩格式                  |
 
-### Milvus 配置（Phase 3 功能）
+### 向量后端配置
 
-Milvus 是可选的，提供向量数据库功能用于智能推荐和偏好学习。
+支持两种向量后端：
 
-**启用 Milvus：**
-```bash
-docker compose --profile milvus up -d
-```
+- `pgvector`（`docker-compose.pgvector.yml`，**推荐** — 无需额外基础设施）
+- `milvus`（`docker-compose.yml` — 适合偏好独立向量数据库的用户）
 
-**Milvus 连接设置：**
+**后端选择器：**
+
+| 变量             | 默认值   | 说明                              |
+| ---------------- | -------- | --------------------------------- |
+| `VECTOR_BACKEND` | `milvus` | 向量后端（`pgvector` 或 `milvus`）|
+
+**pgvector 配置（VECTOR_BACKEND=pgvector）：**
+
+| 变量                        | 默认值                   | 说明                                |
+| --------------------------- | ------------------------ | ----------------------------------- |
+| `PGVECTOR_DATABASE_URL`     | -                        | 可选覆盖，默认回退到 `DATABASE_URL` |
+| `PGVECTOR_ENTRIES_TABLE`    | `entry_embeddings`       | 文章向量表名                        |
+| `PGVECTOR_PREFS_TABLE`      | `user_preference_vectors`| 用户偏好向量表名                    |
+| `PGVECTOR_METADATA_TABLE`   | `vector_store_metadata`  | 模型签名元数据表名                  |
+
+**Milvus 连接设置（VECTOR_BACKEND=milvus）：**
 
 | 变量                        | 默认值          | 说明                           |
 | --------------------------- | --------------- | ------------------------------ |
@@ -331,9 +374,9 @@ docker compose --profile milvus up -d
 | `MILVUS_ENTRIES_COLLECTION` | `entries`       | 文章向量集合名称               |
 | `MILVUS_PREFS_COLLECTION`   | `user_preferences` | 用户偏好集合名称            |
 
-### Embedding 配置（Phase 3 功能）
+### Embedding 配置
 
-使用 Milvus 进行智能推荐时需要配置：
+偏好学习和智能推荐功能所需配置：
 
 | 变量                   | 默认值                  | 说明                                              |
 | ---------------------- | ----------------------- | ------------------------------------------------- |

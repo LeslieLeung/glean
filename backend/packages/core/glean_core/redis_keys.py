@@ -87,6 +87,16 @@ class RedisKeys:
         return f"oidc_rate_limit:{action}:{client_id}"
 
     # ============================================================================
+    # Embedding Rebuild Keys
+    # ============================================================================
+
+    # Distributed lock for embedding rebuild
+    # Prevents concurrent rebuild jobs from running
+    # TTL: 10 minutes (generous for the enqueue phase)
+    REBUILD_LOCK_KEY = "glean:rebuild_embeddings_lock"
+    REBUILD_LOCK_TIMEOUT = 600
+
+    # ============================================================================
     # Preference System Keys
     # ============================================================================
 

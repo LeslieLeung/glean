@@ -9,9 +9,10 @@ from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.session import get_session_context
 from glean_vector.clients.embedding_client import EmbeddingClient
-from glean_vector.clients.milvus_client import MilvusClient
 from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 from glean_vector.services.embedding_service import EmbeddingService
+
+from ._vector_client import ensure_vector_client
 
 logger = get_logger(__name__)
 
@@ -91,6 +92,23 @@ async def _reset_error_count(session: AsyncSession) -> None:
         await config_service.update(EmbeddingConfig, error_count=0)
 
 
+async def _safe_handle_error(session: AsyncSession, error: Exception) -> None:
+    """Handle embedding error, recovering from a poisoned session first.
+
+    When a prior DB operation fails, asyncpg puts the connection into a
+    failed-transaction state.  This helper rolls back before touching the
+    session so the circuit-breaker logic can still read/write config.
+    """
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        await session.rollback()
+    try:
+        await _handle_embedding_error(session, error)
+    except Exception:
+        logger.warning("Could not update circuit breaker after error", exc_info=True)
+
+
 async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[str, Any]:
     """
     Generate embedding for a single entry.
@@ -102,9 +120,12 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
     Returns:
         Result dictionary
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"success": False, "entry_id": entry_id, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        error = "Vector backend unavailable"
+        if vector_error:
+            error = f"{error}: {vector_error}"
+        return {"success": False, "entry_id": entry_id, "error": error}
 
     async with get_session_context() as session:
         # Check if vectorization is enabled
@@ -117,33 +138,38 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
         embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
 
         try:
-            # Ensure Milvus collections exist with correct model
-            await milvus_client.ensure_collections(
+            # Ensure vector storage exists with correct model config
+            await vector_client.ensure_collections(
                 settings.dimension, settings.provider, settings.model
             )
 
             embedding_service = EmbeddingService(
                 db_session=session,
                 embedding_client=embedding_client,
-                milvus_client=milvus_client,
+                vector_client=vector_client,
             )
 
             success = await embedding_service.generate_embedding(entry_id)
 
             if success:
-                # Reset error count on success
                 await _reset_error_count(session)
 
             return {"success": success, "entry_id": entry_id}
 
         except Exception as e:
+            # Infrastructure error (API / vector backend).  The entry is
+            # already marked "failed" by the service layer.  Count toward
+            # the circuit breaker but do NOT re-raise — arq retries are
+            # wasteful when the backend is down; the entry will be picked
+            # up later by retry_failed_embeddings or the next rebuild.
             error_msg = str(e)
             logger.error(
                 f"Failed to generate embedding for entry {entry_id}: {error_msg}",
-                exc_info=True,  # Include full traceback
+                exc_info=True,
             )
-            await _handle_embedding_error(session, e)
-            raise
+            # Session may be in a failed transaction state; rollback first.
+            await _safe_handle_error(session, e)
+            return {"success": False, "entry_id": entry_id, "error": error_msg}
 
         finally:
             await embedding_client.close()
@@ -160,9 +186,12 @@ async def batch_generate_embeddings(ctx: dict[str, Any], limit: int = 100) -> di
     Returns:
         Result dictionary with processed and failed counts
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"processed": 0, "failed": 0, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        error = "Vector backend unavailable"
+        if vector_error:
+            error = f"{error}: {vector_error}"
+        return {"processed": 0, "failed": 0, "error": error}
 
     async with get_session_context() as session:
         # Check if vectorization is enabled
@@ -175,29 +204,38 @@ async def batch_generate_embeddings(ctx: dict[str, Any], limit: int = 100) -> di
         embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
 
         try:
-            # Ensure Milvus collections exist with correct model
-            await milvus_client.ensure_collections(
+            # Ensure vector storage exists with correct model config
+            await vector_client.ensure_collections(
                 settings.dimension, settings.provider, settings.model
             )
 
             embedding_service = EmbeddingService(
                 db_session=session,
                 embedding_client=embedding_client,
-                milvus_client=milvus_client,
+                vector_client=vector_client,
             )
 
             result = await embedding_service.batch_generate(limit=limit)
 
-            if result.get("processed", 0) > 0:
-                # Reset error count on successful batch
+            processed = result.get("processed", 0)
+            failed = result.get("failed", 0)
+
+            if processed > 0:
                 await _reset_error_count(session)
+            elif failed > 0:
+                # Entire batch failed — count toward circuit breaker.
+                # Session may be dirty; rollback before using it for config.
+                await _safe_handle_error(
+                    session,
+                    RuntimeError(f"Batch: all {failed} entries failed, 0 succeeded"),
+                )
 
             return result  # type: ignore[return-value]
 
         except Exception as e:
             logger.error(f"Failed to batch generate embeddings: {e}")
-            await _handle_embedding_error(session, e)
-            raise
+            await _safe_handle_error(session, e)
+            return {"processed": 0, "failed": 0, "error": str(e)}
 
         finally:
             await embedding_client.close()
@@ -214,9 +252,12 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
     Returns:
         Result dictionary with processed and failed counts
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
-    if not milvus_client:
-        return {"processed": 0, "failed": 0, "error": "Milvus unavailable"}
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if not vector_client:
+        error = "Vector backend unavailable"
+        if vector_error:
+            error = f"{error}: {vector_error}"
+        return {"processed": 0, "failed": 0, "error": error}
 
     async with get_session_context() as session:
         # Check if vectorization is enabled
@@ -229,40 +270,52 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
         embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
 
         try:
-            # Ensure Milvus collections exist with correct model
-            await milvus_client.ensure_collections(
+            # Ensure vector storage exists with correct model config
+            await vector_client.ensure_collections(
                 settings.dimension, settings.provider, settings.model
             )
 
             embedding_service = EmbeddingService(
                 db_session=session,
                 embedding_client=embedding_client,
-                milvus_client=milvus_client,
+                vector_client=vector_client,
             )
 
             result = await embedding_service.retry_failed(limit=limit)
 
-            if result.get("processed", 0) > 0:
+            processed = result.get("processed", 0)
+            failed = result.get("failed", 0)
+
+            if processed > 0:
                 await _reset_error_count(session)
+            elif failed > 0:
+                await _safe_handle_error(
+                    session,
+                    RuntimeError(f"Retry batch: all {failed} entries failed, 0 succeeded"),
+                )
 
             return result  # type: ignore[return-value]
 
         except Exception as e:
             logger.error(f"Failed to retry failed embeddings: {e}")
-            await _handle_embedding_error(session, e)
-            raise
+            await _safe_handle_error(session, e)
+            return {"processed": 0, "failed": 0, "error": str(e)}
 
         finally:
             await embedding_client.close()
 
 
-async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]:
+async def validate_and_rebuild_embeddings(
+    ctx: dict[str, Any], force_rebuild: bool = False
+) -> dict[str, Any]:
     """
     Validate embedding config and trigger rebuild if valid.
 
     This task is triggered when vectorization is enabled or config is changed.
+    When force_rebuild is True (explicit user action), the compatibility check
+    is skipped and a full rebuild is always triggered.
     """
-    milvus_client: MilvusClient | None = ctx.get("milvus_client")
+    vector_client, vector_error = ensure_vector_client(ctx)
     redis = ctx.get("redis")
 
     async with get_session_context() as session:
@@ -286,31 +339,46 @@ async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]
             )
             return {"success": False, "error": provider_result.message}
 
-        # Validate Milvus
-        if milvus_client:
-            milvus_result = await validation_service.validate_milvus(
+        # Validate vector backend
+        if vector_client:
+            backend_result = await validation_service.validate_vector_backend(
                 config.dimension, config.provider, config.model
             )
-            if not milvus_result.success:
+            if not backend_result.success:
                 await config_service.set_embedding_status(
                     VectorizationStatus.ERROR.value,
-                    error=f"Milvus validation failed: {milvus_result.message}",
+                    error=f"Vector backend validation failed: {backend_result.message}",
                 )
-                return {"success": False, "error": milvus_result.message}
+                return {"success": False, "error": backend_result.message}
         else:
+            error = "Vector client not available"
+            if vector_error:
+                error = f"{error}: {vector_error}"
             await config_service.set_embedding_status(
                 VectorizationStatus.ERROR.value,
-                error="Milvus client not available",
+                error=error,
             )
-            return {"success": False, "error": "Milvus client not available"}
+            return {"success": False, "error": error}
 
-        # Validation passed, check if rebuild is actually needed
-        # If collections already exist with the same model signature, skip rebuild
-        is_compatible, reason = milvus_client.check_model_compatibility(
-            config.dimension, config.provider, config.model
-        )
+        # Validation passed, check if rebuild is actually needed.
+        # Prefer backend validation result (async, backend-aware) when available,
+        # then fall back to client-level compatibility checks.
+        backend_details = backend_result.details
 
-        if is_compatible and milvus_client.collections_exist():
+        details_has_compat = "is_compatible" in backend_details
+        details_has_exists = "collections_exist" in backend_details
+
+        if details_has_compat and details_has_exists:
+            is_compatible = bool(backend_details.get("is_compatible"))
+            collections_exist = bool(backend_details.get("collections_exist"))
+            reason = backend_details.get("compatibility_reason")
+        else:
+            is_compatible, reason = vector_client.check_model_compatibility(
+                config.dimension, config.provider, config.model
+            )
+            collections_exist = vector_client.collections_exist()
+
+        if is_compatible and collections_exist and not force_rebuild:
             # Collections exist and are compatible - no rebuild needed
             logger.info(
                 "Collections already compatible with config, skipping rebuild. "
@@ -322,6 +390,12 @@ async def validate_and_rebuild_embeddings(ctx: dict[str, Any]) -> dict[str, Any]
                 "message": "Collections already compatible, no rebuild needed",
                 "skipped_rebuild": True,
             }
+
+        if force_rebuild and is_compatible and collections_exist:
+            logger.info(
+                "Force rebuild requested despite compatible collections. "
+                f"model={config.provider}:{config.model}, dimension={config.dimension}"
+            )
 
         # Rebuild needed: either collections don't exist or model changed
         logger.info(

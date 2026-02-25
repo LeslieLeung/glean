@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys
 from glean_database.models import Entry, UserEntry, UserPreferenceStats
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.config import preference_config
 
 
@@ -33,7 +33,7 @@ class PreferenceService:
     def __init__(
         self,
         db_session: AsyncSession,
-        milvus_client: MilvusClient,
+        vector_client: VectorStoreClient,
         redis_client: Redis | None = None,
     ) -> None:
         """
@@ -41,11 +41,11 @@ class PreferenceService:
 
         Args:
             db_session: Database session
-            milvus_client: Milvus vector database client
+            vector_client: Vector database client
             redis_client: Redis client for distributed locks (optional but recommended)
         """
         self.db = db_session
-        self.milvus = milvus_client
+        self.vector_client = vector_client
         self.redis = redis_client
         self.config = preference_config
 
@@ -67,8 +67,8 @@ class PreferenceService:
 
         weight = self.SIGNAL_WEIGHTS[signal_type]
 
-        # Get entry embedding from Milvus
-        embedding = await self.milvus.get_entry_embedding(entry_id)
+        # Get entry embedding from vector backend
+        embedding = await self.vector_client.get_entry_embedding(entry_id)
         if not embedding:
             # Entry not yet embedded, skip preference update
             return
@@ -162,7 +162,7 @@ class PreferenceService:
             abs_weight: Absolute value of weight
         """
         # Get current preference vectors
-        prefs = await self.milvus.get_user_preferences(user_id)
+        prefs = await self.vector_client.get_user_preferences(user_id)
         current = prefs.get(vector_type)
 
         if current is None:
@@ -186,8 +186,8 @@ class PreferenceService:
         if norm > 1e-8:
             new_embedding = new_embedding / norm
 
-        # Store in Milvus
-        await self.milvus.upsert_user_preference(
+        # Store in vector backend
+        await self.vector_client.upsert_user_preference(
             user_id=user_id,
             vector_type=vector_type,
             embedding=new_embedding.tolist(),
@@ -263,8 +263,8 @@ class PreferenceService:
         Args:
             user_id: User UUID
         """
-        # Clear existing preferences from Milvus
-        await self.milvus.delete_user_preferences(user_id)
+        # Clear existing preferences from vector backend
+        await self.vector_client.delete_user_preferences(user_id)
 
         # Delete existing stats from database
         await self.db.execute(

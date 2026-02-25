@@ -54,40 +54,28 @@ async def get_vectorization_status(
     current_status = config.status
 
     if config.status == VectorizationStatus.REBUILDING:
-        # Get entry counts to check progress
-        total_result = await session.execute(select(func.count()).select_from(Entry))
-        total = total_result.scalar_one()
-
-        done_result = await session.execute(
-            select(func.count()).select_from(Entry).where(Entry.embedding_status == "done")
+        result = await session.execute(
+            select(Entry.embedding_status, func.count())
+            .where(Entry.embedding_status.in_(["pending", "processing", "done", "failed"]))
+            .group_by(Entry.embedding_status)
         )
-        done = done_result.scalar_one()
+        counts: dict[str, int] = {str(row[0]): int(row[1]) for row in result.all()}
 
-        failed_result = await session.execute(
-            select(func.count()).select_from(Entry).where(Entry.embedding_status == "failed")
-        )
-        failed = failed_result.scalar_one()
-
-        pending_result = await session.execute(
-            select(func.count()).select_from(Entry).where(Entry.embedding_status == "pending")
-        )
-        pending = pending_result.scalar_one()
-
-        processing_result = await session.execute(
-            select(func.count()).select_from(Entry).where(Entry.embedding_status == "processing")
-        )
-        processing = processing_result.scalar_one()
+        pending = counts.get("pending", 0)
+        processing = counts.get("processing", 0)
+        done = counts.get("done", 0)
+        failed = counts.get("failed", 0)
 
         progress = EmbeddingRebuildProgress(
-            total=total,
+            total=pending + processing + done + failed,
             pending=pending,
             processing=processing,
             done=done,
             failed=failed,
         )
 
-        # Auto-complete rebuild if all entries are processed
-        if total > 0 and (done + failed) >= total:
+        # Auto-complete rebuild when all entries reached terminal state
+        if pending == 0 and processing == 0 and (done + failed) > 0:
             await config_service.complete_rebuild()
             current_status = VectorizationStatus.IDLE
 

@@ -14,12 +14,14 @@ from arq.cron import CronJob
 
 from glean_core import get_logger, init_logging
 from glean_database.session import init_database
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import create_vector_store_client
+from glean_vector.config import vector_backend_config
 
 from .config import settings
 from .tasks import (
     bookmark_metadata,
     cleanup,
+    embedding_maintenance,
     embedding_rebuild,
     embedding_worker,
     feed_fetcher,
@@ -58,29 +60,27 @@ async def startup(ctx: dict[str, Any]) -> None:
     # The redis client is automatically available in the worker context
     logger.info("Redis client available for distributed locks")
 
-    # Initialize Milvus client (M3) - optional for embedding/preference features
-    from glean_vector.config import milvus_config
-
-    # Check if Milvus is explicitly configured (not just default localhost)
-    milvus_configured = milvus_config.host and milvus_config.host != "localhost"
-
-    if milvus_configured or milvus_config.host == "localhost":
-        # Try to connect even for localhost (might be intentional dev setup)
-        logger.info(f"Attempting to connect to Milvus at {milvus_config.host}:{milvus_config.port}")
-        milvus_client = MilvusClient()
-        try:
-            milvus_client.connect()
-            ctx["milvus_client"] = milvus_client
-            logger.info("✓ Milvus client connected successfully")
-        except Exception as e:
-            logger.warning(f"✗ Failed to connect to Milvus: {e}")
-            logger.info(
-                "Worker will continue without Milvus - embedding and preference tasks will be skipped"
-            )
-            ctx["milvus_client"] = None
-    else:
-        logger.info("Milvus not configured - embedding and preference features disabled")
-        ctx["milvus_client"] = None
+    # Initialize vector backend client (M3) - optional for embedding/preference features
+    try:
+        vector_client = create_vector_store_client()
+        vector_client.connect()
+        ctx["vector_client"] = vector_client
+        ctx["vector_client_error"] = None
+        logger.info(
+            "✓ Vector client connected successfully",
+            extra={"backend": vector_backend_config.backend},
+        )
+    except Exception as e:
+        logger.warning(
+            "✗ Failed to connect to vector backend",
+            extra={"backend": vector_backend_config.backend, "error": str(e)},
+        )
+        logger.info(
+            "Worker will continue without vector backend - embedding and preference tasks "
+            "will be skipped"
+        )
+        ctx["vector_client"] = None
+        ctx["vector_client_error"] = str(e)
 
     # Dynamically log registered task functions
     logger.info("Registered task functions:")
@@ -110,11 +110,11 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     logger.info("=" * 60)
     logger.info("Shutting down Glean Worker")
 
-    # Disconnect Milvus client
-    milvus_client = ctx.get("milvus_client")
-    if milvus_client:
-        milvus_client.disconnect()
-        logger.info("Milvus client disconnected")
+    # Disconnect vector client
+    vector_client = ctx.get("vector_client")
+    if vector_client:
+        vector_client.disconnect()
+        logger.info("Vector client disconnected", extra={"backend": vector_backend_config.backend})
 
     logger.info("=" * 60)
 
@@ -137,6 +137,8 @@ def get_oss_functions() -> list[TaskFunction]:
         preference_worker.rebuild_user_preference,
         # Subscription cleanup
         subscription_cleanup.cleanup_orphan_embeddings,
+        # Embedding maintenance
+        embedding_maintenance.scheduled_embedding_maintenance,
     ]
 
 
@@ -147,6 +149,11 @@ def get_oss_cron_jobs() -> list[CronJob]:
         cron(feed_fetcher.scheduled_fetch, minute={0, 15, 30, 45}),
         # Read-later cleanup (hourly at minute 0)
         cron(cleanup.scheduled_cleanup, minute=0),
+        # Embedding maintenance: recover stuck entries + auto-complete rebuild (every 5 min)
+        cron(
+            embedding_maintenance.scheduled_embedding_maintenance,
+            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+        ),
     ]
 
 

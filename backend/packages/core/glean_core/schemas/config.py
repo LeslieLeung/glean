@@ -19,7 +19,7 @@ class VectorizationStatus(str, Enum):
     IDLE = "idle"  # Enabled, normal operation
     VALIDATING = "validating"  # Testing provider connection
     REBUILDING = "rebuilding"  # Full re-embedding in progress
-    ERROR = "error"  # Provider/Milvus unavailable
+    ERROR = "error"  # Provider/vector backend unavailable
 
 
 class RateLimitConfig(BaseModel):
@@ -180,7 +180,7 @@ class EmbeddingConfigUpdateRequest(BaseModel):
 
 
 class ValidationResult(BaseModel):
-    """Result of provider/Milvus validation."""
+    """Result of provider/vector-backend validation."""
 
     success: bool
     message: str
