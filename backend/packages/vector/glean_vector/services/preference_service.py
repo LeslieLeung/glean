@@ -1,7 +1,7 @@
 """User preference model service."""
 
 import contextlib
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 from redis.asyncio import Redis
@@ -192,7 +192,7 @@ class PreferenceService:
             vector_type=vector_type,
             embedding=new_embedding.tolist(),
             sample_count=new_count,
-            updated_at=int(datetime.now().timestamp()),
+            updated_at=int(datetime.now(UTC).timestamp()),
         )
 
     async def _update_affinity_stats(

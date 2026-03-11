@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pymilvus import (
@@ -502,7 +502,7 @@ class MilvusClient:
             raise RuntimeError("Collections not initialized. Call ensure_collections() first.")
 
         published_ts = (
-            int(published_at.timestamp()) if published_at else int(datetime.now().timestamp())
+            int(published_at.timestamp()) if published_at else int(datetime.now(UTC).timestamp())
         )
 
         # Delete existing entry if present (upsert pattern)

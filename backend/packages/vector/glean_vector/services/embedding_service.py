@@ -2,7 +2,7 @@
 
 import contextlib
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -156,7 +156,7 @@ class EmbeddingService:
                 .where(Entry.id == entry_id)
                 .values(
                     embedding_status="done",
-                    embedding_at=datetime.now(),
+                    embedding_at=datetime.now(UTC),
                     word_count=word_count,
                     embedding_error=None,
                 )
