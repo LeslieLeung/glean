@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import BIGINT, Column, Float, Integer, MetaData, String, Table, and_, delete, select
@@ -24,6 +24,11 @@ except ImportError:  # pragma: no cover
     Vector = None  # type: ignore[assignment,misc]
 
 logger = get_logger(__name__)
+
+
+def _quote_ident(name: str) -> str:
+    """Return a properly double-quoted PostgreSQL identifier."""
+    return '"' + name.replace('"', '""') + '"'
 
 
 class PgVectorClient:
@@ -168,23 +173,23 @@ class PgVectorClient:
                 await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
                 await conn.run_sync(self._metadata.create_all)
                 await conn.exec_driver_sql(
-                    f"CREATE INDEX IF NOT EXISTS idx_{entries_table.name}_feed_id "
-                    f"ON {entries_table.name} (feed_id)"
+                    f"CREATE INDEX IF NOT EXISTS {_quote_ident('idx_' + entries_table.name + '_feed_id')} "
+                    f"ON {_quote_ident(entries_table.name)} (feed_id)"
                 )
                 await conn.exec_driver_sql(
-                    f"CREATE INDEX IF NOT EXISTS idx_{entries_table.name}_published_at "
-                    f"ON {entries_table.name} (published_at)"
+                    f"CREATE INDEX IF NOT EXISTS {_quote_ident('idx_' + entries_table.name + '_published_at')} "
+                    f"ON {_quote_ident(entries_table.name)} (published_at)"
                 )
                 await conn.exec_driver_sql(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{prefs_table.name}_user_type "
-                    f"ON {prefs_table.name} (user_id, vector_type)"
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_quote_ident('idx_' + prefs_table.name + '_user_type')} "
+                    f"ON {_quote_ident(prefs_table.name)} (user_id, vector_type)"
                 )
             self._schema_ensured = True
 
         if provider and model:
             signature = self._build_model_signature(provider, model, dimension)
             if signature != self._last_model_signature:
-                now_ts = int(datetime.now().timestamp())
+                now_ts = int(datetime.now(UTC).timestamp())
                 await self._execute(
                     insert(meta_table)
                     .values(name="entries", model_signature=signature, updated_at=now_ts)
@@ -215,9 +220,9 @@ class PgVectorClient:
         self._schema_ensured = False
         self._last_model_signature = None
         async with self._engine.begin() as conn:
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {prefs_table.name}")
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {entries_table.name}")
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {meta_table.name}")
+            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(prefs_table.name)}")
+            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(entries_table.name)}")
+            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(meta_table.name)}")
         await self.ensure_collections(dimension, provider, model)
 
     async def insert_entry_embedding(
@@ -233,7 +238,7 @@ class PgVectorClient:
         self._ensure_connected()
         entries_table, _, _ = self._tables()
         published_ts = (
-            int(published_at.timestamp()) if published_at else int(datetime.now().timestamp())
+            int(published_at.timestamp()) if published_at else int(datetime.now(UTC).timestamp())
         )
         stmt = (
             insert(entries_table)

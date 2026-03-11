@@ -6,9 +6,9 @@ Periodic housekeeping for the embedding/vectorization system:
 - Auto-complete rebuild when all entries reach a terminal state
 """
 
-import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,7 +96,7 @@ async def _re_enqueue_pending(redis: Any, pending: int) -> int:
         return 0
 
     num_batches = max(1, (pending + MAINTENANCE_BATCH_SIZE - 1) // MAINTENANCE_BATCH_SIZE)
-    batch_prefix = f"maint_{int(time.time())}"
+    batch_prefix = f"maint_{uuid4().hex}"
     for i in range(num_batches):
         await redis.enqueue_job(
             "batch_generate_embeddings",

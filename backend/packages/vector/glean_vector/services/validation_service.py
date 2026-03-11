@@ -311,11 +311,13 @@ class EmbeddingValidationService:
 
                     if expected_signature and collections_exist:
                         if metadata_exists:
+                            _quoted_table = (
+                                '"' + pgvector_config.metadata_table.replace('"', '""') + '"'
+                            )
                             rows = await conn.execute(
-                                text(
-                                    f"SELECT name, model_signature "  # noqa: S608
-                                    f"FROM {pgvector_config.metadata_table} "
-                                    "WHERE name IN ('entries', 'preferences')"
+                                text(  # noqa: S608
+                                    f"SELECT name, model_signature FROM {_quoted_table}"
+                                    " WHERE name IN ('entries', 'preferences')"
                                 )
                             )
                             model_signatures = {str(row[0]): str(row[1]) for row in rows.fetchall()}
