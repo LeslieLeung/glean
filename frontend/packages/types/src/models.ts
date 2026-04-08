@@ -79,6 +79,7 @@ export interface Entry {
   title: string
   author: string | null
   content: string | null
+  readability_content?: string | null
   summary: string | null
   published_at: string | null
   created_at: string

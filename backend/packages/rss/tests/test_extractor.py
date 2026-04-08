@@ -223,6 +223,29 @@ class TestPostprocessHtml:
         assert "https://example.com/img.webp" in result
 
     @pytest.mark.asyncio
+    async def test_audio_video_relative_urls(self) -> None:
+        """Test audio/video related relative URLs are converted to absolute."""
+        html = """
+        <video src="/video.mp4" poster="/poster.jpg">
+          <source src="/video-1080.mp4" srcset="/video-720.mp4 1x, /video-1080.mp4 2x">
+        </video>
+        <audio src="/audio.mp3">
+          <source src="/audio-alt.mp3">
+        </audio>
+        <iframe src="/embed/player"></iframe>
+        """
+        base_url = "https://example.com"
+        result = await postprocess_html(html, base_url=base_url)
+
+        assert 'src="https://example.com/video.mp4"' in result
+        assert 'poster="https://example.com/poster.jpg"' in result
+        assert 'src="https://example.com/video-1080.mp4"' in result
+        assert "https://example.com/video-720.mp4 1x" in result
+        assert 'src="https://example.com/audio.mp3"' in result
+        assert 'src="https://example.com/audio-alt.mp3"' in result
+        assert 'src="https://example.com/embed/player"' in result
+
+    @pytest.mark.asyncio
     async def test_combined_url_and_backticks(self) -> None:
         """Test URL resolution and backtick conversion work together."""
         html = '<p>Use `npm install` and see <img src="/logo.png"></p>'

@@ -16,7 +16,7 @@ from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
 from glean_database.session import get_session_context
-from glean_rss import fetch_and_extract_fulltext, fetch_feed, parse_feed, postprocess_html
+from glean_rss import fetch_feed, parse_feed, postprocess_html
 
 logger = get_logger(__name__)
 
@@ -125,40 +125,12 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 if existing_entry:
                     continue
 
-                # Determine content: fetch full text if feed only provides summary
+                # Keep original feed-provided content by default.
+                # Full text extraction can be triggered on demand from the reader UI.
                 entry_content = parsed_entry.content
-                if not parsed_entry.has_full_content and parsed_entry.url:
-                    logger.info(
-                        "Entry has no full content, fetching from URL",
-                        extra={"feed_id": feed_id, "url": parsed_entry.url},
-                    )
-                    try:
-                        extracted_content = await fetch_and_extract_fulltext(parsed_entry.url)
-                        if extracted_content:
-                            entry_content = extracted_content
-                            logger.info(
-                                "Successfully extracted full text",
-                                extra={
-                                    "feed_id": feed_id,
-                                    "content_length": len(extracted_content),
-                                },
-                            )
-                        else:
-                            logger.warning(
-                                "Full text extraction returned empty, using summary",
-                                extra={"feed_id": feed_id},
-                            )
-                    except Exception as extract_err:
-                        logger.warning(
-                            "Full text extraction failed, using summary",
-                            extra={"feed_id": feed_id, "error": str(extract_err)},
-                        )
-                else:
-                    # Process content from feed to fix backtick formatting etc.
-                    if entry_content:
-                        entry_content = await postprocess_html(
-                            entry_content, base_url=parsed_entry.url
-                        )
+                # Process content from feed to fix backtick formatting etc.
+                if entry_content:
+                    entry_content = await postprocess_html(entry_content, base_url=parsed_entry.url)
 
                 # Create new entry
                 entry = Entry(

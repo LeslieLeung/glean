@@ -112,4 +112,14 @@ describe('EntryService', () => {
     expect(mockClient.delete).toHaveBeenCalledWith('/entries/e1/reaction')
     expect(result).toEqual(entry)
   })
+
+  it('should trigger full-text extraction', async () => {
+    const response = { status: 'updated', entry: { id: 'e1' } }
+    vi.mocked(mockClient.post).mockResolvedValue(response)
+
+    const result = await service.extractFullText('e1')
+
+    expect(mockClient.post).toHaveBeenCalledWith('/entries/e1/extract-fulltext')
+    expect(result).toEqual(response)
+  })
 })

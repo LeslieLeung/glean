@@ -128,6 +128,10 @@ async def postprocess_html(html: str, base_url: str | None = None) -> str:
 
         # Fix relative URLs for source tags (picture elements)
         for source in soup.find_all("source"):
+            source_src = source.get("src")
+            if isinstance(source_src, str) and _is_relative_url(source_src):
+                source["src"] = urljoin(base_url, source_src)
+
             source_srcset = source.get("srcset")
             if isinstance(source_srcset, str) and _is_relative_url(source_srcset.split()[0]):
                 # srcset can have multiple URLs with sizes, handle them all
@@ -140,6 +144,23 @@ async def postprocess_html(html: str, base_url: str | None = None) -> str:
                         source_url_parts[0] = urljoin(base_url, source_url_parts[0])
                         source_fixed_parts.append(" ".join(source_url_parts))
                 source["srcset"] = ", ".join(source_fixed_parts)
+
+        # Fix relative URLs for audio/video sources
+        for media in soup.find_all(["audio", "video"]):
+            media_src = media.get("src")
+            if isinstance(media_src, str) and _is_relative_url(media_src):
+                media["src"] = urljoin(base_url, media_src)
+
+            # video poster image
+            poster = media.get("poster")
+            if isinstance(poster, str) and _is_relative_url(poster):
+                media["poster"] = urljoin(base_url, poster)
+
+        # Fix relative URLs for iframe embeds (e.g., video players)
+        for iframe in soup.find_all("iframe"):
+            iframe_src = iframe.get("src")
+            if isinstance(iframe_src, str) and _is_relative_url(iframe_src):
+                iframe["src"] = urljoin(base_url, iframe_src)
 
     # Convert backtick-wrapped text to <code> tags using proper HTML parsing
     _convert_backticks_to_code(soup)
@@ -166,6 +187,25 @@ async def extract_fulltext(html: str, url: str | None = None) -> str | None:
         if content and len(content) > MIN_CONTENT_LENGTH:
             # Post-process to fix URLs and formatting
             return await postprocess_html(content, base_url=url)
+    except Exception:
+        pass
+
+    # Fallback heuristic for sites where readability fails:
+    # pick the largest content-like container and sanitize it.
+    try:
+        soup = await asyncio.to_thread(BeautifulSoup, html, "html.parser")
+        candidates = soup.select("article, main, [role='main'], .post-content, .entry-content, .article-body")
+        best_html = ""
+        best_len = 0
+        for candidate in candidates:
+            candidate_html = str(candidate)
+            text_len = len(candidate.get_text(" ", strip=True))
+            if text_len > best_len:
+                best_len = text_len
+                best_html = candidate_html
+
+        if best_html and best_len > MIN_CONTENT_LENGTH:
+            return await postprocess_html(best_html, base_url=url)
         return None
     except Exception:
         return None
@@ -181,14 +221,30 @@ async def fetch_and_extract_fulltext(url: str) -> str | None:
     Returns:
         Extracted HTML content or None if fetch/extraction fails.
     """
-    async with httpx.AsyncClient(
-        timeout=30.0,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; GleanBot/1.0)"},
-        follow_redirects=True,
-    ) as client:
-        try:
-            response = await client.get(url)
-            response.raise_for_status()
-            return await extract_fulltext(response.text, url=url)
-        except Exception:
-            return None
+    headers_list = [
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        {"User-Agent": "Mozilla/5.0 (compatible; GleanBot/1.0)"},
+    ]
+
+    for headers in headers_list:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            headers=headers,
+            follow_redirects=True,
+        ) as client:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                extracted = await extract_fulltext(response.text, url=str(response.url))
+                if extracted:
+                    return extracted
+            except Exception:
+                continue
+    return None
