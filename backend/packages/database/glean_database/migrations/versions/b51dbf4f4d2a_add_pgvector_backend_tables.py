@@ -25,7 +25,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     if Vector is None:
-        raise RuntimeError("pgvector is required to run this migration")
+        raise RuntimeError("pgvector is required to apply pgvector schema migration")
 
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 

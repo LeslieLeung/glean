@@ -213,6 +213,7 @@ async def get_preference_service(
 
 
 async def get_score_service(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> object | None:
     """
@@ -239,12 +240,17 @@ async def get_score_service(
 
     # Vectorization enabled - try to use vector scoring
     try:
-        from glean_vector.clients import create_vector_store_client
         from glean_vector.services.score_service import ScoreService
 
-        vector_client = create_vector_store_client()
-        vector_client.connect()
-        await vector_client.ensure_collections(config.dimension, config.provider, config.model)
+        vector_client = getattr(request.app.state, "vector_client", None)
+        if vector_client is None:
+            return SimpleScoreService(session)
+
+        await vector_client.ensure_collections(
+            config.dimension,
+            config.provider,
+            config.model,
+        )
 
         return ScoreService(db_session=session, vector_client=vector_client)
     except Exception:
