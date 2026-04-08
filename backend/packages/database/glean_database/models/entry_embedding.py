@@ -4,17 +4,11 @@ EntryEmbedding model definition.
 Stores entry vectors in PostgreSQL pgvector backend.
 """
 
-from sqlalchemy import BIGINT, JSON, ForeignKey, Integer, String
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import BIGINT, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
-
-try:
-    from pgvector.sqlalchemy import Vector
-except ImportError:  # pragma: no cover - optional dependency during partial installs
-    Vector = None  # type: ignore[assignment,misc]
-
-VECTOR_TYPE = Vector() if Vector is not None else JSON
 
 
 class EntryEmbedding(Base):
@@ -27,7 +21,7 @@ class EntryEmbedding(Base):
         ForeignKey("entries.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    embedding: Mapped[list[float]] = mapped_column(VECTOR_TYPE)  # type: ignore[misc,valid-type]
+    embedding: Mapped[list[float]] = mapped_column(Vector())  # type: ignore[misc,valid-type]
     feed_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     published_at: Mapped[int] = mapped_column(BIGINT, nullable=False, index=True)
     language: Mapped[str] = mapped_column(String(10), nullable=False, default="")

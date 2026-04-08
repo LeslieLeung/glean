@@ -24,11 +24,7 @@ logger = get_logger(__name__)
 
 def _is_duplicate_feed_guid_error(error: IntegrityError) -> bool:
     """Check whether IntegrityError is caused by uq_feed_guid violation."""
-    error_text = str(error)
-    return (
-        "uq_feed_guid" in error_text
-        or "duplicate key value violates unique constraint" in error_text
-    )
+    return "uq_feed_guid" in str(getattr(error, "orig", error))
 
 
 async def _is_vectorization_enabled(session: AsyncSession) -> bool:
@@ -136,6 +132,11 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             latest_entry_time = feed.last_entry_at
 
             for parsed_entry in parsed_feed.entries:
+                if parsed_entry.published_at and (
+                    latest_entry_time is None or parsed_entry.published_at > latest_entry_time
+                ):
+                    latest_entry_time = parsed_entry.published_at
+
                 # Check if entry already exists
                 stmt = select(Entry).where(
                     Entry.feed_id == feed.id, Entry.guid == parsed_entry.guid
@@ -214,12 +215,6 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 # M3: Collect entry ID for embedding (enqueued after commit)
                 if should_embed:
                     pending_embedding_ids.append(entry.id)
-
-                # Track latest entry time
-                if parsed_entry.published_at and (
-                    latest_entry_time is None or parsed_entry.published_at > latest_entry_time
-                ):
-                    latest_entry_time = parsed_entry.published_at
 
             # Update last_entry_at and schedule next fetch
             if latest_entry_time:

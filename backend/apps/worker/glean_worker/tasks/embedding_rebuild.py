@@ -1,8 +1,8 @@
 """Embedding rebuild task."""
 
 import contextlib
-import time
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -165,7 +165,7 @@ async def _rebuild_embeddings_locked(
 
         # Enqueue batch embedding jobs (much more efficient than one job per entry)
         num_batches = max(1, (total_pending + REBUILD_BATCH_SIZE - 1) // REBUILD_BATCH_SIZE)
-        batch_prefix = f"rebuild_{int(time.time())}"
+        batch_prefix = f"rebuild_{uuid4().hex}"
         for i in range(num_batches):
             await redis.enqueue_job(
                 "batch_generate_embeddings",

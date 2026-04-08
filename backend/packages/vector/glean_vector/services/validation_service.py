@@ -14,6 +14,11 @@ from glean_vector.config import pgvector_config, vector_backend_config
 logger = get_logger(__name__)
 
 
+def _quote_ident(name: str) -> str:
+    """Return a properly double-quoted PostgreSQL identifier."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 class EmbeddingValidationService:
     """
     Service for validating embedding configuration.
@@ -311,14 +316,10 @@ class EmbeddingValidationService:
 
                     if expected_signature and collections_exist:
                         if metadata_exists:
-                            _quoted_table = (
-                                '"' + pgvector_config.metadata_table.replace('"', '""') + '"'
-                            )
-                            rows = await conn.execute(
-                                text(  # noqa: S608
-                                    f"SELECT name, model_signature FROM {_quoted_table}"
-                                    " WHERE name IN ('entries', 'preferences')"
-                                )
+                            rows = await conn.exec_driver_sql(
+                                f"SELECT name, model_signature "
+                                f"FROM {_quote_ident(pgvector_config.metadata_table)} "
+                                "WHERE name IN ('entries', 'preferences')"
                             )
                             model_signatures = {str(row[0]): str(row[1]) for row in rows.fetchall()}
                             for target_name in ("entries", "preferences"):

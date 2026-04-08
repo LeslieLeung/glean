@@ -260,6 +260,16 @@ Uses PostgreSQL with pgvector extension for vector storage (6 services total). U
 - All services communicate via `glean-network` bridge network
 - Only `web` (port 80) and `admin` (port 3001) are exposed to host
 
+**Recommended pgvector index:**
+
+Run this after migrations if you expect non-trivial similarity-search volume. Adjust the table name if you customized `PGVECTOR_ENTRIES_TABLE`.
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_entry_embeddings_embedding_hnsw
+ON entry_embeddings USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+
 ### Using Milvus
 
 Uses a dedicated Milvus vector database (9 services total). Use `docker-compose.yml` for this configuration.
@@ -372,6 +382,8 @@ Two vector backends are supported:
 | `PGVECTOR_ENTRIES_TABLE`    | `entry_embeddings`         | Table name for entry vectors                             |
 | `PGVECTOR_PREFS_TABLE`      | `user_preference_vectors`  | Table name for user preference vectors                   |
 | `PGVECTOR_METADATA_TABLE`   | `vector_store_metadata`    | Table name for model signature metadata                  |
+
+When `PGVECTOR_DATABASE_URL` is left empty, Glean connects pgvector to `DATABASE_URL` using its own async pool. That is fine for most installs, but count it separately when tuning PostgreSQL connection limits.
 
 ### Embedding Configuration
 

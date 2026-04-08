@@ -20,6 +20,8 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from glean_core import get_logger, init_logging
+from glean_vector.clients import create_vector_store_client
+from glean_vector.config import vector_backend_config
 
 from .config import settings
 from .mcp import create_mcp_server
@@ -118,6 +120,23 @@ def create_app(
         _app.state.redis_pool = await create_pool(redis_settings)
         logger.info("Redis pool initialized")
 
+        try:
+            vector_client = create_vector_store_client()
+            vector_client.connect()
+            _app.state.vector_client = vector_client
+            _app.state.vector_client_error = None
+            logger.info(
+                "Vector client initialized",
+                extra={"backend": vector_backend_config.backend},
+            )
+        except Exception as e:
+            _app.state.vector_client = None
+            _app.state.vector_client_error = str(e)
+            logger.warning(
+                "Vector client unavailable for API scoring",
+                extra={"backend": vector_backend_config.backend, "error": str(e)},
+            )
+
         # Run extra startup hook
         if extra_startup:
             await extra_startup()
@@ -132,6 +151,14 @@ def create_app(
             if extra_shutdown:
                 await extra_shutdown()
         finally:
+            vector_client = getattr(_app.state, "vector_client", None)
+            if vector_client:
+                vector_client.disconnect()
+                _app.state.vector_client = None
+                logger.info(
+                    "Vector client disconnected",
+                    extra={"backend": vector_backend_config.backend},
+                )
             redis_pool = getattr(_app.state, "redis_pool", None)
             if redis_pool:
                 await redis_pool.close()

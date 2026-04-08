@@ -1,8 +1,9 @@
 """Configuration for vector services."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Find .env file in project root
@@ -59,7 +60,15 @@ class VectorBackendConfig(BaseSettings):
         extra="ignore",
     )
 
-    backend: str = "milvus"
+    backend: Literal["milvus", "pgvector"] = "milvus"
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def validate_backend(cls, value: str) -> str:
+        backend = str(value).lower()
+        if backend not in {"milvus", "pgvector"}:
+            raise ValueError("VECTOR_BACKEND must be either 'milvus' or 'pgvector'")
+        return backend
 
 
 class PgVectorConfig(BaseSettings):
