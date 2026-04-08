@@ -246,12 +246,6 @@ async def get_score_service(
         if vector_client is None:
             return SimpleScoreService(session)
 
-        await vector_client.ensure_collections(
-            config.dimension,
-            config.provider,
-            config.model,
-        )
-
         return ScoreService(db_session=session, vector_client=vector_client)
     except Exception:
         # Vector backend not available, fall back to simple scoring

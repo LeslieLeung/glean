@@ -110,7 +110,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-        from glean_database.session import init_database
+        from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+        from glean_core.services import TypedConfigService
+        from glean_database.session import get_session_context, init_database
 
         logger.info(f"Starting Glean API v{settings.version}")
         init_database(settings.database_url)
@@ -123,6 +125,21 @@ def create_app(
         try:
             vector_client = create_vector_store_client()
             vector_client.connect()
+
+            async with get_session_context() as session:
+                config_service = TypedConfigService(session)
+                config = await config_service.get(EmbeddingConfig)
+
+            if config.enabled and config.status in (
+                VectorizationStatus.IDLE,
+                VectorizationStatus.REBUILDING,
+            ):
+                await vector_client.ensure_collections(
+                    config.dimension,
+                    config.provider,
+                    config.model,
+                )
+
             _app.state.vector_client = vector_client
             _app.state.vector_client_error = None
             logger.info(
