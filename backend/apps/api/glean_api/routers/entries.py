@@ -5,7 +5,7 @@ Provides endpoints for reading and managing feed entries.
 """
 
 from contextlib import suppress
-from typing import Annotated
+from typing import Annotated, cast
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -191,15 +191,19 @@ async def extract_entry_fulltext(
 
     try:
         job_result = await job.result(timeout=30)
-        status_text = str(job_result.get("status", "unknown")) if isinstance(job_result, dict) else "unknown"
+        if isinstance(job_result, dict):
+            job_result_dict = cast(dict[str, object], job_result)
+            status_text = str(job_result_dict.get("status", "unknown"))
+        else:
+            status_text = "unknown"
     except TimeoutError:
         status_text = "queued"
 
     if status_text == "updated":
         updated_entry = await entry_service.get_entry(entry_id, current_user.id)
-        return {"status": status_text, "entry": updated_entry}
+        return FullTextExtractionResponse(status=status_text, entry=updated_entry)
 
-    return {"status": status_text, "entry": None}
+    return FullTextExtractionResponse(status=status_text, entry=None)
 
 
 # M3: Preference signal endpoints

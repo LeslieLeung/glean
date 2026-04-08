@@ -14,7 +14,9 @@ from glean_rss import fetch_and_extract_fulltext
 logger = get_logger(__name__)
 
 
-async def extract_entry_fulltext(ctx: dict[str, Any], user_id: str, entry_id: str) -> dict[str, str]:
+async def extract_entry_fulltext(
+    ctx: dict[str, Any], user_id: str, entry_id: str
+) -> dict[str, str]:
     """
     Extract full article content for a specific entry and persist it.
 
@@ -36,17 +38,24 @@ async def extract_entry_fulltext(ctx: dict[str, Any], user_id: str, entry_id: st
         entry = result.scalar_one_or_none()
 
         if not entry:
-            logger.warning("Entry not found or inaccessible", extra={"entry_id": entry_id, "user_id": user_id})
+            logger.warning(
+                "Entry not found or inaccessible", extra={"entry_id": entry_id, "user_id": user_id}
+            )
             return {"status": "not_found"}
 
         if not entry.url:
             logger.warning("Entry has no URL for extraction", extra={"entry_id": entry_id})
             return {"status": "no_url"}
 
-        logger.info("Starting on-demand full-text extraction", extra={"entry_id": entry_id, "url": entry.url})
+        logger.info(
+            "Starting on-demand full-text extraction",
+            extra={"entry_id": entry_id, "url": entry.url},
+        )
         extracted_content = await fetch_and_extract_fulltext(entry.url)
         if not extracted_content:
-            logger.warning("Full-text extraction returned empty content", extra={"entry_id": entry_id})
+            logger.warning(
+                "Full-text extraction returned empty content", extra={"entry_id": entry_id}
+            )
             return {"status": "empty"}
 
         entry.readability_content = extracted_content

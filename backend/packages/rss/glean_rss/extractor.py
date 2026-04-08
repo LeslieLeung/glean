@@ -194,7 +194,9 @@ async def extract_fulltext(html: str, url: str | None = None) -> str | None:
     # pick the largest content-like container and sanitize it.
     try:
         soup = await asyncio.to_thread(BeautifulSoup, html, "html.parser")
-        candidates = soup.select("article, main, [role='main'], .post-content, .entry-content, .article-body")
+        candidates = soup.select(
+            "article, main, [role='main'], .post-content, .entry-content, .article-body"
+        )
         best_html = ""
         best_len = 0
         for candidate in candidates:
