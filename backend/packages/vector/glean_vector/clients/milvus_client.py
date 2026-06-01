@@ -65,7 +65,7 @@ class MilvusClient:
         return f"{provider}:{model}:{dimension}"
 
     @staticmethod
-    def _extract_model_signature(collection: Collection) -> str | None:
+    def extract_model_signature(collection: Collection) -> str | None:
         """
         Extract model signature from collection description.
 
@@ -121,8 +121,8 @@ class MilvusClient:
         try:
             if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
                 collection = Collection(self.config.entries_collection)
-                existing_signature = self._extract_model_signature(collection)
-                if existing_signature and existing_signature != expected_signature:
+                existing_signature = self.extract_model_signature(collection)
+                if existing_signature != expected_signature:
                     return (
                         False,
                         f"Entries collection signature mismatch: "
@@ -138,8 +138,8 @@ class MilvusClient:
         try:
             if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
                 collection = Collection(self.config.prefs_collection)
-                existing_signature = self._extract_model_signature(collection)
-                if existing_signature and existing_signature != expected_signature:
+                existing_signature = self.extract_model_signature(collection)
+                if existing_signature != expected_signature:
                     return (
                         False,
                         f"Preferences collection signature mismatch: "
@@ -220,8 +220,8 @@ class MilvusClient:
 
             # Check if model has changed
             if expected_signature:
-                existing_signature = self._extract_model_signature(collection)
-                if existing_signature and existing_signature != expected_signature:
+                existing_signature = self.extract_model_signature(collection)
+                if existing_signature != expected_signature:
                     # Model changed - recreate collections
                     await self.recreate_collections(dimension, provider, model)
                     return
@@ -237,8 +237,8 @@ class MilvusClient:
 
             # Check if model has changed
             if expected_signature:
-                existing_signature = self._extract_model_signature(collection)
-                if existing_signature and existing_signature != expected_signature:
+                existing_signature = self.extract_model_signature(collection)
+                if existing_signature != expected_signature:
                     # Model changed - recreate collections
                     await self.recreate_collections(dimension, provider, model)
                     return
@@ -315,7 +315,7 @@ class MilvusClient:
         if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
             existing_collection = Collection(self.config.entries_collection)
             if provider and model:
-                existing_signature = self._extract_model_signature(existing_collection)
+                existing_signature = self.extract_model_signature(existing_collection)
                 expected_signature = self._build_model_signature(provider, model, dimension)
                 if existing_signature == expected_signature:
                     existing_collection.load()  # type: ignore[unused-coroutine]
@@ -387,7 +387,7 @@ class MilvusClient:
         if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
             existing_collection = Collection(self.config.prefs_collection)
             if provider and model:
-                existing_signature = self._extract_model_signature(existing_collection)
+                existing_signature = self.extract_model_signature(existing_collection)
                 expected_signature = self._build_model_signature(provider, model, dimension)
                 if existing_signature == expected_signature:
                     existing_collection.load()  # type: ignore[unused-coroutine]

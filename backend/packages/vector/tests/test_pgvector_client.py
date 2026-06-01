@@ -58,7 +58,7 @@ def test_pgvector_client_collections_exist_defaults_false() -> None:
 
 @pytest.mark.asyncio
 async def test_pgvector_client_ensure_collections_is_idempotent() -> None:
-    """Repeated ensure_collections calls with the same model should not rewrite schema metadata."""
+    """Repeated ensure_collections calls should not rewrite schema metadata."""
     client = PgVectorClient()
     client._connected = True
     _build_client_tables(client)
@@ -81,9 +81,43 @@ async def test_pgvector_client_ensure_collections_is_idempotent() -> None:
 
     client._engine = SimpleNamespace(begin=lambda: FakeBegin())
     client._execute = AsyncMock()
+    client._load_model_signature = AsyncMock(return_value="openai:text-embedding-3-small:1536")
 
     await client.ensure_collections(1536, "openai", "text-embedding-3-small")
     await client.ensure_collections(1536, "openai", "text-embedding-3-small")
 
     assert len(sql_calls) == 4
-    assert client._execute.await_count == 2
+    assert client._execute.await_count == 0
+    client._load_model_signature.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pgvector_client_recreate_writes_model_metadata() -> None:
+    """recreate_collections is the only path that stamps a new model signature."""
+    client = PgVectorClient()
+    client._connected = True
+    _build_client_tables(client)
+
+    sql_calls: list[str] = []
+
+    class FakeConn:
+        async def exec_driver_sql(self, sql: str) -> None:
+            sql_calls.append(sql)
+
+        async def run_sync(self, fn) -> None:
+            return None
+
+    class FakeBegin:
+        async def __aenter__(self) -> FakeConn:
+            return FakeConn()
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+    client._engine = SimpleNamespace(begin=lambda: FakeBegin())
+    client._write_model_metadata = AsyncMock()
+
+    await client.recreate_collections(1536, "openai", "text-embedding-3-small")
+
+    assert any("DROP TABLE IF EXISTS" in call for call in sql_calls)
+    client._write_model_metadata.assert_awaited_once_with("openai:text-embedding-3-small:1536")

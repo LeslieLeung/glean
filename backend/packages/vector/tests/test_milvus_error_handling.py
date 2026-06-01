@@ -129,3 +129,25 @@ class TestMilvusClientErrorHandling:
                 assert is_compatible is False
                 assert reason is not None
                 assert "Preferences collection" in reason
+
+    def test_check_model_compatibility_missing_signature_requires_rebuild(self) -> None:
+        """Existing collections without model metadata must not be treated as compatible."""
+        client = MilvusClient()
+
+        mock_collection = MagicMock()
+        mock_collection.description = "Entry embeddings without signature"
+
+        with (
+            patch.object(client, "connect"),
+            patch("glean_vector.clients.milvus_client.utility.has_collection", return_value=True),
+            patch("glean_vector.clients.milvus_client.Collection", return_value=mock_collection),
+        ):
+            is_compatible, reason = client.check_model_compatibility(
+                dimension=1536,
+                provider="openai",
+                model="text-embedding-3-small",
+            )
+
+        assert is_compatible is False
+        assert reason is not None
+        assert "existing=None" in reason

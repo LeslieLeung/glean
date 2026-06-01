@@ -195,8 +195,9 @@ class EmbeddingValidationService:
             ValidationResult with success status and details.
         """
         try:
-            from pymilvus import connections, utility
+            from pymilvus import Collection, connections, utility
 
+            from glean_vector.clients.milvus_client import MilvusClient
             from glean_vector.config import milvus_config
 
             try:
@@ -217,6 +218,31 @@ class EmbeddingValidationService:
                     milvus_config.prefs_collection, using="validation"
                 )
 
+                collections_exist = entries_exists and prefs_exists
+                expected_signature = None
+                if provider and model and dimension:
+                    expected_signature = f"{provider}:{model}:{dimension}"
+
+                is_compatible = True
+                compatibility_reason: str | None = None
+                model_signatures: dict[str, str | None] = {}
+
+                if expected_signature and collections_exist:
+                    for target_name, collection_name in (
+                        ("entries", milvus_config.entries_collection),
+                        ("preferences", milvus_config.prefs_collection),
+                    ):
+                        collection = Collection(collection_name, using="validation")
+                        current_signature = MilvusClient.extract_model_signature(collection)
+                        model_signatures[target_name] = current_signature
+                        if current_signature != expected_signature:
+                            is_compatible = False
+                            compatibility_reason = (
+                                f"{target_name} signature mismatch: "
+                                f"existing={current_signature}, expected={expected_signature}"
+                            )
+                            break
+
                 logger.info("Milvus validation successful")
                 return ValidationResult(
                     success=True,
@@ -228,6 +254,11 @@ class EmbeddingValidationService:
                         "entries_collection_exists": entries_exists,
                         "prefs_collection": milvus_config.prefs_collection,
                         "prefs_collection_exists": prefs_exists,
+                        "collections_exist": collections_exist,
+                        "is_compatible": is_compatible,
+                        "compatibility_reason": compatibility_reason,
+                        "expected_signature": expected_signature,
+                        "model_signatures": model_signatures,
                         "dimension": dimension,
                         "provider": provider,
                         "model": model,

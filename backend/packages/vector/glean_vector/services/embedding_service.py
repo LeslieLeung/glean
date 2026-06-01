@@ -186,13 +186,14 @@ class EmbeddingService:
 
         When a prior flush/execute fails, asyncpg puts the connection into a
         failed-transaction state where all subsequent SQL is rejected.  This
-        helper rolls back the aborted transaction before retrying the UPDATE so
+        helper rolls back the aborted transaction before writing the UPDATE so
         that the failure is recorded even after an infrastructure error.
 
         Side-effect: a rollback discards any unflushed changes on the session
         (the caller should commit per-entry to minimise data loss).
         """
         try:
+            await self.db.rollback()
             await self._mark_failed(entry_id, error)
         except Exception:
             try:

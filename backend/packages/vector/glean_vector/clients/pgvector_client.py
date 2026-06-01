@@ -111,6 +111,8 @@ class PgVectorClient:
 
     def disconnect(self) -> None:
         """Close connection resources."""
+        if self._engine is not None:
+            self._engine.sync_engine.dispose()
         self._connected = False
         self._engine = None
         self._session_maker = None
@@ -149,6 +151,46 @@ class PgVectorClient:
             await session.commit()
             return result
 
+    async def _load_model_signature(self) -> str | None:
+        if self._session_maker is None:
+            raise RuntimeError("pgvector client not connected")
+        _, _, meta_table = self._tables()
+        async with self._session_maker() as session:
+            rows = (
+                await session.execute(
+                    select(meta_table.c.name, meta_table.c.model_signature).where(
+                        meta_table.c.name.in_(["entries", "preferences"])
+                    )
+                )
+            ).all()
+        signatures = {str(row.name): str(row.model_signature) for row in rows}
+        entries_signature = signatures.get("entries")
+        prefs_signature = signatures.get("preferences")
+        if entries_signature and entries_signature == prefs_signature:
+            return entries_signature
+        return None
+
+    async def _write_model_metadata(self, signature: str) -> None:
+        _, _, meta_table = self._tables()
+        now_ts = int(datetime.now(UTC).timestamp())
+        await self._execute(
+            insert(meta_table)
+            .values(name="entries", model_signature=signature, updated_at=now_ts)
+            .on_conflict_do_update(
+                index_elements=["name"],
+                set_={"model_signature": signature, "updated_at": now_ts},
+            )
+        )
+        await self._execute(
+            insert(meta_table)
+            .values(name="preferences", model_signature=signature, updated_at=now_ts)
+            .on_conflict_do_update(
+                index_elements=["name"],
+                set_={"model_signature": signature, "updated_at": now_ts},
+            )
+        )
+        self._last_model_signature = signature
+
     def _tables(self) -> tuple[Table, Table, Table]:
         if self._entries_table is None or self._prefs_table is None or self._meta_table is None:
             raise RuntimeError("pgvector tables not initialized")
@@ -166,7 +208,7 @@ class PgVectorClient:
         self._ensure_connected()
         if self._engine is None:
             raise RuntimeError("pgvector engine unavailable")
-        entries_table, prefs_table, meta_table = self._tables()
+        entries_table, prefs_table, _meta_table = self._tables()
 
         if not self._schema_ensured:
             async with self._engine.begin() as conn:
@@ -186,27 +228,8 @@ class PgVectorClient:
                 )
             self._schema_ensured = True
 
-        if provider and model:
-            signature = self._build_model_signature(provider, model, dimension)
-            if signature != self._last_model_signature:
-                now_ts = int(datetime.now(UTC).timestamp())
-                await self._execute(
-                    insert(meta_table)
-                    .values(name="entries", model_signature=signature, updated_at=now_ts)
-                    .on_conflict_do_update(
-                        index_elements=["name"],
-                        set_={"model_signature": signature, "updated_at": now_ts},
-                    )
-                )
-                await self._execute(
-                    insert(meta_table)
-                    .values(name="preferences", model_signature=signature, updated_at=now_ts)
-                    .on_conflict_do_update(
-                        index_elements=["name"],
-                        set_={"model_signature": signature, "updated_at": now_ts},
-                    )
-                )
-                self._last_model_signature = signature
+        if provider and model and self._last_model_signature is None:
+            self._last_model_signature = await self._load_model_signature()
 
     async def recreate_collections(
         self, dimension: int, provider: str | None = None, model: str | None = None
@@ -223,7 +246,10 @@ class PgVectorClient:
             await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(prefs_table.name)}")
             await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(entries_table.name)}")
             await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(meta_table.name)}")
-        await self.ensure_collections(dimension, provider, model)
+        await self.ensure_collections(dimension)
+        if provider and model:
+            signature = self._build_model_signature(provider, model, dimension)
+            await self._write_model_metadata(signature)
 
     async def insert_entry_embedding(
         self,

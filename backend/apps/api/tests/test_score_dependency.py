@@ -12,9 +12,12 @@ from glean_vector.services.score_service import ScoreService
 
 @pytest.mark.asyncio
 async def test_get_score_service_reuses_app_scoped_vector_client() -> None:
-    """Should reuse the app-scoped vector client without schema writes."""
+    """Should reuse the app-scoped vector client after ensuring storage."""
     session = AsyncMock()
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(vector_client=object())))
+    vector_client = AsyncMock()
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(vector_client=vector_client))
+    )
     config = EmbeddingConfig(
         enabled=True,
         status=VectorizationStatus.IDLE,
@@ -37,9 +40,14 @@ async def test_get_score_service_reuses_app_scoped_vector_client() -> None:
         service = await get_score_service(request=request, session=session)
 
     assert service is sentinel_service
+    vector_client.ensure_collections.assert_awaited_once_with(
+        config.dimension,
+        config.provider,
+        config.model,
+    )
     score_service_cls.assert_called_once_with(
         db_session=session,
-        vector_client=request.app.state.vector_client,
+        vector_client=vector_client,
     )
 
 
