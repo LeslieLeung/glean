@@ -5,7 +5,7 @@ Provides endpoints for reading and managing feed entries.
 """
 
 from contextlib import suppress
-from typing import Annotated
+from typing import Annotated, cast
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -132,6 +132,13 @@ class MarkAllReadRequest(BaseModel):
     folder_id: str | None = None
 
 
+class FullTextExtractionResponse(BaseModel):
+    """Response for on-demand full-text extraction."""
+
+    status: str
+    entry: EntryResponse | None = None
+
+
 @router.post("/mark-all-read")
 async def mark_all_read(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
@@ -151,6 +158,52 @@ async def mark_all_read(
     """
     await entry_service.mark_all_read(current_user.id, data.feed_id, data.folder_id)
     return {"message": "All entries marked as read"}
+
+
+@router.post("/{entry_id}/extract-fulltext")
+async def extract_entry_fulltext(
+    entry_id: str,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    entry_service: Annotated[EntryService, Depends(get_entry_service)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
+) -> FullTextExtractionResponse:
+    """
+    Trigger on-demand full-text extraction for an entry.
+
+    The task runs in the worker queue and updates entry.content if extraction succeeds.
+    """
+    try:
+        # Authorization + existence check.
+        await entry_service.get_entry(entry_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
+
+    job = await redis_pool.enqueue_job(
+        "extract_entry_fulltext",
+        user_id=current_user.id,
+        entry_id=entry_id,
+    )
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Extraction queue is temporarily unavailable",
+        )
+
+    try:
+        job_result = await job.result(timeout=30)
+        if isinstance(job_result, dict):
+            job_result_dict = cast(dict[str, object], job_result)
+            status_text = str(job_result_dict.get("status", "unknown"))
+        else:
+            status_text = "unknown"
+    except TimeoutError:
+        status_text = "queued"
+
+    if status_text == "updated":
+        updated_entry = await entry_service.get_entry(entry_id, current_user.id)
+        return FullTextExtractionResponse(status=status_text, entry=updated_entry)
+
+    return FullTextExtractionResponse(status=status_text, entry=None)
 
 
 # M3: Preference signal endpoints

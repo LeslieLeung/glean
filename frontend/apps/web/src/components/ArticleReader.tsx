@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
 import { useUpdateEntryState, entryKeys } from '../hooks/useEntries'
-import { bookmarkService } from '@glean/api-client'
+import { bookmarkService, entryService } from '@glean/api-client'
 import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import {
@@ -10,6 +10,7 @@ import {
   Clock,
   Archive,
   ExternalLink,
+  FileText,
   Loader2,
   Maximize2,
   Minimize2,
@@ -159,8 +160,12 @@ export function ArticleReader({
     window.dispatchEvent(new CustomEvent('openMobileSidebar'))
   }
   const updateMutation = useUpdateEntryState()
-  const contentRef = useContentRenderer(entry.content || entry.summary || undefined)
+  const contentRef = useContentRenderer(
+    entry.readability_content || entry.content || entry.summary || undefined
+  )
   const [isBookmarking, setIsBookmarking] = useState(false)
+  const [isExtractingFullText, setIsExtractingFullText] = useState(false)
+  const [showReadabilityContent, setShowReadabilityContent] = useState(false)
   const [hasOutline, setHasOutline] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -175,6 +180,7 @@ export function ArticleReader({
   // Reset outline state when entry changes
   useEffect(() => {
     setHasOutline(false)
+    setShowReadabilityContent(false)
   }, [entry.id])
 
   // Animation triggers for action buttons
@@ -217,6 +223,53 @@ export function ArticleReader({
       setIsBookmarking(false)
     }
   }
+
+  const extractFullTextMutation = useMutation({
+    mutationFn: () => entryService.extractFullText(entry.id),
+    onSuccess: async (response) => {
+      if (response.entry) {
+        queryClient.setQueryData(entryKeys.detail(entry.id), response.entry)
+      }
+
+      // If task is still queued, poll until content changes or timeout.
+      if (response.status === 'queued') {
+        const originalReadabilityContent = entry.readability_content
+        for (let attempt = 0; attempt < 15; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          const latestEntry = await entryService.getEntry(entry.id)
+          if (
+            latestEntry.readability_content &&
+            latestEntry.readability_content !== originalReadabilityContent
+          ) {
+            queryClient.setQueryData(entryKeys.detail(entry.id), latestEntry)
+            break
+          }
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
+      await queryClient.invalidateQueries({ queryKey: entryKeys.detail(entry.id) })
+    },
+    onSettled: () => {
+      setIsExtractingFullText(false)
+    },
+  })
+
+  const handleExtractFullText = () => {
+    if (entry.readability_content) {
+      setShowReadabilityContent((prev) => !prev)
+      return
+    }
+
+    setShowReadabilityContent(true)
+    setIsExtractingFullText(true)
+    extractFullTextMutation.mutate()
+  }
+
+  const displayContent =
+    showReadabilityContent && entry.readability_content
+      ? entry.readability_content
+      : (entry.content ?? entry.summary)
 
   return (
     <div className="bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -326,6 +379,25 @@ export function ArticleReader({
             <Button
               variant="ghost"
               size="sm"
+              onClick={handleExtractFullText}
+              disabled={isExtractingFullText}
+              className="action-btn text-muted-foreground"
+            >
+              {isExtractingFullText ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              <span>
+                {entry.readability_content && showReadabilityContent
+                  ? t('actions.showFeedText')
+                  : t('actions.getFullArticle')}
+              </span>
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleToggleReadLater}
               className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
             >
@@ -372,17 +444,11 @@ export function ArticleReader({
               </div>
             )}
 
-            {entry.content ? (
+            {displayContent ? (
               <article
                 ref={contentRef}
                 className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.content) }}
-              />
-            ) : entry.summary ? (
-              <article
-                ref={contentRef}
-                className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.summary) }}
+                dangerouslySetInnerHTML={{ __html: processHtmlContent(displayContent) }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -404,7 +470,7 @@ export function ArticleReader({
         </div>
 
         {/* Desktop Outline - Sidebar that only takes space when there are headings */}
-        {!isMobile && (entry.content || entry.summary) && (
+        {!isMobile && displayContent && (
           <div className={`hidden flex-col xl:flex ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
             <ArticleOutline
               contentRef={contentRef}
@@ -417,7 +483,7 @@ export function ArticleReader({
       </div>
 
       {/* Mobile Outline */}
-      {isMobile && (entry.content || entry.summary) && (
+      {isMobile && displayContent && (
         <ArticleOutline
           contentRef={contentRef}
           scrollContainerRef={scrollContainerRef}
@@ -456,6 +522,23 @@ export function ArticleReader({
             )}
 
             <PreferenceButtons entry={entry} mobileStyle />
+
+            <button
+              onClick={handleExtractFullText}
+              disabled={isExtractingFullText}
+              className="action-btn action-btn-mobile text-muted-foreground hover:text-foreground flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors disabled:opacity-50"
+            >
+              {isExtractingFullText ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <FileText className="h-5 w-5" />
+              )}
+              <span className="text-[10px]">
+                {entry.readability_content && showReadabilityContent
+                  ? t('actions.feed')
+                  : t('actions.full')}
+              </span>
+            </button>
 
             <button
               onClick={handleToggleReadLater}

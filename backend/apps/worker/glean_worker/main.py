@@ -22,6 +22,7 @@ from .tasks import (
     cleanup,
     embedding_rebuild,
     embedding_worker,
+    entry_fulltext,
     feed_fetcher,
     preference_worker,
     subscription_cleanup,
@@ -124,6 +125,7 @@ def get_oss_functions() -> list[TaskFunction]:
     return [
         feed_fetcher.fetch_feed_task,
         feed_fetcher.fetch_all_feeds,
+        entry_fulltext.extract_entry_fulltext,
         cleanup.cleanup_read_later,
         bookmark_metadata.fetch_bookmark_metadata_task,
         # M3: Embedding tasks (triggered immediately after feed fetch)

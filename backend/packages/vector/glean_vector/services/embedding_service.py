@@ -56,7 +56,10 @@ class EmbeddingService:
         # Combine title and content/summary
         parts = [entry.title]
 
-        if entry.content:
+        if entry.readability_content:
+            text = re.sub(r"<[^>]+>", "", entry.readability_content)
+            parts.append(text)
+        elif entry.content:
             # Strip HTML tags from content
             text = re.sub(r"<[^>]+>", "", entry.content)
             parts.append(text)

@@ -49,6 +49,7 @@ class Entry(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(1000), nullable=False)
     author: Mapped[str | None] = mapped_column(String(200))
     content: Mapped[str | None] = mapped_column(Text)
+    readability_content: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
 
     # Metadata

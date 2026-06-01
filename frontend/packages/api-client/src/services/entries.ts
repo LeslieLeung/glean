@@ -73,4 +73,13 @@ export class EntryService {
   async removeReaction(entryId: string): Promise<EntryWithState> {
     return this.client.delete<EntryWithState>(`/entries/${entryId}/reaction`)
   }
+
+  /**
+   * Trigger on-demand full-text extraction for an entry.
+   */
+  async extractFullText(entryId: string): Promise<{ status: string; entry: EntryWithState | null }> {
+    return this.client.post<{ status: string; entry: EntryWithState | null }>(
+      `/entries/${entryId}/extract-fulltext`
+    )
+  }
 }

@@ -20,7 +20,11 @@
     "like": "Like",
     "liked": "Liked",
     "dislike": "Dislike",
-    "disliked": "Disliked"
+    "disliked": "Disliked",
+    "getFullArticle": "Get Full Article",
+    "showFeedText": "Show Feed Text",
+    "full": "Full",
+    "feed": "Feed"
   },
   "entries": {
     "loadError": "Failed to load entries",

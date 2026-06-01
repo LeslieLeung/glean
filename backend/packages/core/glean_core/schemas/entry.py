@@ -27,6 +27,7 @@ class EntryResponse(BaseModel):
     title: str
     author: str | None
     content: str | None
+    readability_content: str | None = None
     summary: str | None
     published_at: datetime | None
     created_at: datetime
