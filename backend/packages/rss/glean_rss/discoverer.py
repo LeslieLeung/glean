@@ -8,6 +8,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from .parser import parse_feed
+from .safe_http import safe_async_client
 
 
 async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
@@ -28,7 +29,7 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
     Raises:
         ValueError: If no feed found or request fails.
     """
-    async with httpx.AsyncClient(
+    async with safe_async_client(
         timeout=timeout, follow_redirects=True, headers={"User-Agent": "Glean/1.0"}
     ) as client:
         try:
@@ -103,7 +104,7 @@ async def fetch_feed(
     if last_modified:
         headers["If-Modified-Since"] = last_modified
 
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
+    async with safe_async_client(timeout=30, follow_redirects=True, headers=headers) as client:
         try:
             response = await client.get(url)
 

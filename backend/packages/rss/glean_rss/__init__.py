@@ -8,6 +8,7 @@ from .discoverer import discover_feed, fetch_feed
 from .extractor import extract_fulltext, fetch_and_extract_fulltext, postprocess_html
 from .opml import OPMLFeed, OPMLParseResult, generate_opml, parse_opml, parse_opml_with_folders
 from .parser import ParsedEntry, ParsedFeed, parse_feed
+from .safe_http import SSRFBlockedError, SSRFPolicy, safe_async_client
 from .utils import strip_html_tags
 
 __all__ = [
@@ -25,4 +26,7 @@ __all__ = [
     "OPMLFeed",
     "OPMLParseResult",
     "strip_html_tags",
+    "safe_async_client",
+    "SSRFPolicy",
+    "SSRFBlockedError",
 ]

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from glean_core import get_logger
 from glean_database.models import Bookmark
 from glean_database.session import get_session_context
-from glean_rss import extract_fulltext
+from glean_rss import extract_fulltext, safe_async_client
 
 logger = get_logger(__name__)
 
@@ -170,7 +170,7 @@ async def fetch_bookmark_metadata_task(
             logger.info("Fetching URL", extra={"bookmark_id": bookmark_id, "url": bookmark.url})
 
             # Fetch the webpage
-            async with httpx.AsyncClient(
+            async with safe_async_client(
                 timeout=30.0,
                 follow_redirects=True,
                 headers={"User-Agent": USER_AGENT},

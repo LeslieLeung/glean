@@ -8,10 +8,11 @@ import asyncio
 from typing import cast
 from urllib.parse import urljoin, urlparse
 
-import httpx
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
 from readability import Document
+
+from .safe_http import safe_async_client
 
 # Minimum content length threshold for successful extraction.
 # 100 characters is chosen as a reasonable minimum to avoid storing
@@ -181,7 +182,7 @@ async def fetch_and_extract_fulltext(url: str) -> str | None:
     Returns:
         Extracted HTML content or None if fetch/extraction fails.
     """
-    async with httpx.AsyncClient(
+    async with safe_async_client(
         timeout=30.0,
         headers={"User-Agent": "Mozilla/5.0 (compatible; GleanBot/1.0)"},
         follow_redirects=True,
