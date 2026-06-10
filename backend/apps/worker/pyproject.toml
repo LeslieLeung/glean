@@ -13,6 +13,10 @@ dependencies = [
     "glean-database",
     "glean-rss",
     "glean-vector",
+    "deep-translator>=1.11.0",
+    "deepl>=1.17.0",
+    "openai>=1.0.0",
+    "beautifulsoup4>=4.12.0",
 ]
 
 [tool.uv.sources]

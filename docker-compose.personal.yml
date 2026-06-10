@@ -1,0 +1,222 @@
+# Glean - Personal Build (ghcr.io/gotoboy)
+#
+# Usage on UGREEN NAS:
+#   1. Push a tag on your fork:  git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
+#   2. Wait for GitHub Actions to finish building
+#   3. Copy this entire file into UGREEN Docker Compose editor
+#   4. Modify IMAGE_TAG below to match your tag (without the 'v' prefix)
+#
+# To switch back to official images:
+#   Replace "ghcr.io/gotoboy/glean" with "ghcr.io/leslieleung/glean"
+
+x-image-tag: &image-tag ${IMAGE_TAG:-latest}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: glean-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-glean}
+      POSTGRES_USER: ${POSTGRES_USER:-glean}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-glean}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-glean}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    container_name: glean-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  backend:
+    # ========== YOUR FORK IMAGE ==========
+    image: ghcr.io/gotoboy/glean-backend:${IMAGE_TAG:-latest}
+    container_name: glean-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
+      DEBUG: ${DEBUG:-false}
+      RUN_MIGRATIONS: "true"
+      CREATE_ADMIN: ${CREATE_ADMIN:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
+      MILVUS_HOST: milvus
+      MILVUS_PORT: ${MILVUS_PORT:-19530}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: ${LOG_FILE:-/app/logs/glean-api.log}
+      LOG_ROTATION: ${LOG_ROTATION:-100 MB}
+      LOG_RETENTION: ${LOG_RETENTION:-30 days}
+      LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
+      LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+    volumes:
+      - glean_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - glean-network
+    restart: unless-stopped
+    command: ["uv", "run", "--no-sync", "uvicorn", "glean_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    # ========== YOUR FORK IMAGE ==========
+    image: ghcr.io/gotoboy/glean-backend:${IMAGE_TAG:-latest}
+    container_name: glean-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      MILVUS_HOST: milvus
+      MILVUS_PORT: ${MILVUS_PORT:-19530}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: ${LOG_FILE:-/app/logs/glean-worker.log}
+      LOG_ROTATION: ${LOG_ROTATION:-100 MB}
+      LOG_RETENTION: ${LOG_RETENTION:-30 days}
+      LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
+      LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+    volumes:
+      - glean_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    networks:
+      - glean-network
+    restart: unless-stopped
+    command: ["uv", "run", "--no-sync", "arq", "glean_worker.main.WorkerSettings"]
+
+  web:
+    # ========== YOUR FORK IMAGE ==========
+    image: ghcr.io/gotoboy/glean-web:${IMAGE_TAG:-latest}
+    container_name: glean-web
+    ports:
+      - "${WEB_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  admin:
+    # ========== YOUR FORK IMAGE ==========
+    image: ghcr.io/gotoboy/glean-admin:${IMAGE_TAG:-latest}
+    container_name: glean-admin
+    ports:
+      - "${ADMIN_PORT:-3001}:80"
+    depends_on:
+      - backend
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  # Milvus services
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: glean-milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - milvus_etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://milvus-etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  milvus-minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: glean-milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - milvus_minio_data:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v2.6.6
+    container_name: glean-milvus
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "9091:9091"
+    depends_on:
+      milvus-etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - glean-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  glean_logs:
+  milvus_etcd_data:
+  milvus_minio_data:
+  milvus_data:
+
+networks:
+  glean-network:
+    driver: bridge

@@ -36,6 +36,7 @@ import {
 import { SubscriptionsTab } from '../components/tabs/SubscriptionsTab'
 import { PreferenceTab } from '../components/tabs/PreferenceTab'
 import { APITokensTab } from '../components/tabs/APITokensTab'
+import { TranslationTab } from '../components/tabs/TranslationTab'
 import { useTranslation } from '@glean/i18n'
 
 /**
@@ -426,6 +427,13 @@ export default function SettingsPage() {
                     <span className="text-[10px] md:text-sm">{t('tabs.appearance')}</span>
                   </TabsTab>
                   <TabsTab
+                    value="translation"
+                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
+                  >
+                    <Languages className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
+                    <span className="text-[10px] md:text-sm">{t('tabs.translation')}</span>
+                  </TabsTab>
+                  <TabsTab
                     value="manage-feeds"
                     className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
                   >
@@ -505,6 +513,25 @@ export default function SettingsPage() {
                   </div>
                   <div className="animate-fade-in w-full" style={{ animationDelay: '50ms' }}>
                     <AppearanceContent />
+                  </div>
+                </TabsPanel>
+
+                <TabsPanel value="translation" className="h-full w-full min-w-0 p-6">
+                  <div className="animate-fade-in mb-8">
+                    <div className="mb-2 flex items-center gap-3">
+                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
+                        <Languages className="text-primary h-5 w-5" />
+                      </div>
+                      <div>
+                        <h2 className="font-display text-foreground text-2xl font-semibold">
+                          {t('translation.title')}
+                        </h2>
+                        <p className="text-muted-foreground text-sm">{t('translation.desc')}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="animate-fade-in" style={{ animationDelay: '50ms' }}>
+                    <TranslationTab />
                   </div>
                 </TabsPanel>
 

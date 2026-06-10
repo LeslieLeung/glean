@@ -7,7 +7,8 @@
     "appearance": "外观",
     "manageFeeds": "管理订阅",
     "preferences": "偏好",
-    "apiTokens": "API 令牌"
+    "apiTokens": "API 令牌",
+    "translation": "翻译"
   },
   "profile": {
     "title": "个人资料",
@@ -169,6 +170,29 @@
       "toolList": "按日期范围列出文章",
       "toolSubs": "列出您的订阅"
     }
+  },
+  "translation": {
+    "title": "翻译",
+    "desc": "配置翻译服务提供商和 API 密钥",
+    "provider": "翻译服务",
+    "providerDesc": "选择您偏好的翻译服务",
+    "google": {
+      "name": "Google 翻译",
+      "desc": "免费翻译服务，无需 API 密钥"
+    },
+    "deepl": {
+      "name": "DeepL",
+      "desc": "高质量翻译，措辞更自然"
+    },
+    "openai": {
+      "name": "OpenAI",
+      "desc": "使用 GPT 模型的 AI 翻译"
+    },
+    "apiKey": "API 密钥",
+    "apiKeyPlaceholder": "输入您的 API 密钥",
+    "model": "模型",
+    "noKeyWarning": "{{provider}} 需要 API 密钥，将使用 Google 翻译作为备选。",
+    "settingsSaved": "翻译设置已保存"
   },
   "version": "Glean v{{version}}"
 }

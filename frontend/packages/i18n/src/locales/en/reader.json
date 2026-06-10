@@ -56,5 +56,16 @@
   "article": {
     "noContent": "No content available",
     "viewOriginal": "View Original Article"
+  },
+  "translation": {
+    "translate": "Translate",
+    "translating": "Translating...",
+    "showOriginal": "Show Original",
+    "showTranslation": "Show Bilingual",
+    "bilingualMode": "Bilingual: {{language}}",
+    "failed": "Translation failed",
+    "retry": "Retry",
+    "sentenceMode": "Sentence translation active",
+    "hideTranslation": "Hide Translation"
   }
 }

@@ -1,4 +1,10 @@
-import type { EntryWithState, EntryListResponse, UpdateEntryStateRequest } from '@glean/types'
+import type {
+  EntryWithState,
+  EntryListResponse,
+  TranslateTextsResponse,
+  TranslationResponse,
+  UpdateEntryStateRequest,
+} from '@glean/types'
 import { ApiClient } from '../client'
 
 /**
@@ -72,5 +78,45 @@ export class EntryService {
    */
   async removeReaction(entryId: string): Promise<EntryWithState> {
     return this.client.delete<EntryWithState>(`/entries/${entryId}/reaction`)
+  }
+
+  // Translation endpoints
+
+  /**
+   * Request translation of an entry.
+   * If targetLanguage is not provided, auto-detects source and picks the opposite.
+   */
+  async translateEntry(
+    entryId: string,
+    targetLanguage?: string | null
+  ): Promise<TranslationResponse> {
+    return this.client.post<TranslationResponse>(`/entries/${entryId}/translate`, {
+      target_language: targetLanguage ?? null,
+    })
+  }
+
+  /**
+   * Get cached translation for an entry.
+   */
+  async getTranslation(entryId: string, targetLanguage: string): Promise<TranslationResponse> {
+    return this.client.get<TranslationResponse>(`/entries/${entryId}/translation/${targetLanguage}`)
+  }
+
+  /**
+   * Translate an array of text strings synchronously.
+   * Used for viewport-based sentence-level translation.
+   */
+  async translateTexts(
+    texts: string[],
+    targetLanguage: string,
+    sourceLanguage: string = 'auto',
+    entryId?: string,
+  ): Promise<TranslateTextsResponse> {
+    return this.client.post<TranslateTextsResponse>('/entries/translate-texts', {
+      texts,
+      target_language: targetLanguage,
+      source_language: sourceLanguage,
+      entry_id: entryId,
+    })
   }
 }

@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Keep uv artifacts across builds to avoid re-downloading large wheels.
+ENV UV_CACHE_DIR=/root/.cache/uv
+
 # Copy workspace files
 COPY pyproject.toml uv.lock ./
 COPY apps/ apps/
@@ -33,7 +36,8 @@ COPY scripts/ scripts/
 RUN chmod +x scripts/*.sh 2>/dev/null || true
 
 # Install dependencies
-RUN uv sync --all-packages --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --all-packages --no-dev
 
 # Expose API port
 EXPOSE 8000

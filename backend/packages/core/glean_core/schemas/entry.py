@@ -63,3 +63,45 @@ class UpdateEntryStateRequest(BaseModel):
     read_later: bool | None = None
     # Days until read-later expires (0 = never expire)
     read_later_days: int | None = None
+
+
+class TranslateEntryRequest(BaseModel):
+    """Request to translate an entry."""
+
+    # Target language code (e.g. "zh-CN", "en"). None = auto-detect.
+    target_language: str | None = None
+
+
+class TranslationResponse(BaseModel):
+    """Translation result response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    entry_id: str
+    target_language: str
+    translated_title: str | None = None
+    translated_content: str | None = None
+    status: str  # pending / processing / done / failed
+    error: str | None = None
+
+
+class TranslateTextsRequest(BaseModel):
+    """Request to translate an array of text strings (viewport-based)."""
+
+    texts: list[str]
+    target_language: str  # e.g. "zh-CN", "en"
+    source_language: str = "auto"
+    entry_id: str | None = None  # Optional: persist translations when provided
+
+
+class TranslateTextsResponse(BaseModel):
+    """Response with translated text strings."""
+
+    translations: list[str]
+    target_language: str
+
+
+class ParagraphTranslationsResponse(BaseModel):
+    """Cached paragraph-level translations for an entry."""
+
+    translations: dict[str, str]

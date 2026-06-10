@@ -15,6 +15,7 @@ from .preference_service import PreferenceService
 from .simple_score_service import SimpleScoreService
 from .system_config_service import SystemConfigService
 from .tag_service import TagService
+from .translation_service import TranslationService
 from .typed_config_service import TypedConfigService
 from .user_service import UserService
 
@@ -33,5 +34,6 @@ __all__ = [
     "PreferenceService",
     "SimpleScoreService",
     "SystemConfigService",
+    "TranslationService",
     "TypedConfigService",
 ]

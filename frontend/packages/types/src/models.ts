@@ -9,6 +9,9 @@
 export interface UserSettings {
   read_later_days?: number // Days until read later items expire (0 = never)
   show_read_later_remaining?: boolean // Show remaining time in read later list
+  translation_provider?: 'google' | 'deepl' | 'openai'
+  translation_api_key?: string
+  translation_model?: string
 }
 
 /** User account information */
@@ -281,4 +284,35 @@ export interface APITokenListResponse {
 export interface CreateAPITokenRequest {
   name: string
   expires_in_days?: number | null
+}
+
+// Translation types
+export interface TranslateEntryRequest {
+  target_language?: string | null // null = auto-detect
+}
+
+export interface TranslationResponse {
+  entry_id: string
+  target_language: string
+  translated_title: string | null
+  translated_content: string | null
+  status: 'pending' | 'processing' | 'done' | 'failed'
+  error: string | null
+}
+
+// Viewport-based translation types
+export interface TranslateTextsRequest {
+  texts: string[]
+  target_language: string
+  source_language?: string
+  entry_id?: string
+}
+
+export interface TranslateTextsResponse {
+  translations: string[]
+  target_language: string
+}
+
+export interface ParagraphTranslationsResponse {
+  translations: Record<string, string>
 }

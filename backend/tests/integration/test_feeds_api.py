@@ -21,7 +21,9 @@ class TestListSubscriptions:
         assert data["total"] == 0
 
     @pytest.mark.asyncio
-    async def test_list_subscriptions(self, client: AsyncClient, auth_headers, test_subscription):
+    async def test_list_subscriptions(
+        self, client: AsyncClient, auth_headers, test_subscription, test_feed
+    ):
         """Test listing user subscriptions."""
         response = await client.get("/api/feeds", headers=auth_headers)
 
@@ -36,7 +38,7 @@ class TestListSubscriptions:
         subscription = data["items"][0]
         assert subscription["id"] == str(test_subscription.id)
         assert "feed" in subscription
-        assert subscription["feed"]["url"] == "https://example.com/feed.xml"
+        assert subscription["feed"]["url"] == test_feed.url
 
     @pytest.mark.asyncio
     async def test_list_subscriptions_unauthorized(self, client: AsyncClient):
@@ -51,7 +53,7 @@ class TestGetSubscription:
 
     @pytest.mark.asyncio
     async def test_get_subscription_success(
-        self, client: AsyncClient, auth_headers, test_subscription
+        self, client: AsyncClient, auth_headers, test_subscription, test_feed
     ):
         """Test getting a specific subscription."""
         response = await client.get(f"/api/feeds/{test_subscription.id}", headers=auth_headers)
@@ -61,7 +63,7 @@ class TestGetSubscription:
 
         assert data["id"] == str(test_subscription.id)
         assert "feed" in data
-        assert data["feed"]["url"] == "https://example.com/feed.xml"
+        assert data["feed"]["url"] == test_feed.url
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_subscription(self, client: AsyncClient, auth_headers):

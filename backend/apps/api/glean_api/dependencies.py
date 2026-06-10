@@ -25,6 +25,7 @@ from glean_core.services import (
     PreferenceService,
     SystemConfigService,
     TagService,
+    TranslationService,
     TypedConfigService,
     UserService,
 )
@@ -250,6 +251,14 @@ async def get_score_service(
     except Exception:
         # Milvus not available, fall back to simple scoring
         return SimpleScoreService(session)
+
+
+async def get_translation_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
+) -> TranslationService:
+    """Get translation service instance."""
+    return TranslationService(session, redis_pool)
 
 
 def get_typed_config_service(

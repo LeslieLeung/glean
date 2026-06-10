@@ -96,6 +96,7 @@ Thumbs.db
 
 # Docker
 .docker/
+docker-compose.personal.yml
 
 # Database
 *.db

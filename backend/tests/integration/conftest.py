@@ -1,4 +1,5 @@
 import os
+import uuid
 from collections.abc import AsyncGenerator
 
 import pytest_asyncio
@@ -22,8 +23,9 @@ async def test_feed(db_session: AsyncSession):
     """Create a test feed."""
     from glean_database.models.feed import Feed
 
+    unique_url = f"https://example.com/feed-{uuid.uuid4().hex}.xml"
     feed = Feed(
-        url="https://example.com/feed.xml",
+        url=unique_url,
         title="Test Feed",
         description="A test RSS feed",
         status="active",

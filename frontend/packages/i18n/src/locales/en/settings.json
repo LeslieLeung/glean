@@ -7,7 +7,8 @@
     "appearance": "Appearance",
     "manageFeeds": "Manage Feeds",
     "preferences": "Preferences",
-    "apiTokens": "API Tokens"
+    "apiTokens": "API Tokens",
+    "translation": "Translation"
   },
   "profile": {
     "title": "Profile",
@@ -169,6 +170,29 @@
       "toolList": "List articles by date range",
       "toolSubs": "List your subscriptions"
     }
+  },
+  "translation": {
+    "title": "Translation",
+    "desc": "Configure your translation provider and API keys",
+    "provider": "Translation Provider",
+    "providerDesc": "Choose your preferred translation service",
+    "google": {
+      "name": "Google Translate",
+      "desc": "Free translation service, no API key required"
+    },
+    "deepl": {
+      "name": "DeepL",
+      "desc": "High-quality translation with natural phrasing"
+    },
+    "openai": {
+      "name": "OpenAI",
+      "desc": "AI-powered translation using GPT models"
+    },
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter your API key",
+    "model": "Model",
+    "noKeyWarning": "An API key is required for {{provider}}. Google Translate will be used as fallback.",
+    "settingsSaved": "Translation settings saved"
   },
   "version": "Glean v{{version}}"
 }

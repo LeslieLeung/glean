@@ -4,6 +4,7 @@ Entries router.
 Provides endpoints for reading and managing feed entries.
 """
 
+import asyncio
 from contextlib import suppress
 from typing import Annotated
 
@@ -11,15 +12,30 @@ from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
+from glean_core import get_logger
 from glean_core.schemas import (
     EntryListResponse,
     EntryResponse,
+    ParagraphTranslationsResponse,
+    TranslateEntryRequest,
+    TranslateTextsRequest,
+    TranslateTextsResponse,
+    TranslationResponse,
     UpdateEntryStateRequest,
     UserResponse,
 )
-from glean_core.services import EntryService
+from glean_core.services import EntryService, TranslationService
+from glean_core.services.translation_providers import create_translation_provider
 
-from ..dependencies import get_current_user, get_entry_service, get_redis_pool, get_score_service
+from ..dependencies import (
+    get_current_user,
+    get_entry_service,
+    get_redis_pool,
+    get_score_service,
+    get_translation_service,
+)
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -153,6 +169,149 @@ async def mark_all_read(
     return {"message": "All entries marked as read"}
 
 
+# Viewport-based sync translation
+
+
+@router.post("/translate-texts")
+async def translate_texts(
+    data: TranslateTextsRequest,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    translation_service: Annotated[TranslationService, Depends(get_translation_service)],
+) -> TranslateTextsResponse:
+    """
+    Synchronously translate an array of text strings.
+
+    Used for viewport-based sentence-level translation.
+    Returns translations immediately and optionally persists them
+    when entry_id is provided.
+
+    Args:
+        data: List of texts, target language, and optional entry_id.
+        current_user: Current authenticated user.
+        translation_service: Translation service for persistence.
+
+    Returns:
+        List of translated strings in the same order.
+    """
+    if not data.texts:
+        return TranslateTextsResponse(translations=[], target_language=data.target_language)
+
+    # Filter out empty strings, preserving index mapping
+    non_empty_indices = [i for i, t in enumerate(data.texts) if t.strip()]
+    non_empty_texts = [data.texts[i] for i in non_empty_indices]
+
+    if not non_empty_texts:
+        return TranslateTextsResponse(
+            translations=[""] * len(data.texts),
+            target_language=data.target_language,
+        )
+
+    # Check DB cache for already-translated sentences when entry_id is provided
+    cached_map: dict[str, str] = {}
+    if data.entry_id:
+        try:
+            cached_map = (
+                await translation_service.get_paragraph_translations(
+                    data.entry_id, data.target_language
+                )
+                or {}
+            )
+        except Exception:
+            logger.exception(
+                "Failed to load cached paragraph translations",
+                extra={"entry_id": data.entry_id},
+            )
+
+    # Split into cached hits and texts that need translation
+    to_translate: list[str] = []
+    to_translate_indices: list[int] = []
+    cached_results: dict[int, str] = {}
+
+    for i, text in enumerate(non_empty_texts):
+        if text in cached_map:
+            cached_results[i] = cached_map[text]
+        else:
+            to_translate.append(text)
+            to_translate_indices.append(i)
+
+    logger.info(
+        "Translating texts batch",
+        extra={
+            "total": len(non_empty_texts),
+            "cached": len(cached_results),
+            "to_translate": len(to_translate),
+            "target": data.target_language,
+            "user_id": current_user.id,
+        },
+    )
+
+    # Translate uncached sentences using user's configured provider
+    translated_new: list[str] = []
+    if to_translate:
+        provider = create_translation_provider(current_user.settings)
+        translated_new = await asyncio.to_thread(
+            provider.translate_batch, to_translate, data.source_language, data.target_language
+        )
+
+    # Merge cached + newly translated results
+    merged: list[str] = [""] * len(non_empty_texts)
+    for i, result in cached_results.items():
+        merged[i] = result
+    for j, idx in enumerate(to_translate_indices):
+        merged[idx] = translated_new[j]
+
+    # Reconstruct full list with empty strings for originally-empty inputs
+    all_results = [""] * len(data.texts)
+    for i, idx in enumerate(non_empty_indices):
+        all_results[idx] = merged[i]
+
+    # Persist new translations when entry_id is provided
+    if data.entry_id and translated_new:
+        pairs = {
+            text: trans
+            for text, trans in zip(to_translate, translated_new, strict=True)
+            if trans.strip()
+        }
+        if pairs:
+            try:
+                await translation_service.save_paragraph_translations(
+                    data.entry_id, data.target_language, pairs
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to persist paragraph translations",
+                    extra={"entry_id": data.entry_id},
+                )
+
+    return TranslateTextsResponse(
+        translations=all_results,
+        target_language=data.target_language,
+    )
+
+
+@router.get("/{entry_id}/paragraph-translations")
+async def get_paragraph_translations(
+    entry_id: str,
+    target_language: str,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    translation_service: Annotated[TranslationService, Depends(get_translation_service)],
+) -> ParagraphTranslationsResponse:
+    """
+    Get cached paragraph-level translations for an entry.
+
+    Args:
+        entry_id: Entry identifier.
+        target_language: Target language code (e.g. "zh-CN", "en").
+        current_user: Current authenticated user.
+        translation_service: Translation service.
+
+    Returns:
+        Cached sentence translations or empty dict.
+    """
+    result = await translation_service.get_paragraph_translations(entry_id, target_language)
+    return ParagraphTranslationsResponse(translations=result or {})
+
+
 # M3: Preference signal endpoints
 
 
@@ -274,3 +433,69 @@ async def remove_reaction(
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
+
+
+# Translation endpoints
+
+
+@router.post("/{entry_id}/translate")
+async def translate_entry(
+    entry_id: str,
+    data: TranslateEntryRequest,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    translation_service: Annotated[TranslationService, Depends(get_translation_service)],
+) -> TranslationResponse:
+    """
+    Request translation of an entry.
+
+    If target_language is not provided, auto-detects:
+    Chinese content → translates to English, otherwise → translates to Chinese.
+
+    Returns cached translation if available, or queues a new translation task.
+
+    Args:
+        entry_id: Entry identifier.
+        data: Translation request with optional target_language.
+        current_user: Current authenticated user.
+        translation_service: Translation service.
+
+    Returns:
+        Translation status and content.
+
+    Raises:
+        HTTPException: If entry not found.
+    """
+    try:
+        return await translation_service.request_translation(
+            entry_id, current_user.id, data.target_language
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
+
+
+@router.get("/{entry_id}/translation/{target_language}")
+async def get_translation(
+    entry_id: str,
+    target_language: str,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    translation_service: Annotated[TranslationService, Depends(get_translation_service)],
+) -> TranslationResponse:
+    """
+    Get translation of an entry for a specific language.
+
+    Args:
+        entry_id: Entry identifier.
+        target_language: Target language code (e.g. "zh-CN", "en").
+        current_user: Current authenticated user.
+        translation_service: Translation service.
+
+    Returns:
+        Translation content and status.
+
+    Raises:
+        HTTPException: If translation not found.
+    """
+    result = await translation_service.get_translation(entry_id, target_language)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Translation not found")
+    return result

@@ -19,12 +19,20 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     image: glean-backend:local
+    ports:
+      - "8000:8000"
 
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     image: glean-backend:local
+
+  admin:
+    build:
+      context: ./frontend
+      dockerfile: apps/admin/Dockerfile
+    image: glean-admin:local
 
 volumes:
   postgres_test_data:

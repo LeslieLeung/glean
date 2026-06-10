@@ -1476,6 +1476,98 @@ body {
 }
 
 /* ==========================================================================
+   Bilingual Translation Styles
+   ========================================================================== */
+
+/* Translated lines inserted after original paragraphs */
+.prose .glean-translation {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: hsl(38 70% 65%);
+  opacity: 0.85;
+  border-left: 2px solid hsl(38 80% 50% / 0.3);
+  padding-left: 0.75em;
+  margin-top: 0.25em;
+  margin-bottom: 1em;
+}
+
+.prose h1.glean-translation,
+.prose h2.glean-translation,
+.prose h3.glean-translation,
+.prose h4.glean-translation,
+.prose h5.glean-translation,
+.prose h6.glean-translation {
+  font-size: 0.8em;
+  font-weight: 500;
+  margin-top: 0.15em;
+  margin-bottom: 0.75em;
+}
+
+.prose li.glean-translation {
+  list-style-type: none;
+  margin-top: 0.1em;
+  margin-bottom: 0.5em;
+}
+
+.prose blockquote.glean-translation {
+  border-left: 2px solid hsl(38 80% 50% / 0.3);
+  background: transparent;
+  padding: 0 0 0 0.75em;
+  margin: 0.25em 0 1em 1.5em;
+  font-style: normal;
+}
+
+/* Light theme overrides */
+[data-theme="light"] .prose .glean-translation {
+  color: hsl(220 40% 45%);
+  border-left-color: hsl(38 80% 45% / 0.3);
+}
+
+/* ==========================================================================
+   Sentence-Level Translation Styles (Viewport-based, Immersive Translate style)
+   ========================================================================== */
+
+/* Original sentence displayed as a block line */
+.prose .glean-original-sentence {
+  display: block;
+}
+
+/* Translated sentence: amber accent with left border, below each original sentence */
+.prose .glean-translated-sentence {
+  display: block;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.88em;
+  line-height: 1.5;
+  color: hsl(38 70% 65%);
+  border-left: 2px solid hsl(38 80% 50% / 0.25);
+  padding-left: 0.6em;
+  margin-top: 0.1em;
+  margin-bottom: 0.5em;
+  opacity: 0.85;
+}
+
+/* Fade-in for bilingual blocks */
+.prose .glean-bilingual-active {
+  animation: glean-translation-fade-in 0.3s ease-out forwards;
+}
+
+@keyframes glean-translation-fade-in {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Light theme */
+[data-theme="light"] .prose .glean-translated-sentence {
+  color: hsl(220 40% 45%);
+  border-left-color: hsl(38 80% 45% / 0.3);
+}
+
+/* ==========================================================================
    Reader Action Button Animations
    ========================================================================== */
 

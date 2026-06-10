@@ -56,5 +56,16 @@
   "article": {
     "noContent": "没有可用内容",
     "viewOriginal": "查看原文"
+  },
+  "translation": {
+    "translate": "翻译",
+    "translating": "翻译中...",
+    "showOriginal": "显示原文",
+    "showTranslation": "显示双语",
+    "bilingualMode": "双语对照：{{language}}",
+    "failed": "翻译失败",
+    "retry": "重试",
+    "sentenceMode": "逐句翻译已启用",
+    "hideTranslation": "隐藏翻译"
   }
 }
