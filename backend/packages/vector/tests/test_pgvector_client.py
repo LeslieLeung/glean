@@ -119,5 +119,8 @@ async def test_pgvector_client_recreate_writes_model_metadata() -> None:
 
     await client.recreate_collections(1536, "openai", "text-embedding-3-small")
 
-    assert any("DROP TABLE IF EXISTS" in call for call in sql_calls)
+    # Rebuild must TRUNCATE (not DROP) so Alembic-managed schema, foreign keys
+    # and indexes survive the operation.
+    assert any("TRUNCATE TABLE" in call for call in sql_calls)
+    assert not any("DROP TABLE" in call for call in sql_calls)
     client._write_model_metadata.assert_awaited_once_with("openai:text-embedding-3-small:1536")

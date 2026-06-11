@@ -234,19 +234,28 @@ class PgVectorClient:
     async def recreate_collections(
         self, dimension: int, provider: str | None = None, model: str | None = None
     ) -> None:
-        """Drop and recreate pgvector tables."""
+        """Clear vector data and re-stamp model metadata for a full rebuild.
+
+        The pgvector tables are owned by Alembic and use a dimension-agnostic
+        ``Vector`` column, so switching embedding model never requires a schema
+        change.  We therefore ``TRUNCATE`` the data instead of ``DROP``/``CREATE``
+        so that foreign keys (e.g. ``entry_embeddings.id`` -> ``entries.id``
+        ``ON DELETE CASCADE``) and indexes survive a rebuild and the live schema
+        does not drift from the migration history.
+        """
         self._ensure_connected()
         if self._engine is None:
             raise RuntimeError("pgvector engine unavailable")
-        entries_table, prefs_table, meta_table = self._tables()
-        # Invalidate caches before destructive operation
-        self._schema_ensured = False
+        # Reset the signature cache; ensure_collections recreates any missing
+        # tables/indexes for deployments not managed by Alembic migrations.
         self._last_model_signature = None
-        async with self._engine.begin() as conn:
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(prefs_table.name)}")
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(entries_table.name)}")
-            await conn.exec_driver_sql(f"DROP TABLE IF EXISTS {_quote_ident(meta_table.name)}")
         await self.ensure_collections(dimension)
+        entries_table, prefs_table, meta_table = self._tables()
+        async with self._engine.begin() as conn:
+            await conn.exec_driver_sql(
+                f"TRUNCATE TABLE {_quote_ident(entries_table.name)}, "
+                f"{_quote_ident(prefs_table.name)}, {_quote_ident(meta_table.name)}"
+            )
         if provider and model:
             signature = self._build_model_signature(provider, model, dimension)
             await self._write_model_metadata(signature)

@@ -6,6 +6,7 @@ Create Date: 2026-02-13 10:00:00.000000
 
 """
 
+import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -23,7 +24,24 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _is_pgvector_backend() -> bool:
+    """Return whether the pgvector vector backend is active.
+
+    The pgvector schema (the ``vector`` extension plus the embedding tables) is
+    only provisioned when the deployment is configured to use the pgvector
+    backend.  Milvus (the default) and any other backend skip it entirely so
+    those deployments are not forced to have the ``vector`` extension available
+    on their PostgreSQL server.  This mirrors ``VectorBackendConfig`` whose
+    default is ``"milvus"``.
+    """
+    return os.getenv("VECTOR_BACKEND", "milvus").strip().lower() == "pgvector"
+
+
 def upgrade() -> None:
+    # Milvus / non-pgvector deployments: pgvector schema is not needed.
+    if not _is_pgvector_backend():
+        return
+
     if Vector is None:
         raise RuntimeError("pgvector is required to apply pgvector schema migration")
 
@@ -80,10 +98,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("vector_store_metadata")
-    op.drop_index("ix_user_preference_vectors_user_id", table_name="user_preference_vectors")
-    op.drop_table("user_preference_vectors")
-    op.execute("DROP INDEX IF EXISTS idx_entry_embeddings_embedding_hnsw")
-    op.drop_index("ix_entry_embeddings_published_at", table_name="entry_embeddings")
-    op.drop_index("ix_entry_embeddings_feed_id", table_name="entry_embeddings")
-    op.drop_table("entry_embeddings")
+    # Mirror upgrade(): only the pgvector backend ever created this schema.
+    # Use IF EXISTS throughout so the downgrade is a safe no-op when the tables
+    # were never provisioned (e.g. Milvus deployments).
+    if not _is_pgvector_backend():
+        return
+
+    # Dropping each table also removes its associated indexes.
+    op.execute("DROP TABLE IF EXISTS vector_store_metadata")
+    op.execute("DROP TABLE IF EXISTS user_preference_vectors")
+    op.execute("DROP TABLE IF EXISTS entry_embeddings")
