@@ -9,6 +9,7 @@
 export interface UserSettings {
   read_later_days?: number // Days until read later items expire (0 = never)
   show_read_later_remaining?: boolean // Show remaining time in read later list
+  keyboard_navigation?: boolean // Use arrow keys / j/k to navigate between entries
 }
 
 /** User account information */

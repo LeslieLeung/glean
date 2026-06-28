@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-import { mergeProps } from '@base-ui-components/react/merge-props'
-import { useRender } from '@base-ui-components/react/use-render'
+import { mergeProps } from '@base-ui/react/merge-props'
+import { useRender } from '@base-ui/react/use-render'
 import { cva, type VariantProps } from 'class-variance-authority'
 import type * as React from 'react'
 

@@ -5,6 +5,7 @@ Provides endpoints for feed discovery, subscription management, and OPML import/
 """
 
 from typing import Annotated
+from uuid import UUID
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, UploadFile, status
@@ -104,7 +105,7 @@ async def sync_all_subscriptions(
 
 @router.get("/{subscription_id}")
 async def get_subscription(
-    subscription_id: str,
+    subscription_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
 ) -> SubscriptionResponse:
@@ -123,7 +124,7 @@ async def get_subscription(
         HTTPException: If subscription not found or unauthorized.
     """
     try:
-        return await feed_service.get_subscription(subscription_id, current_user.id)
+        return await feed_service.get_subscription(str(subscription_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -180,7 +181,7 @@ async def discover_feed_url(
 
 @router.patch("/{subscription_id}")
 async def update_subscription(
-    subscription_id: str,
+    subscription_id: UUID,
     data: UpdateSubscriptionRequest,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
@@ -208,7 +209,7 @@ async def update_subscription(
         should_update_folder = data.folder_id != "__unset__"
 
         return await feed_service.update_subscription(
-            subscription_id,
+            str(subscription_id),
             current_user.id,
             data.custom_title,
             data.folder_id if should_update_folder else UNSET,
@@ -220,7 +221,7 @@ async def update_subscription(
 
 @router.delete("/{subscription_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subscription(
-    subscription_id: str,
+    subscription_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
@@ -245,7 +246,7 @@ async def delete_subscription(
     """
     try:
         orphaned_feed_id, entry_ids = await feed_service.delete_subscription(
-            subscription_id, current_user.id
+            str(subscription_id), current_user.id
         )
 
         # Queue vector embedding cleanup if feed was orphaned
@@ -290,7 +291,7 @@ async def batch_delete_subscriptions(
 
 @router.post("/{subscription_id}/refresh", status_code=status.HTTP_202_ACCEPTED)
 async def refresh_feed(
-    subscription_id: str,
+    subscription_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
@@ -311,7 +312,7 @@ async def refresh_feed(
         HTTPException: If subscription not found or unauthorized.
     """
     try:
-        subscription = await feed_service.get_subscription(subscription_id, current_user.id)
+        subscription = await feed_service.get_subscription(str(subscription_id), current_user.id)
         # Enqueue feed fetch task
         job = await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
         job_id = job.job_id if job else "unknown"

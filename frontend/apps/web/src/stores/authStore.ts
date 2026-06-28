@@ -118,7 +118,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   updateSettings: async (settings) => {
     set({ isLoading: true, error: null })
     try {
-      const user = await authService.updateUser({ settings })
+      const currentUser = useAuthStore.getState().user
+      const mergedSettings = {
+        ...currentUser?.settings,
+        ...settings,
+      }
+      const user = await authService.updateUser({ settings: mergedSettings })
       set({
         user,
         isLoading: false,

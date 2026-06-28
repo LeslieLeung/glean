@@ -5,6 +5,7 @@ Provides endpoints for tag management.
 """
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -69,7 +70,7 @@ async def create_tag(
 
 @router.get("/{tag_id}", response_model=TagResponse)
 async def get_tag(
-    tag_id: str,
+    tag_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     tag_service: Annotated[TagService, Depends(get_tag_service)],
 ) -> TagResponse:
@@ -88,14 +89,14 @@ async def get_tag(
         HTTPException: If tag not found.
     """
     try:
-        return await tag_service.get_tag(tag_id, current_user.id)
+        return await tag_service.get_tag(str(tag_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.patch("/{tag_id}", response_model=TagResponse)
 async def update_tag(
-    tag_id: str,
+    tag_id: UUID,
     data: TagUpdate,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     tag_service: Annotated[TagService, Depends(get_tag_service)],
@@ -116,7 +117,7 @@ async def update_tag(
         HTTPException: If tag not found or name conflict.
     """
     try:
-        return await tag_service.update_tag(tag_id, current_user.id, data)
+        return await tag_service.update_tag(str(tag_id), current_user.id, data)
     except ValueError as e:
         if "already exists" in str(e):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
@@ -125,7 +126,7 @@ async def update_tag(
 
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tag(
-    tag_id: str,
+    tag_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     tag_service: Annotated[TagService, Depends(get_tag_service)],
 ) -> None:
@@ -141,7 +142,7 @@ async def delete_tag(
         HTTPException: If tag not found.
     """
     try:
-        await tag_service.delete_tag(tag_id, current_user.id)
+        await tag_service.delete_tag(str(tag_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 

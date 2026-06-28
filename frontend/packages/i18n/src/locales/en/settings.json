@@ -52,7 +52,10 @@
       "dayDesc": "Light theme for daytime use",
       "auto": "Auto",
       "autoDesc": "Follow your system preference"
-    }
+    },
+    "keyboardNavigation": "Keyboard Navigation",
+    "keyboardNavigationDesc": "Use arrow keys (↑/↓) or j/k to navigate between articles in the reader",
+    "settingsSaved": "Settings saved successfully"
   },
   "manageFeeds": {
     "title": "Manage Feeds",

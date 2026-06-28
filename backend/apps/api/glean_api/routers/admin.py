@@ -7,6 +7,7 @@ Provides endpoints for administrative operations.
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from typing import Annotated, Any
+from uuid import UUID
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -303,7 +304,7 @@ async def list_users(
 
 @router.patch("/users/{user_id}/status", response_model=UserListItem)
 async def toggle_user_status(
-    user_id: str,
+    user_id: UUID,
     request: ToggleUserStatusRequest,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
@@ -323,7 +324,7 @@ async def toggle_user_status(
     Raises:
         HTTPException: If user not found.
     """
-    user = await admin_service.toggle_user_status(user_id, request.is_active)
+    user = await admin_service.toggle_user_status(str(user_id), request.is_active)
 
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -379,7 +380,7 @@ async def list_feeds(
 
 @router.get("/feeds/{feed_id}", response_model=AdminFeedDetailResponse)
 async def get_feed(
-    feed_id: str,
+    feed_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> AdminFeedDetailResponse:
@@ -397,7 +398,7 @@ async def get_feed(
     Raises:
         HTTPException: If feed not found.
     """
-    feed = await admin_service.get_feed(feed_id)
+    feed = await admin_service.get_feed(str(feed_id))
 
     if not feed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
@@ -407,7 +408,7 @@ async def get_feed(
 
 @router.patch("/feeds/{feed_id}", response_model=AdminFeedDetailResponse)
 async def update_feed(
-    feed_id: str,
+    feed_id: UUID,
     request: AdminFeedUpdateRequest,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
@@ -428,7 +429,7 @@ async def update_feed(
         HTTPException: If feed not found.
     """
     feed = await admin_service.update_feed(
-        feed_id, url=request.url, title=request.title, status=request.status
+        str(feed_id), url=request.url, title=request.title, status=request.status
     )
 
     if not feed:
@@ -439,7 +440,7 @@ async def update_feed(
 
 @router.post("/feeds/{feed_id}/reset-error", response_model=AdminFeedDetailResponse)
 async def reset_feed_error(
-    feed_id: str,
+    feed_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> AdminFeedDetailResponse:
@@ -457,7 +458,7 @@ async def reset_feed_error(
     Raises:
         HTTPException: If feed not found.
     """
-    feed = await admin_service.reset_feed_error(feed_id)
+    feed = await admin_service.reset_feed_error(str(feed_id))
 
     if not feed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
@@ -467,7 +468,7 @@ async def reset_feed_error(
 
 @router.delete("/feeds/{feed_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_feed(
-    feed_id: str,
+    feed_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> None:
@@ -482,7 +483,7 @@ async def delete_feed(
     Raises:
         HTTPException: If feed not found.
     """
-    deleted = await admin_service.delete_feed(feed_id)
+    deleted = await admin_service.delete_feed(str(feed_id))
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
@@ -557,7 +558,7 @@ async def list_entries(
 
 @router.get("/entries/{entry_id}", response_model=AdminEntryDetailResponse)
 async def get_entry(
-    entry_id: str,
+    entry_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> AdminEntryDetailResponse:
@@ -575,7 +576,7 @@ async def get_entry(
     Raises:
         HTTPException: If entry not found.
     """
-    entry = await admin_service.get_entry(entry_id)
+    entry = await admin_service.get_entry(str(entry_id))
 
     if not entry:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
@@ -585,7 +586,7 @@ async def get_entry(
 
 @router.delete("/entries/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_entry(
-    entry_id: str,
+    entry_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> None:
@@ -600,7 +601,7 @@ async def delete_entry(
     Raises:
         HTTPException: If entry not found.
     """
-    deleted = await admin_service.delete_entry(entry_id)
+    deleted = await admin_service.delete_entry(str(entry_id))
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")

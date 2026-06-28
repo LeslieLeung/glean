@@ -18,6 +18,7 @@ import {
   Sparkles,
   Languages,
   Key,
+  Keyboard,
 } from 'lucide-react'
 import {
   Label,
@@ -62,6 +63,7 @@ export default function SettingsPage() {
   // Get current read_later_days from user settings, default to 7
   const currentReadLaterDays = user?.settings?.read_later_days ?? 7
   const showReadLaterRemaining = user?.settings?.show_read_later_remaining ?? true
+  const keyboardNavigationEnabled = user?.settings?.keyboard_navigation ?? true
 
   const handleReadLaterDaysChange = async (days: number) => {
     setIsSaving(true)
@@ -82,6 +84,20 @@ export default function SettingsPage() {
     setSaveSuccess(false)
     try {
       await updateSettings({ show_read_later_remaining: !showReadLaterRemaining })
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2000)
+    } catch {
+      // Error is handled by the store
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleToggleKeyboardNavigation = async () => {
+    setIsSaving(true)
+    setSaveSuccess(false)
+    try {
+      await updateSettings({ keyboard_navigation: !keyboardNavigationEnabled })
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch {
@@ -371,6 +387,39 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+
+        <div
+          className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-5 ring-1"
+          style={{ animationDelay: '100ms' }}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-1 items-center gap-3">
+              <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                <Keyboard className="text-primary h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <Label className="text-foreground block text-sm font-medium">
+                  {t('appearance.keyboardNavigation')}
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  {t('appearance.keyboardNavigationDesc')}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={keyboardNavigationEnabled}
+              onCheckedChange={handleToggleKeyboardNavigation}
+              disabled={isSaving || isLoading}
+            />
+          </div>
+        </div>
+
+        {saveSuccess && (
+          <div className="animate-fade-in flex items-center gap-2 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-600 ring-1 ring-green-500/20">
+            <CheckCircle className="h-4 w-4" />
+            {t('appearance.settingsSaved')}
+          </div>
+        )}
       </div>
     )
   }

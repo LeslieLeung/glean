@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   useInfiniteEntries,
@@ -352,36 +352,107 @@ export default function ReaderPage() {
     }
   }, [selectedFeedId, selectedFolderId, isSmartView, entryIdFromUrl])
 
+  const keyboardNavigationEnabled = user?.settings?.keyboard_navigation ?? true
+
   // Handle entry selection - automatically mark as read
-  const handleSelectEntry = async (entry: EntryWithState) => {
-    // On mobile, trigger entry list exit animation while opening reader
-    if (isMobile) {
-      setIsExitingEntryList(true)
-      setSelectedEntryId(entry.id)
-      // Notify Layout to hide its header (ArticleReader will show its own)
-      window.dispatchEvent(new CustomEvent('showArticleReader'))
-    } else {
-      setSelectedEntryId(entry.id)
-    }
-
-    // Save the original position data when first selecting an entry
-    // This ensures the entry stays in place even after like/dislike/bookmark actions
-    if (selectedEntryOriginalDataRef.current?.id !== entry.id) {
-      selectedEntryOriginalDataRef.current = {
-        id: entry.id,
-        preferenceScore: entry.preference_score,
-        publishedAt: entry.published_at,
+  const handleSelectEntry = useCallback(
+    async (entry: EntryWithState) => {
+      // On mobile, trigger entry list exit animation while opening reader
+      if (isMobile) {
+        setIsExitingEntryList(true)
+        setSelectedEntryId(entry.id)
+        // Notify Layout to hide its header (ArticleReader will show its own)
+        window.dispatchEvent(new CustomEvent('showArticleReader'))
+      } else {
+        setSelectedEntryId(entry.id)
       }
-    }
 
-    // Auto-mark as read when selecting an unread entry
-    if (!entry.is_read) {
-      await updateMutation.mutateAsync({
-        entryId: entry.id,
-        data: { is_read: true },
-      })
-    }
-  }
+      // Save the original position data when first selecting an entry
+      // This ensures the entry stays in place even after like/dislike/bookmark actions
+      if (selectedEntryOriginalDataRef.current?.id !== entry.id) {
+        selectedEntryOriginalDataRef.current = {
+          id: entry.id,
+          preferenceScore: entry.preference_score,
+          publishedAt: entry.published_at,
+        }
+      }
+
+      // Auto-mark as read when selecting an unread entry
+      if (!entry.is_read) {
+        await updateMutation.mutateAsync({
+          entryId: entry.id,
+          data: { is_read: true },
+        })
+      }
+    },
+    [isMobile, updateMutation]
+  )
+
+  // Keyboard navigation: arrow keys and j/k to switch between entries
+  const handleKeyboardNavigation = useCallback(
+    (e: KeyboardEvent) => {
+      if (!keyboardNavigationEnabled) return
+
+      // Ignore when focus is in an input, textarea, contenteditable, or any
+      // interactive control that owns its own keyboard navigation (buttons,
+      // links, select elements, and Radix/ARIA widgets such as menus,
+      // listboxes, comboboxes, dialogs, and their items).
+      const target = e.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'SELECT' ||
+        target.tagName === 'A' ||
+        target.isContentEditable ||
+        target.closest(
+          '[role="menu"],[role="menubar"],[role="listbox"],[role="combobox"],[role="dialog"],[role="alertdialog"],[role="tree"],[role="grid"],[role="tablist"]'
+        )
+      ) {
+        return
+      }
+
+      const isNext = e.key === 'ArrowDown' || e.key === 'j'
+      const isPrev = e.key === 'ArrowUp' || e.key === 'k'
+      if (!isNext && !isPrev) return
+
+      e.preventDefault()
+
+      if (entries.length === 0) return
+
+      const currentIndex = selectedEntryId
+        ? entries.findIndex((entry) => entry.id === selectedEntryId)
+        : -1
+
+      let nextIndex: number
+      if (currentIndex === -1) {
+        nextIndex = 0
+      } else if (isNext) {
+        if (currentIndex >= entries.length - 1) return
+        nextIndex = currentIndex + 1
+      } else {
+        if (currentIndex <= 0) return
+        nextIndex = currentIndex - 1
+      }
+
+      const nextEntry = entries[nextIndex]
+      if (nextEntry) {
+        handleSelectEntry(nextEntry)
+        const entryEl = entryListRef.current?.querySelector(
+          `[data-entry-id="${nextEntry.id}"]`
+        )
+        if (entryEl) {
+          entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        }
+      }
+    },
+    [entries, selectedEntryId, keyboardNavigationEnabled, handleSelectEntry]
+  )
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyboardNavigation)
+    return () => document.removeEventListener('keydown', handleKeyboardNavigation)
+  }, [handleKeyboardNavigation])
 
   useEffect(() => {
     localStorage.setItem('glean:entriesWidth', String(entriesWidth))
@@ -591,6 +662,7 @@ export default function ReaderPage() {
                         (user?.settings?.show_read_later_remaining ?? true)
                       }
                       showPreferenceScore={usesSmartSorting && showPreferenceScore}
+                      dataEntryId={entry.id}
                     />
                   ))}
                 </div>
@@ -778,6 +850,7 @@ function EntryListItem({
   showFeedInfo = false,
   showReadLaterRemaining = false,
   showPreferenceScore = false,
+  dataEntryId,
 }: {
   entry: EntryWithState
   isSelected: boolean
@@ -786,11 +859,13 @@ function EntryListItem({
   showFeedInfo?: boolean
   showReadLaterRemaining?: boolean
   showPreferenceScore?: boolean
+  dataEntryId?: string
 }) {
   const remainingTime = showReadLaterRemaining ? formatRemainingTime(entry.read_later_until) : null
   return (
     <div
       onClick={onClick}
+      data-entry-id={dataEntryId}
       className={`group animate-fade-in cursor-pointer px-1.5 py-1.5 transition-all duration-200 ${
         isSelected
           ? 'before:bg-primary relative before:absolute before:inset-y-0.5 before:left-0 before:w-0.5 before:rounded-full'

@@ -5,6 +5,7 @@ Provides endpoints for API token management (create, list, revoke).
 """
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -68,7 +69,7 @@ async def create_token(
 
 @router.delete("/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_token(
-    token_id: str,
+    token_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     token_service: Annotated[APITokenService, Depends(get_api_token_service)],
 ) -> None:
@@ -84,6 +85,6 @@ async def revoke_token(
         HTTPException: If token not found.
     """
     try:
-        await token_service.revoke_token(token_id, current_user.id)
+        await token_service.revoke_token(str(token_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

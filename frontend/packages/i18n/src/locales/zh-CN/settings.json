@@ -52,7 +52,10 @@
       "dayDesc": "浅色主题，适合日间使用",
       "auto": "自动",
       "autoDesc": "跟随系统偏好"
-    }
+    },
+    "keyboardNavigation": "键盘导航",
+    "keyboardNavigationDesc": "使用方向键（↑/↓）或 j/k 在阅读器中切换文章",
+    "settingsSaved": "设置已成功保存"
   },
   "manageFeeds": {
     "title": "管理订阅",

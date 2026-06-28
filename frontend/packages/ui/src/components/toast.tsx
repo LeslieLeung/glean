@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 'use client'
 
-import { Toast } from '@base-ui-components/react/toast'
+import { Toast } from '@base-ui/react/toast'
 import { AlertCircle, CheckCircle, Info, Loader2, AlertTriangle } from 'lucide-react'
 
 import { cn } from '../utils'

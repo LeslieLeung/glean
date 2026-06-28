@@ -194,14 +194,24 @@ describe('authStore', () => {
   })
 
   describe('updateSettings', () => {
-    it('should update user settings', async () => {
-      const updatedUser = createMockUser({ ...mockUser, settings: { read_later_days: 7 } })
+    it('should merge and update user settings', async () => {
+      const userWithSettings = createMockUser({
+        ...mockUser,
+        settings: { show_read_later_remaining: true },
+      })
+      useAuthStore.setState({ user: userWithSettings })
+      const updatedUser = createMockUser({
+        ...userWithSettings,
+        settings: { show_read_later_remaining: true, read_later_days: 7 },
+      })
       vi.mocked(authService.updateUser).mockResolvedValue(updatedUser)
 
       await useAuthStore.getState().updateSettings({ read_later_days: 7 })
 
       expect(useAuthStore.getState().user).toEqual(updatedUser)
-      expect(authService.updateUser).toHaveBeenCalledWith({ settings: { read_later_days: 7 } })
+      expect(authService.updateUser).toHaveBeenCalledWith({
+        settings: { show_read_later_remaining: true, read_later_days: 7 },
+      })
     })
 
     it('should set error on failure', async () => {

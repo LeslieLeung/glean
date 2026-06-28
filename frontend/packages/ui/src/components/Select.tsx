@@ -1,6 +1,6 @@
 'use client'
 
-import { Select as SelectPrimitive } from '@base-ui-components/react/select'
+import { Select as SelectPrimitive } from '@base-ui/react/select'
 import { ChevronDownIcon, ChevronsUpDownIcon, ChevronUpIcon } from 'lucide-react'
 
 import { cn } from '../utils'

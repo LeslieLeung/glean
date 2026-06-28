@@ -5,6 +5,7 @@ Provides endpoints for folder management.
 """
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -72,7 +73,7 @@ async def create_folder(
 
 @router.get("/{folder_id}", response_model=FolderResponse)
 async def get_folder(
-    folder_id: str,
+    folder_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
 ) -> FolderResponse:
@@ -91,14 +92,14 @@ async def get_folder(
         HTTPException: If folder not found.
     """
     try:
-        return await folder_service.get_folder(folder_id, current_user.id)
+        return await folder_service.get_folder(str(folder_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.patch("/{folder_id}", response_model=FolderResponse)
 async def update_folder(
-    folder_id: str,
+    folder_id: UUID,
     data: FolderUpdate,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
@@ -119,14 +120,14 @@ async def update_folder(
         HTTPException: If folder not found.
     """
     try:
-        return await folder_service.update_folder(folder_id, current_user.id, data)
+        return await folder_service.update_folder(str(folder_id), current_user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.delete("/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_folder(
-    folder_id: str,
+    folder_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
 ) -> None:
@@ -142,14 +143,14 @@ async def delete_folder(
         HTTPException: If folder not found.
     """
     try:
-        await folder_service.delete_folder(folder_id, current_user.id)
+        await folder_service.delete_folder(str(folder_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.post("/{folder_id}/move", response_model=FolderResponse)
 async def move_folder(
-    folder_id: str,
+    folder_id: UUID,
     data: FolderMove,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
@@ -170,7 +171,7 @@ async def move_folder(
         HTTPException: If validation fails.
     """
     try:
-        return await folder_service.move_folder(folder_id, current_user.id, data)
+        return await folder_service.move_folder(str(folder_id), current_user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 

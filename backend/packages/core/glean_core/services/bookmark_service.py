@@ -224,7 +224,7 @@ class BookmarkService:
         Raises:
             ValueError: If entry not found or validation fails.
         """
-        title = data.title
+        title = data.title[:500] if data.title else data.title
         excerpt = data.excerpt
         entry_id = data.entry_id
         url = data.url

@@ -6,6 +6,7 @@ Provides endpoints for reading and managing feed entries.
 
 from contextlib import suppress
 from typing import Annotated
+from uuid import UUID
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -73,7 +74,7 @@ async def list_entries(
 
 @router.get("/{entry_id}")
 async def get_entry(
-    entry_id: str,
+    entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
 ) -> EntryResponse:
@@ -92,14 +93,14 @@ async def get_entry(
         HTTPException: If entry not found or user not subscribed to feed.
     """
     try:
-        return await entry_service.get_entry(entry_id, current_user.id)
+        return await entry_service.get_entry(str(entry_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
 
 @router.patch("/{entry_id}")
 async def update_entry_state(
-    entry_id: str,
+    entry_id: UUID,
     data: UpdateEntryStateRequest,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
@@ -120,7 +121,7 @@ async def update_entry_state(
         HTTPException: If entry not found.
     """
     try:
-        return await entry_service.update_entry_state(entry_id, current_user.id, data)
+        return await entry_service.update_entry_state(str(entry_id), current_user.id, data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -158,7 +159,7 @@ async def mark_all_read(
 
 @router.post("/{entry_id}/like")
 async def like_entry(
-    entry_id: str,
+    entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
@@ -183,7 +184,7 @@ async def like_entry(
     """
     try:
         result = await entry_service.update_entry_state(
-            entry_id, current_user.id, UpdateEntryStateRequest(is_liked=True)
+            str(entry_id), current_user.id, UpdateEntryStateRequest(is_liked=True)
         )
 
         # Queue preference update task (M3)
@@ -192,7 +193,7 @@ async def like_entry(
             await redis_pool.enqueue_job(
                 "update_user_preference",
                 user_id=current_user.id,
-                entry_id=entry_id,
+                entry_id=str(entry_id),
                 signal_type="like",
             )
 
@@ -203,7 +204,7 @@ async def like_entry(
 
 @router.post("/{entry_id}/dislike")
 async def dislike_entry(
-    entry_id: str,
+    entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
@@ -228,7 +229,7 @@ async def dislike_entry(
     """
     try:
         result = await entry_service.update_entry_state(
-            entry_id, current_user.id, UpdateEntryStateRequest(is_liked=False)
+            str(entry_id), current_user.id, UpdateEntryStateRequest(is_liked=False)
         )
 
         # Queue preference update task (M3)
@@ -237,7 +238,7 @@ async def dislike_entry(
             await redis_pool.enqueue_job(
                 "update_user_preference",
                 user_id=current_user.id,
-                entry_id=entry_id,
+                entry_id=str(entry_id),
                 signal_type="dislike",
             )
 
@@ -248,7 +249,7 @@ async def dislike_entry(
 
 @router.delete("/{entry_id}/reaction")
 async def remove_reaction(
-    entry_id: str,
+    entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
 ) -> EntryResponse:
@@ -270,7 +271,7 @@ async def remove_reaction(
     """
     try:
         return await entry_service.update_entry_state(
-            entry_id, current_user.id, UpdateEntryStateRequest(is_liked=None)
+            str(entry_id), current_user.id, UpdateEntryStateRequest(is_liked=None)
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
