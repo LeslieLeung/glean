@@ -163,6 +163,23 @@ async def _rebuild_embeddings_locked(
         )
         total_pending: int = total_result.scalar_one()
 
+        # Nothing to embed (e.g. brand-new instance with no entries yet, or every
+        # entry was a skipped duplicate).  Complete the rebuild immediately so the
+        # status does not stay stuck in REBUILDING forever — the auto-complete
+        # checks elsewhere require at least one terminal entry to fire.
+        if total_pending == 0:
+            await config_service.complete_rebuild()
+            await session.commit()
+            logger.info("Rebuild completed immediately: no entries to embed")
+            return {
+                "success": True,
+                "queued_entries": 0,
+                "queued_batches": 0,
+                "queued_preferences": 0,
+                "dimension": dimension,
+                "skipped_duplicate_entries": len(duplicate_entry_ids),
+            }
+
         # Enqueue batch embedding jobs (much more efficient than one job per entry)
         num_batches = max(1, (total_pending + REBUILD_BATCH_SIZE - 1) // REBUILD_BATCH_SIZE)
         batch_prefix = f"rebuild_{uuid4().hex}"

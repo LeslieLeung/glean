@@ -74,8 +74,10 @@ async def get_vectorization_status(
             failed=failed,
         )
 
-        # Auto-complete rebuild when all entries reached terminal state
-        if pending == 0 and processing == 0 and (done + failed) > 0:
+        # Auto-complete rebuild when no entries remain in a non-terminal state.
+        # This also covers an empty instance (no entries at all), which would
+        # otherwise stay stuck in REBUILDING since done + failed never grows.
+        if pending == 0 and processing == 0:
             await config_service.complete_rebuild()
             current_status = VectorizationStatus.IDLE
 

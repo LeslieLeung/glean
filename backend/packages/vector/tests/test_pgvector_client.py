@@ -86,7 +86,10 @@ async def test_pgvector_client_ensure_collections_is_idempotent() -> None:
     await client.ensure_collections(1536, "openai", "text-embedding-3-small")
     await client.ensure_collections(1536, "openai", "text-embedding-3-small")
 
-    assert len(sql_calls) == 4
+    # Schema is created once via CREATE EXTENSION + metadata.create_all (run_sync);
+    # tables/indexes/constraints come from create_all so there are no extra manual
+    # CREATE INDEX statements, and the second call is a no-op (cached).
+    assert sql_calls == ["CREATE EXTENSION IF NOT EXISTS vector"]
     assert client._execute.await_count == 0
     client._load_model_signature.assert_awaited_once()
 

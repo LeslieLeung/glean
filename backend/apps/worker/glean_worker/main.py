@@ -113,7 +113,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     # Disconnect vector client
     vector_client = ctx.get("vector_client")
     if vector_client:
-        vector_client.disconnect()
+        await vector_client.disconnect()
         logger.info("Vector client disconnected", extra={"backend": vector_backend_config.backend})
 
     logger.info("=" * 60)

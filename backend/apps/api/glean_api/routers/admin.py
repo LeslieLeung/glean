@@ -963,15 +963,14 @@ async def get_embedding_status(
     # Get progress from entry counts
     progress = await admin_service.get_embedding_progress()
 
-    # Auto-complete rebuild if all entries reached terminal state
+    # Auto-complete rebuild when no entries remain in a non-terminal state
+    # (also covers an empty instance with no entries at all).
     current_status = config.status
     if config.status == VectorizationStatus.REBUILDING:
         pending = progress.get("pending", 0)
         processing = progress.get("processing", 0)
-        done = progress.get("done", 0)
-        failed = progress.get("failed", 0)
 
-        if pending == 0 and processing == 0 and (done + failed) > 0:
+        if pending == 0 and processing == 0:
             await config_service.complete_rebuild()
             current_status = VectorizationStatus.IDLE
 

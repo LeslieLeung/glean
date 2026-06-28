@@ -137,9 +137,8 @@ async def _check_rebuild_completion(session: AsyncSession) -> bool:
         )
         return False
 
-    if (done + failed) == 0:
-        return False
-
+    # No entries remain in a non-terminal state. This also completes an empty
+    # instance (no entries at all), which would otherwise stay stuck forever.
     config_service = TypedConfigService(session)
     await config_service.complete_rebuild()
     logger.info(

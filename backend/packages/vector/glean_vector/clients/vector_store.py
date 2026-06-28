@@ -13,7 +13,7 @@ class VectorStoreClient(Protocol):
     def connect(self) -> None:
         """Establish backend connection or initialize resources."""
 
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """Close backend connection/resources."""
 
     async def ensure_collections(

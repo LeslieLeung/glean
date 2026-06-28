@@ -11,6 +11,21 @@ from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.config import preference_config
 
 
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity in [-1, 1], robust to non-unit-length vectors.
+
+    Entry embeddings are stored verbatim from the provider; while OpenAI and the
+    sentence-transformer backend return unit vectors, other providers may not.
+    Normalising here keeps the downstream score math (which assumes a [-1, 1]
+    range) correct regardless of provider. For unit vectors this equals the dot
+    product, so it is a no-op for the common case.
+    """
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denom < 1e-8:
+        return 0.0
+    return float(np.dot(a, b) / denom)
+
+
 class ScoreService:
     """
     Service for calculating preference scores in real-time.
@@ -99,11 +114,11 @@ class ScoreService:
 
         if prefs.get("positive"):
             pos_vec = np.array(prefs["positive"]["embedding"])
-            positive_sim = float(np.dot(entry_vec, pos_vec))
+            positive_sim = _cosine_similarity(entry_vec, pos_vec)
 
         if prefs.get("negative"):
             neg_vec = np.array(prefs["negative"]["embedding"])
-            negative_sim = float(np.dot(entry_vec, neg_vec))
+            negative_sim = _cosine_similarity(entry_vec, neg_vec)
 
         # Raw score from similarities [-1, 1]
         raw_score = positive_sim - negative_sim
@@ -238,8 +253,8 @@ class ScoreService:
             entry_vec = np.array(embedding)
 
             # Calculate similarities
-            positive_sim = float(np.dot(entry_vec, pos_vec)) if pos_vec is not None else 0.0
-            negative_sim = float(np.dot(entry_vec, neg_vec)) if neg_vec is not None else 0.0
+            positive_sim = _cosine_similarity(entry_vec, pos_vec) if pos_vec is not None else 0.0
+            negative_sim = _cosine_similarity(entry_vec, neg_vec) if neg_vec is not None else 0.0
 
             # Raw score from similarities [-1, 1]
             raw_score = positive_sim - negative_sim

@@ -187,7 +187,7 @@ class MilvusClient:
         except MilvusException as e:
             raise ConnectionError(f"Failed to connect to Milvus: {e}") from e
 
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """Close connection to Milvus."""
         if self._connected:
             connections.disconnect("default")

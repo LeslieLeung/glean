@@ -170,7 +170,7 @@ def create_app(
         finally:
             vector_client = getattr(_app.state, "vector_client", None)
             if vector_client:
-                vector_client.disconnect()
+                await vector_client.disconnect()
                 _app.state.vector_client = None
                 logger.info(
                     "Vector client disconnected",

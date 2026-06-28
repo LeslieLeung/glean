@@ -6,7 +6,20 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import BIGINT, Column, Float, Integer, MetaData, String, Table, and_, delete, select
+from sqlalchemy import (
+    BIGINT,
+    Column,
+    Float,
+    ForeignKey,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    and_,
+    delete,
+    select,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -80,13 +93,26 @@ class PgVectorClient:
         if Vector is None:
             raise RuntimeError("pgvector package is not installed")
         self._metadata = MetaData()
+        # Table definitions intentionally mirror the Alembic models
+        # (EntryEmbedding / UserPreferenceVector) so that the runtime
+        # ``create_all`` fallback (deployments not provisioned by the migration,
+        # e.g. switching VECTOR_BACKEND after the migration already ran as a
+        # no-op) produces a schema identical to the migration: same foreign key
+        # (ON DELETE CASCADE), same index names (``ix_*``) and the same unique
+        # constraint.  This keeps the live schema from drifting and avoids
+        # creating duplicate indexes on Alembic-managed deployments.
         self._entries_table = Table(
             self.config.entries_table,
             self._metadata,
-            Column("id", String(36), primary_key=True),
+            Column(
+                "id",
+                String(36),
+                ForeignKey("entries.id", ondelete="CASCADE"),
+                primary_key=True,
+            ),
             Column("embedding", Vector(), nullable=False),  # type: ignore[misc,operator]
-            Column("feed_id", String(36), nullable=False),
-            Column("published_at", BIGINT, nullable=False),
+            Column("feed_id", String(36), nullable=False, index=True),
+            Column("published_at", BIGINT, nullable=False, index=True),
             Column("language", String(10), nullable=False, server_default=""),
             Column("word_count", Integer, nullable=False, server_default="0"),
             Column("author", String(200), nullable=False, server_default=""),
@@ -95,11 +121,12 @@ class PgVectorClient:
             self.config.prefs_table,
             self._metadata,
             Column("id", String(50), primary_key=True),
-            Column("user_id", String(36), nullable=False),
+            Column("user_id", String(36), nullable=False, index=True),
             Column("vector_type", String(20), nullable=False),
             Column("embedding", Vector(), nullable=False),  # type: ignore[misc,operator]
             Column("sample_count", Float, nullable=False),
             Column("updated_at", BIGINT, nullable=False),
+            UniqueConstraint("user_id", "vector_type", name="uq_user_vector_type"),
         )
         self._meta_table = Table(
             self.config.metadata_table,
@@ -109,10 +136,15 @@ class PgVectorClient:
             Column("updated_at", BIGINT, nullable=False),
         )
 
-    def disconnect(self) -> None:
-        """Close connection resources."""
+    async def disconnect(self) -> None:
+        """Close connection resources.
+
+        Uses the async ``AsyncEngine.dispose`` so asyncpg connections are closed
+        through the running event loop instead of being torn down synchronously
+        (which can raise ``MissingGreenlet`` / "Event loop is closed").
+        """
         if self._engine is not None:
-            self._engine.sync_engine.dispose()
+            await self._engine.dispose()
         self._connected = False
         self._engine = None
         self._session_maker = None
@@ -208,24 +240,16 @@ class PgVectorClient:
         self._ensure_connected()
         if self._engine is None:
             raise RuntimeError("pgvector engine unavailable")
-        entries_table, prefs_table, _meta_table = self._tables()
 
         if not self._schema_ensured:
+            # ``create_all`` (checkfirst=True) creates the tables, their indexes
+            # and the unique constraint only when they do not already exist.  On
+            # Alembic-managed deployments the tables exist, so this is a no-op and
+            # no duplicate indexes are created.  On unmanaged deployments it
+            # creates a schema identical to the migration (see ``_init_tables``).
             async with self._engine.begin() as conn:
                 await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
                 await conn.run_sync(self._metadata.create_all)
-                await conn.exec_driver_sql(
-                    f"CREATE INDEX IF NOT EXISTS {_quote_ident('idx_' + entries_table.name + '_feed_id')} "
-                    f"ON {_quote_ident(entries_table.name)} (feed_id)"
-                )
-                await conn.exec_driver_sql(
-                    f"CREATE INDEX IF NOT EXISTS {_quote_ident('idx_' + entries_table.name + '_published_at')} "
-                    f"ON {_quote_ident(entries_table.name)} (published_at)"
-                )
-                await conn.exec_driver_sql(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {_quote_ident('idx_' + prefs_table.name + '_user_type')} "
-                    f"ON {_quote_ident(prefs_table.name)} (user_id, vector_type)"
-                )
             self._schema_ensured = True
 
         if provider and model and self._last_model_signature is None:
