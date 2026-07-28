@@ -10,6 +10,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const ServerSetupPage = lazy(() => import('./pages/ServerSetupPage'))
 const ReaderPage = lazy(() => import('./pages/ReaderPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage'))
@@ -68,6 +69,7 @@ function App() {
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/setup" element={<ServerSetupPage />} />
         <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
         {/* Protected routes */}
