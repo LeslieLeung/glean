@@ -174,7 +174,9 @@ class TestAPITokenRevoke:
     @pytest.mark.asyncio
     async def test_revoke_nonexistent_token(self, client: AsyncClient, auth_headers):
         """Test revoking a non-existent token."""
-        response = await client.delete("/api/tokens/nonexistent-id", headers=auth_headers)
+        response = await client.delete(
+            "/api/tokens/00000000-0000-0000-0000-000000000000", headers=auth_headers
+        )
 
         assert response.status_code == 404
 

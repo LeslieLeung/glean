@@ -133,7 +133,7 @@ class TestAdminUsers:
     async def test_toggle_user_status_nonexistent(self, client: AsyncClient, admin_headers):
         """Test toggling status of nonexistent user."""
         response = await client.patch(
-            "/api/admin/users/nonexistent-id/status",
+            "/api/admin/users/00000000-0000-0000-0000-000000000000/status",
             headers=admin_headers,
             json={"is_active": False},
         )

@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Root package.json is the single source of truth
 const rootPackageJsonPath = path.join(__dirname, '..', 'package.json');
@@ -97,6 +98,19 @@ for (const relativePath of pyprojectPaths) {
     }
   } catch (error) {
     console.error(`✗  Error updating ${relativePath}: ${error.message}`);
+    hasErrors = true;
+  }
+}
+
+// Update uv.lock to reflect the new backend version
+if (!hasErrors) {
+  const backendDir = path.join(__dirname, '..', 'backend');
+  console.log('\n🔒 Updating uv.lock...');
+  try {
+    execSync('uv lock', { cwd: backendDir, stdio: 'inherit' });
+    console.log('✓  uv.lock updated');
+  } catch (error) {
+    console.error('✗  Failed to update uv.lock:', error.message);
     hasErrors = true;
   }
 }

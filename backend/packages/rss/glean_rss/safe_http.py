@@ -340,6 +340,10 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
             logger.warning("Blocked SSRF request (url validation): %s", request.url)
             raise
 
+        # Ensure the request body is buffered before forwarding or rebuilding
+        # the request, because redirect hops arrive in streaming state.
+        await request.aread()
+
         # Allowed-hosts bypass - skip DNS/IP validation entirely.
         if hostname.lower() in {h.lower() for h in self._policy.allowed_hosts}:
             return await self._inner.handle_async_request(request)
