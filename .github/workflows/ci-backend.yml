@@ -98,14 +98,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario:
-          - fresh_pgvector
-          - runtime_provision_after_milvus
-          - cross_backend_downgrade_and_reupgrade
-          - pgvector_crud
+        include:
+          - scenario: fresh_pgvector
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: runtime_provision_after_milvus
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: cross_backend_downgrade_and_reupgrade
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: pgvector_crud
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: milvus_upgrade_on_plain_postgres
+            postgres_image: postgres:16-alpine
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: ${{ matrix.postgres_image }}
         env:
           POSTGRES_DB: glean_vector_schema_test
           POSTGRES_USER: glean

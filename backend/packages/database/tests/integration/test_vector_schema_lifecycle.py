@@ -249,6 +249,17 @@ def test_runtime_provision_after_milvus_upgrade_without_pgvector_schema() -> Non
     _run_async(_assert_runtime_vector_schema("ci:schema-test:3"))
 
 
+def test_milvus_upgrade_on_plain_postgres() -> None:
+    """Milvus migrations remain deployable when PostgreSQL has no vector binaries."""
+    _run_async(_reset_database())
+
+    _upgrade("head", backend="milvus")
+
+    assert _run_async(_revision()) == _head_revision()
+    _run_async(_assert_core_schema_exists())
+    assert _run_async(_existing_vector_tables()) == set()
+
+
 def test_cross_backend_downgrade_and_reupgrade_restores_pgvector_schema() -> None:
     """Downgrade under Milvus and re-upgrade under pgvector is deterministic."""
     _run_async(_reset_database())
