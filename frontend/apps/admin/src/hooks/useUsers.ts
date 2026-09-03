@@ -34,6 +34,16 @@ export function useUsers(params: UserListParams = {}) {
   })
 }
 
+export function useAllUsers() {
+  return useQuery<UserListResponse>({
+    queryKey: ['admin', 'users', 'all'],
+    queryFn: async () => {
+      const response = await api.get('/users', { params: { per_page: 100 } })
+      return response.data
+    },
+  })
+}
+
 export function useToggleUserStatus() {
   const queryClient = useQueryClient()
 
@@ -44,6 +54,31 @@ export function useToggleUserStatus() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] })
+    },
+  })
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async ({ userId, password }: { userId: string; password: string }) => {
+      const response = await api.post(`/users/${userId}/reset-password`, { password })
+      return response.data
+    },
+  })
+}
+
+interface ImportSubscriptionsResult {
+  imported: number
+  skipped: number
+}
+
+export function useImportSubscriptions() {
+  return useMutation<ImportSubscriptionsResult, Error, { userId: string; sourceUserId: string }>({
+    mutationFn: async ({ userId, sourceUserId }) => {
+      const response = await api.post(`/users/${userId}/import-subscriptions`, {
+        source_user_id: sourceUserId,
+      })
+      return response.data
     },
   })
 }

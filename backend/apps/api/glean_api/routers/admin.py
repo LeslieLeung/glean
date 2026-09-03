@@ -29,6 +29,9 @@ from glean_core.schemas.admin import (
     AdminLoginResponse,
     AdminUserResponse,
     DashboardStatsResponse,
+    ImportSubscriptionsRequest,
+    ImportSubscriptionsResponse,
+    ResetPasswordRequest,
     ToggleUserStatusRequest,
     UserListItem,
     UserListResponse,
@@ -330,6 +333,71 @@ async def toggle_user_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     return UserListItem.model_validate(user)
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    request: ResetPasswordRequest,
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+) -> dict[str, str]:
+    """
+    Reset a user's password.
+
+    Args:
+        user_id: User ID.
+        request: New password.
+        current_admin: Current authenticated admin.
+        admin_service: Admin service instance.
+
+    Returns:
+        Success message.
+
+    Raises:
+        HTTPException: If user not found.
+    """
+    user = await admin_service.reset_user_password(user_id, request.password)
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return {"message": "Password reset successfully"}
+
+
+@router.post("/users/{user_id}/import-subscriptions", response_model=ImportSubscriptionsResponse)
+async def import_user_subscriptions(
+    user_id: str,
+    request: ImportSubscriptionsRequest,
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+) -> ImportSubscriptionsResponse:
+    """
+    Import subscriptions from another user.
+
+    Args:
+        user_id: Target user ID.
+        request: Source user ID.
+        current_admin: Current authenticated admin.
+        admin_service: Admin service instance.
+
+    Returns:
+        Import result with counts.
+
+    Raises:
+        HTTPException: If user not found or same user.
+    """
+    if user_id == request.source_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot import subscriptions from the same user",
+        )
+
+    imported, skipped = await admin_service.import_user_subscriptions(
+        user_id, request.source_user_id
+    )
+
+    return ImportSubscriptionsResponse(imported=imported, skipped=skipped)
 
 
 # M2: Feed management endpoints

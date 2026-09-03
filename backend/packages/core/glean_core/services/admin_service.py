@@ -208,6 +208,68 @@ class AdminService:
             "new_entries_today": new_entries_today,
         }
 
+    async def reset_user_password(self, user_id: str, new_password: str) -> User | None:
+        """
+        Reset a user's password.
+
+        Args:
+            user_id: User ID.
+            new_password: New password (already SHA-256 hashed by frontend).
+
+        Returns:
+            Updated user if found, None otherwise.
+        """
+        result = await self.session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return None
+
+        user.password_hash = hash_password(new_password)
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
+
+    async def import_user_subscriptions(
+        self, target_user_id: str, source_user_id: str
+    ) -> tuple[int, int]:
+        """
+        Import subscriptions from one user to another, skipping duplicates.
+
+        Args:
+            target_user_id: User to import subscriptions into.
+            source_user_id: User to copy subscriptions from.
+
+        Returns:
+            Tuple of (imported_count, skipped_count).
+        """
+        # Get source user's subscriptions
+        source_subs_result = await self.session.execute(
+            select(Subscription).where(Subscription.user_id == source_user_id)
+        )
+        source_subs = list(source_subs_result.scalars().all())
+
+        # Get target user's existing feed_ids for deduplication
+        target_feeds_result = await self.session.execute(
+            select(Subscription.feed_id).where(Subscription.user_id == target_user_id)
+        )
+        existing_feed_ids = set(target_feeds_result.scalars().all())
+
+        imported = 0
+        skipped = 0
+        for sub in source_subs:
+            if sub.feed_id in existing_feed_ids:
+                skipped += 1
+            else:
+                new_sub = Subscription(user_id=target_user_id, feed_id=sub.feed_id)
+                self.session.add(new_sub)
+                imported += 1
+
+        if imported > 0:
+            await self.session.commit()
+
+        return imported, skipped
+
     # M2: Feed management methods
     async def list_feeds(
         self,

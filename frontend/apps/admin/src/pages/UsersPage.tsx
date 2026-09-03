@@ -1,9 +1,30 @@
 import { useState } from 'react'
-import { useUsers, useToggleUserStatus } from '../hooks/useUsers'
-import { Button, Input, Badge, Skeleton } from '@glean/ui'
-import { Search, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import {
+  useUsers,
+  useAllUsers,
+  useToggleUserStatus,
+  useResetPassword,
+  useImportSubscriptions,
+} from '../hooks/useUsers'
+import {
+  Button,
+  buttonVariants,
+  Input,
+  Badge,
+  Skeleton,
+  Label,
+  Dialog,
+  DialogPopup,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogPanel,
+  DialogClose,
+} from '@glean/ui'
+import { Search, CheckCircle, XCircle, Loader2, KeyRound, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { useTranslation } from '@glean/i18n'
+import { hashPassword } from '@glean/api-client'
 
 /**
  * User management page.
@@ -14,8 +35,31 @@ export default function UsersPage() {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
 
+  // Reset password dialog state
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null)
+  const [resetPasswordEmail, setResetPasswordEmail] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [resetSuccess, setResetSuccess] = useState(false)
+
+  // Import subscriptions dialog state
+  const [importTargetUserId, setImportTargetUserId] = useState<string | null>(null)
+  const [importTargetEmail, setImportTargetEmail] = useState('')
+  const [sourceUserId, setSourceUserId] = useState('')
+  const [importResult, setImportResult] = useState<{
+    imported: number
+    skipped: number
+  } | null>(null)
+  const [importError, setImportError] = useState('')
+
   const { data, isLoading } = useUsers({ page, per_page: 20, search: search || undefined })
   const toggleMutation = useToggleUserStatus()
+  const resetPasswordMutation = useResetPassword()
+  const importSubsMutation = useImportSubscriptions()
+
+  // Fetch all users for the source user dropdown
+  const { data: allUsersData } = useAllUsers()
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,6 +69,85 @@ export default function UsersPage() {
 
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     await toggleMutation.mutateAsync({ userId, isActive: !currentStatus })
+  }
+
+  const handleOpenResetPassword = (userId: string, email: string) => {
+    setResetPasswordUserId(userId)
+    setResetPasswordEmail(email)
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setResetSuccess(false)
+  }
+
+  const handleCloseResetPassword = () => {
+    setResetPasswordUserId(null)
+    setResetPasswordEmail('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setResetSuccess(false)
+  }
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError('')
+
+    if (newPassword.length < 6) {
+      setPasswordError(t('admin:users.passwordTooShort'))
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError(t('admin:users.passwordMismatch'))
+      return
+    }
+    if (!resetPasswordUserId) return
+
+    try {
+      const hashed = await hashPassword(newPassword)
+      await resetPasswordMutation.mutateAsync({
+        userId: resetPasswordUserId,
+        password: hashed,
+      })
+      setResetSuccess(true)
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch {
+      setPasswordError('Failed to reset password')
+    }
+  }
+
+  const handleOpenImportSubs = (userId: string, email: string) => {
+    setImportTargetUserId(userId)
+    setImportTargetEmail(email)
+    setSourceUserId('')
+    setImportResult(null)
+    setImportError('')
+  }
+
+  const handleCloseImportSubs = () => {
+    setImportTargetUserId(null)
+    setImportTargetEmail('')
+    setSourceUserId('')
+    setImportResult(null)
+    setImportError('')
+  }
+
+  const handleImportSubs = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!importTargetUserId || !sourceUserId) return
+    setImportError('')
+    setImportResult(null)
+
+    try {
+      const result = await importSubsMutation.mutateAsync({
+        userId: importTargetUserId,
+        sourceUserId,
+      })
+      setImportResult(result)
+    } catch {
+      setImportError('Failed to import subscriptions')
+    }
   }
 
   return (
@@ -155,21 +278,39 @@ export default function UsersPage() {
                             : t('admin:users.never')}
                         </p>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <Button
-                          size="sm"
-                          variant={user.is_active ? 'destructive-outline' : 'default'}
-                          onClick={() => handleToggleStatus(user.id, user.is_active)}
-                          disabled={toggleMutation.isPending}
-                        >
-                          {toggleMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : user.is_active ? (
-                            t('admin:users.disable')
-                          ) : (
-                            t('admin:users.enable')
-                          )}
-                        </Button>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => handleOpenResetPassword(user.id, user.email)}
+                            title={t('admin:users.resetPassword')}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => handleOpenImportSubs(user.id, user.email)}
+                            title={t('admin:users.importSubs')}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={user.is_active ? 'destructive-outline' : 'default'}
+                            onClick={() => handleToggleStatus(user.id, user.is_active)}
+                            disabled={toggleMutation.isPending}
+                          >
+                            {toggleMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : user.is_active ? (
+                              t('admin:users.disable')
+                            ) : (
+                              t('admin:users.enable')
+                            )}
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -218,6 +359,143 @@ export default function UsersPage() {
           )}
         </div>
       </div>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetPasswordUserId} onOpenChange={handleCloseResetPassword}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{t('admin:users.resetPasswordTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('admin:users.resetPasswordDesc')} ({resetPasswordEmail})
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            {resetSuccess ? (
+              <div className="space-y-4">
+                <div className="bg-success/10 text-success rounded-lg p-4 text-sm">
+                  <CheckCircle className="mr-2 inline h-4 w-4" />
+                  {t('admin:users.resetSuccess')}
+                </div>
+                <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+                  {t('common:actions.close')}
+                </DialogClose>
+              </div>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="new-password">{t('admin:users.newPassword')}</Label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder={t('admin:users.newPassword')}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-password">{t('admin:users.confirmPassword')}</Label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder={t('admin:users.confirmPassword')}
+                    required
+                  />
+                </div>
+                {passwordError && (
+                  <p className="text-destructive text-sm">{passwordError}</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+                    {t('common:actions.cancel')}
+                  </DialogClose>
+                  <Button type="submit" disabled={resetPasswordMutation.isPending}>
+                    {resetPasswordMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t('admin:users.resetting')}
+                      </>
+                    ) : (
+                      t('admin:users.resetPassword')
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
+
+      {/* Import Subscriptions Dialog */}
+      <Dialog open={!!importTargetUserId} onOpenChange={handleCloseImportSubs}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>{t('admin:users.importSubsTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('admin:users.importSubsDesc')} ({importTargetEmail})
+            </DialogDescription>
+          </DialogHeader>
+          <DialogPanel>
+            {importResult ? (
+              <div className="space-y-4">
+                <div className="bg-success/10 text-success rounded-lg p-4 text-sm">
+                  <CheckCircle className="mr-2 inline h-4 w-4" />
+                  {t('admin:users.importSuccess', {
+                    imported: importResult.imported,
+                    skipped: importResult.skipped,
+                  })}
+                </div>
+                <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+                  {t('common:actions.close')}
+                </DialogClose>
+              </div>
+            ) : (
+              <form onSubmit={handleImportSubs} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="source-user">{t('admin:users.sourceUser')}</Label>
+                  <select
+                    id="source-user"
+                    value={sourceUserId}
+                    onChange={(e) => setSourceUserId(e.target.value)}
+                    className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    required
+                  >
+                    <option value="">{t('admin:users.selectUser')}</option>
+                    {allUsersData?.items
+                      .filter((u) => u.id !== importTargetUserId)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.email}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                {importError && <p className="text-destructive text-sm">{importError}</p>}
+                <div className="flex justify-end gap-2">
+                  <DialogClose className={buttonVariants({ variant: 'ghost' })}>
+                    {t('common:actions.cancel')}
+                  </DialogClose>
+                  <Button
+                    type="submit"
+                    disabled={importSubsMutation.isPending || !sourceUserId}
+                  >
+                    {importSubsMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {t('admin:users.importing')}
+                      </>
+                    ) : (
+                      t('admin:users.importSubs')
+                    )}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
     </div>
   )
 }
