@@ -17,12 +17,14 @@ import {
 import { Server, Loader2, CheckCircle, XCircle, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import { createNamedLogger } from '@glean/logger'
-import type { HealthCheckResponse } from '@glean/types'
+import { testServerConnection, isValidApiUrl, isInsecureUrl } from '../lib/serverConnection'
 
 const logger = createNamedLogger({ name: 'ApiConfigDialog' })
 
 interface ApiConfigDialogProps {
   children: React.ReactElement
+  /** When true, the dialog opens immediately on mount (e.g. first-launch server setup). */
+  defaultOpen?: boolean
 }
 
 interface ConnectionStatus {
@@ -36,9 +38,9 @@ interface ConnectionStatus {
  *
  * Only functional when running in Electron (window.electronAPI exists).
  */
-export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
+export function ApiConfigDialog({ children, defaultOpen = false }: ApiConfigDialogProps) {
   const { t } = useTranslation('auth')
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [apiUrl, setApiUrl] = useState('')
   const [originalUrl, setOriginalUrl] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({ status: 'idle' })
@@ -98,38 +100,9 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
     return null
   }
 
-  const isValidUrl = (url: string): boolean => {
-    try {
-      const parsed = new URL(url)
-      // Only allow http and https protocols
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
-        return false
-      }
-      // Allow URLs with or without path components
-      // Some deployments may host the API at a subpath (e.g., http://example.com/glean)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  const isInsecureUrl = (url: string): boolean => {
-    try {
-      const parsed = new URL(url)
-      return parsed.protocol === 'http:' && parsed.hostname !== 'localhost'
-    } catch {
-      return false
-    }
-  }
-
   const testConnection = async () => {
     const url = apiUrl.trim()
-    if (!url) {
-      setConnectionStatus({ status: 'error', message: t('config.urlRequired') })
-      return
-    }
-
-    if (!isValidUrl(url)) {
+    if (!url || !isValidApiUrl(url)) {
       setConnectionStatus({ status: 'error', message: t('config.invalidUrl') })
       return
     }
@@ -141,45 +114,31 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
       setConnectionStatus({ status: 'testing' })
     }
 
-    try {
-      const response = await fetch(`${url}/api/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000),
+    const result = await testServerConnection(url)
+
+    if (result.success) {
+      setConnectionStatus({
+        status: 'success',
+        message: t('config.connectionSuccess'),
+        version: result.version,
       })
-
-      if (response.ok) {
-        try {
-          const data = (await response.json()) as HealthCheckResponse
-
-          // Runtime validation: ensure response has expected structure
-          if (!data || typeof data.status !== 'string') {
-            throw new Error('Invalid health check response format')
-          }
-
-          setConnectionStatus({
-            status: 'success',
-            message: t('config.connectionSuccess'),
-            version: data.version,
-          })
-        } catch (parseError) {
-          logger.error('Failed to parse server response', { parseError, url })
+    } else {
+      switch (result.message) {
+        case 'invalid':
+          setConnectionStatus({ status: 'error', message: t('config.invalidUrl') })
+          break
+        case 'malformed-response':
+          setConnectionStatus({ status: 'error', message: t('config.invalidResponse') })
+          break
+        case 'server-error':
           setConnectionStatus({
             status: 'error',
-            message: t('config.invalidResponse'),
+            message: t('config.serverError', { status: result.status }),
           })
-        }
-      } else {
-        setConnectionStatus({
-          status: 'error',
-          message: t('config.serverError', { status: response.status }),
-        })
+          break
+        default:
+          setConnectionStatus({ status: 'error', message: t('config.connectionFailed') })
       }
-    } catch (error) {
-      logger.error('Connection test failed', { error, url })
-      setConnectionStatus({
-        status: 'error',
-        message: t('config.connectionFailed'),
-      })
     }
   }
 
@@ -192,7 +151,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
       return
     }
 
-    if (!isValidUrl(url)) {
+    if (!isValidApiUrl(url)) {
       setConnectionStatus({ status: 'error', message: t('config.invalidUrl') })
       return
     }

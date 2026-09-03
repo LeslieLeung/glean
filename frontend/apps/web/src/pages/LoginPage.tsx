@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Rss, AlertCircle, Sparkles, Server } from 'lucide-react'
@@ -21,6 +21,50 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [validationError, setValidationError] = useState('')
+  // True once the server reachability check has completed
+  const [configChecked, setConfigChecked] = useState(false)
+
+  // On Electron, probe the configured server; if unreachable, redirect to the
+  // first-launch setup page where the user gets deploy guidance. On web the
+  // URL is fixed, so we skip the probe entirely.
+  useEffect(() => {
+    if (!window.electronAPI?.isElectron) {
+      setConfigChecked(true)
+      return
+    }
+
+    let cancelled = false
+
+    window.electronAPI
+      .getApiUrl()
+      .then(async (url) => {
+        try {
+          const response = await fetch(`${url}/api/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000),
+          })
+          if (!response.ok && !cancelled) {
+            navigate('/setup', { replace: true })
+          }
+        } catch {
+          // Server unreachable – send the user to the setup/onboarding page
+          if (!cancelled) {
+            navigate('/setup', { replace: true })
+          }
+        }
+        if (!cancelled) setConfigChecked(true)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          navigate('/setup', { replace: true })
+          setConfigChecked(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [navigate])
 
   const from =
     (location.state as { from?: { pathname: string } })?.from?.pathname ||
@@ -170,7 +214,7 @@ export default function LoginPage() {
           </div>
 
           {/* Server configuration - Electron only */}
-          {window.electronAPI?.isElectron && (
+          {window.electronAPI?.isElectron && configChecked && (
             <div className="border-border mt-6 flex justify-center border-t pt-6">
               <ApiConfigDialog>
                 <button className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 text-xs transition-colors">
