@@ -20,6 +20,7 @@ from .user_auth_provider import UserAuthProvider
 from .user_entry import UserEntry
 from .user_preference_stats import UserPreferenceStats
 from .user_preference_vector import UserPreferenceVector
+from .vector_cleanup_pending import VectorCleanupPending
 from .vector_store_metadata import VectorStoreMetadata
 
 __all__ = [
@@ -48,6 +49,7 @@ __all__ = [
     "UserPreferenceStats",
     "UserPreferenceVector",
     "VectorStoreMetadata",
+    "VectorCleanupPending",
     # MCP models
     "APIToken",
 ]

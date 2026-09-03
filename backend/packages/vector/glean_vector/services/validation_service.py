@@ -5,11 +5,13 @@ Provides validation for embedding providers and vector backend connections
 before enabling vectorization.
 """
 
-import os
-
 from glean_core import get_logger
 from glean_core.schemas.config import EmbeddingConfig, ValidationResult
-from glean_vector.config import pgvector_config, vector_backend_config
+from glean_vector.config import (
+    pgvector_config,
+    resolve_pgvector_database_url,
+    vector_backend_config,
+)
 
 logger = get_logger(__name__)
 
@@ -226,6 +228,8 @@ class EmbeddingValidationService:
                 is_compatible = True
                 compatibility_reason: str | None = None
                 model_signatures: dict[str, str | None] = {}
+                vector_dimensions: dict[str, int | None] = {}
+                entry_vector_count = 0
 
                 if expected_signature and collections_exist:
                     for target_name, collection_name in (
@@ -233,9 +237,27 @@ class EmbeddingValidationService:
                         ("preferences", milvus_config.prefs_collection),
                     ):
                         collection = Collection(collection_name, using="validation")
+                        if target_name == "entries":
+                            entry_vector_count = int(collection.num_entities)
                         current_signature = MilvusClient.extract_model_signature(collection)
+                        current_dimension = MilvusClient.extract_vector_dimension(collection)
                         model_signatures[target_name] = current_signature
-                        if current_signature != expected_signature:
+                        vector_dimensions[target_name] = current_dimension
+                        if current_dimension != dimension:
+                            is_compatible = False
+                            compatibility_reason = (
+                                f"{target_name} dimension mismatch: "
+                                f"existing={current_dimension}, expected={dimension}"
+                            )
+                            break
+                        # Legacy Milvus collections did not persist a model
+                        # signature. Keep them when their schema dimension is
+                        # compatible; explicit non-matching signatures still
+                        # require a rebuild.
+                        if (
+                            current_signature is not None
+                            and current_signature != expected_signature
+                        ):
                             is_compatible = False
                             compatibility_reason = (
                                 f"{target_name} signature mismatch: "
@@ -259,6 +281,8 @@ class EmbeddingValidationService:
                         "compatibility_reason": compatibility_reason,
                         "expected_signature": expected_signature,
                         "model_signatures": model_signatures,
+                        "vector_dimensions": vector_dimensions,
+                        "entry_vector_count": entry_vector_count,
                         "dimension": dimension,
                         "provider": provider,
                         "model": model,
@@ -303,7 +327,7 @@ class EmbeddingValidationService:
             from sqlalchemy import text
             from sqlalchemy.ext.asyncio import create_async_engine
 
-            database_url = pgvector_config.database_url or os.getenv("DATABASE_URL", "")
+            database_url = resolve_pgvector_database_url()
             if not database_url:
                 return ValidationResult(
                     success=False,
@@ -314,10 +338,43 @@ class EmbeddingValidationService:
             engine = create_async_engine(database_url, echo=False)
             try:
                 async with engine.connect() as conn:
-                    result = await conn.execute(
-                        text("SELECT extname FROM pg_extension WHERE extname='vector'")
+                    extension_result = await conn.execute(
+                        text(
+                            "SELECT "
+                            "EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector'), "
+                            "EXISTS (SELECT 1 FROM pg_available_extensions "
+                            "WHERE name = 'vector'), "
+                            "has_database_privilege(current_user, current_database(), 'CREATE')"
+                        )
                     )
-                    has_extension = result.scalar_one_or_none() is not None
+                    (
+                        has_extension,
+                        extension_available,
+                        can_create_extension,
+                    ) = (bool(value) for value in extension_result.one())
+                    if not has_extension and not extension_available:
+                        return ValidationResult(
+                            success=False,
+                            message=(
+                                "pgvector extension is not available on this PostgreSQL server"
+                            ),
+                            details={
+                                "vector_extension_installed": False,
+                                "vector_extension_available": False,
+                            },
+                        )
+                    if not has_extension and not can_create_extension:
+                        return ValidationResult(
+                            success=False,
+                            message=(
+                                "Database user cannot install the available pgvector extension"
+                            ),
+                            details={
+                                "vector_extension_installed": False,
+                                "vector_extension_available": True,
+                                "can_create_extension": False,
+                            },
+                        )
 
                     entries_regclass = await conn.execute(
                         text("SELECT to_regclass(:table_name)"),
@@ -344,8 +401,33 @@ class EmbeddingValidationService:
                     is_compatible = True
                     compatibility_reason: str | None = None
                     model_signatures: dict[str, str] = {}
+                    entry_vector_count = 0
+                    invalid_dimension_count = 0
 
-                    if expected_signature and collections_exist:
+                    if entries_exists:
+                        count_row = await conn.exec_driver_sql(
+                            f"SELECT count(*) FROM {_quote_ident(pgvector_config.entries_table)}"
+                        )
+                        entry_vector_count = int(count_row.scalar_one())
+                    if dimension is not None and entries_exists and prefs_exists:
+                        invalid_rows = await conn.exec_driver_sql(
+                            "SELECT "
+                            f"(SELECT count(*) FROM "
+                            f"{_quote_ident(pgvector_config.entries_table)} "
+                            f"WHERE vector_dims(embedding) IS DISTINCT FROM {dimension}) + "
+                            f"(SELECT count(*) FROM "
+                            f"{_quote_ident(pgvector_config.prefs_table)} "
+                            f"WHERE vector_dims(embedding) IS DISTINCT FROM {dimension})"
+                        )
+                        invalid_dimension_count = int(invalid_rows.scalar_one())
+                        if invalid_dimension_count:
+                            is_compatible = False
+                            compatibility_reason = (
+                                f"{invalid_dimension_count} stored vector(s) do not have "
+                                f"dimension {dimension}"
+                            )
+
+                    if expected_signature and collections_exist and is_compatible:
                         if metadata_exists:
                             rows = await conn.exec_driver_sql(
                                 f"SELECT name, model_signature "
@@ -380,6 +462,8 @@ class EmbeddingValidationService:
                     details={
                         "database_url_configured": True,
                         "vector_extension_installed": has_extension,
+                        "vector_extension_available": extension_available,
+                        "can_create_extension": can_create_extension,
                         "entries_table_exists": entries_exists,
                         "prefs_table_exists": prefs_exists,
                         "metadata_table_exists": metadata_exists,
@@ -388,6 +472,8 @@ class EmbeddingValidationService:
                         "compatibility_reason": compatibility_reason,
                         "expected_signature": expected_signature,
                         "model_signatures": model_signatures,
+                        "entry_vector_count": entry_vector_count,
+                        "invalid_dimension_count": invalid_dimension_count,
                         "dimension": dimension,
                         "provider": provider,
                         "model": model,

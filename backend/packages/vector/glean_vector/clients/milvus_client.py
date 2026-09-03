@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import suppress
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pymilvus import (
     Collection,
@@ -87,6 +87,69 @@ class MilvusClient:
             pass
         return None
 
+    @staticmethod
+    def extract_vector_dimension(collection: Collection) -> int | None:
+        """Return the configured dimension of a collection's embedding field.
+
+        Legacy collections may not carry the model signature in their
+        description.  The vector field dimension is still sufficient to
+        establish basic schema compatibility without deleting existing data.
+        """
+        try:
+            schema = cast(Any, collection.schema)
+            fields = cast(list[FieldSchema], schema.fields)
+            for field in fields:
+                if field.name != "embedding":
+                    continue
+                params = cast(dict[str, Any], cast(Any, field).params)
+                dimension = params.get("dim")
+                return int(dimension) if dimension is not None else None
+        except (AttributeError, TypeError, ValueError):
+            logger.warning(
+                "Could not inspect Milvus collection vector dimension",
+                exc_info=True,
+            )
+        return None
+
+    def _check_collection_compatibility(
+        self,
+        collection: Collection,
+        *,
+        collection_label: str,
+        dimension: int,
+        expected_signature: str | None,
+    ) -> tuple[bool, str | None]:
+        """Validate one existing collection without mutating it."""
+        existing_dimension = self.extract_vector_dimension(collection)
+        if existing_dimension is None:
+            return (
+                False,
+                f"{collection_label} collection embedding dimension could not be determined",
+            )
+        if existing_dimension != dimension:
+            return (
+                False,
+                f"{collection_label} collection dimension mismatch: "
+                f"existing={existing_dimension}, expected={dimension}",
+            )
+
+        if expected_signature:
+            existing_signature = self.extract_model_signature(collection)
+            if existing_signature and existing_signature != expected_signature:
+                return (
+                    False,
+                    f"{collection_label} collection signature mismatch: "
+                    f"existing={existing_signature}, expected={expected_signature}",
+                )
+            if existing_signature is None:
+                logger.warning(
+                    "%s Milvus collection has no model signature; accepting the "
+                    "legacy collection because its vector dimension matches",
+                    collection_label,
+                )
+
+        return (True, None)
+
     def check_model_compatibility(
         self, dimension: int, provider: str, model: str
     ) -> tuple[bool, str | None]:
@@ -121,13 +184,14 @@ class MilvusClient:
         try:
             if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
                 collection = Collection(self.config.entries_collection)
-                existing_signature = self.extract_model_signature(collection)
-                if existing_signature != expected_signature:
-                    return (
-                        False,
-                        f"Entries collection signature mismatch: "
-                        f"existing={existing_signature}, expected={expected_signature}",
-                    )
+                compatible, reason = self._check_collection_compatibility(
+                    collection,
+                    collection_label="Entries",
+                    dimension=dimension,
+                    expected_signature=expected_signature,
+                )
+                if not compatible:
+                    return (False, reason)
         except MilvusException as e:
             logger.warning(
                 f"Failed to check entries collection compatibility: {e}. Assuming compatible."
@@ -138,13 +202,14 @@ class MilvusClient:
         try:
             if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
                 collection = Collection(self.config.prefs_collection)
-                existing_signature = self.extract_model_signature(collection)
-                if existing_signature != expected_signature:
-                    return (
-                        False,
-                        f"Preferences collection signature mismatch: "
-                        f"existing={existing_signature}, expected={expected_signature}",
-                    )
+                compatible, reason = self._check_collection_compatibility(
+                    collection,
+                    collection_label="Preferences",
+                    dimension=dimension,
+                    expected_signature=expected_signature,
+                )
+                if not compatible:
+                    return (False, reason)
         except MilvusException as e:
             logger.warning(
                 f"Failed to check preferences collection compatibility: {e}. Assuming compatible."
@@ -197,10 +262,12 @@ class MilvusClient:
         self, dimension: int, provider: str | None = None, model: str | None = None
     ) -> None:
         """
-        Ensure required collections exist with correct model configuration.
+        Ensure required collections exist with a compatible model configuration.
 
-        If collections exist but were created for a different model (even with same dimension),
-        they will be recreated to ensure embedding compatibility.
+        This method never drops an existing collection.  Destructive replacement
+        is reserved for the explicit rebuild workflow via ``recreate_collections``.
+        Legacy unsigned collections are accepted when their vector dimension
+        matches the requested configuration.
 
         Args:
             dimension: Vector dimension for embeddings
@@ -214,36 +281,36 @@ class MilvusClient:
         if provider and model:
             expected_signature = self._build_model_signature(provider, model, dimension)
 
-        # Check entries collection
-        if utility.has_collection(self.config.entries_collection):  # type: ignore[truthy-function]
-            collection = Collection(self.config.entries_collection)
+        entries_exists = bool(utility.has_collection(self.config.entries_collection))  # type: ignore[truthy-function]
+        prefs_exists = bool(utility.has_collection(self.config.prefs_collection))  # type: ignore[truthy-function]
+        entries_collection = Collection(self.config.entries_collection) if entries_exists else None
+        prefs_collection = Collection(self.config.prefs_collection) if prefs_exists else None
 
-            # Check if model has changed
-            if expected_signature:
-                existing_signature = self.extract_model_signature(collection)
-                if existing_signature != expected_signature:
-                    # Model changed - recreate collections
-                    await self.recreate_collections(dimension, provider, model)
-                    return
+        for collection, label in (
+            (entries_collection, "Entries"),
+            (prefs_collection, "Preferences"),
+        ):
+            if collection is None:
+                continue
+            compatible, reason = self._check_collection_compatibility(
+                collection,
+                collection_label=label,
+                dimension=dimension,
+                expected_signature=expected_signature,
+            )
+            if not compatible:
+                raise RuntimeError(
+                    f"{reason}. Run an explicit vector rebuild to replace the collection."
+                )
 
-            self._entries_collection = collection
+        if entries_collection is not None:
+            self._entries_collection = entries_collection
             self._entries_collection.load()  # type: ignore[unused-coroutine]
         else:
             self._entries_collection = self._create_entries_collection(dimension, provider, model)
 
-        # Check preferences collection
-        if utility.has_collection(self.config.prefs_collection):  # type: ignore[truthy-function]
-            collection = Collection(self.config.prefs_collection)
-
-            # Check if model has changed
-            if expected_signature:
-                existing_signature = self.extract_model_signature(collection)
-                if existing_signature != expected_signature:
-                    # Model changed - recreate collections
-                    await self.recreate_collections(dimension, provider, model)
-                    return
-
-            self._prefs_collection = collection
+        if prefs_collection is not None:
+            self._prefs_collection = prefs_collection
             self._prefs_collection.load()  # type: ignore[unused-coroutine]
         else:
             self._prefs_collection = self._create_user_preferences_collection(

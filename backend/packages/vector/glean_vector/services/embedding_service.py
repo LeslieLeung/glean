@@ -2,17 +2,24 @@
 
 import contextlib
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select, union, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core import get_logger
-from glean_database.models import Entry
+from glean_core import RedisKeys, get_logger
+from glean_core.services.preference_dirty_service import mark_preferences_dirty
+from glean_database.models import Bookmark, Entry, UserEntry
 from glean_vector.clients.embedding_client import EmbeddingClient
 from glean_vector.clients.vector_store import VectorStoreClient
 
 logger = get_logger(__name__)
+
+
+class StaleEmbeddingGenerationError(RuntimeError):
+    """Raised when a worker belongs to an obsolete config/rebuild generation."""
 
 
 class EmbeddingService:
@@ -31,6 +38,8 @@ class EmbeddingService:
         db_session: AsyncSession,
         embedding_client: EmbeddingClient,
         vector_client: VectorStoreClient,
+        generation_guard: Callable[[], Awaitable[bool]] | None = None,
+        generation_lock: Any | None = None,
     ) -> None:
         """
         Initialize embedding service.
@@ -39,10 +48,15 @@ class EmbeddingService:
             db_session: Database session
             embedding_client: Embedding API client
             vector_client: Vector database client
+            generation_guard: Async check executed immediately before a vector write.
+            generation_lock: Redis-compatible client used to serialize writes
+                against collection recreation.
         """
         self.db = db_session
         self.embedding_client = embedding_client
         self.vector_client = vector_client
+        self.generation_guard = generation_guard
+        self.generation_lock = generation_lock
 
     def _extract_text(self, entry: Entry) -> str:
         """
@@ -129,7 +143,7 @@ class EmbeddingService:
         word_count = self._calculate_word_count(text)
 
         if not text:
-            await self._mark_failed(entry_id, "No text content to embed")
+            await self._mark_failed_fenced(entry_id, "No text content to embed")
             return False
 
         try:
@@ -139,18 +153,74 @@ class EmbeddingService:
             # Detect language (simple heuristic)
             language = self._detect_language(text)
 
-            # Store in vector backend
+            affected_user_ids = await self._store_embedding(
+                entry=entry,
+                embedding=embedding,
+                language=language,
+                word_count=word_count,
+            )
+            await self._mark_affected_preferences_pending(
+                entry_id,
+                affected_user_ids,
+            )
+
+            return True
+
+        except StaleEmbeddingGenerationError:
+            # Do not mark an entry failed when the job itself is obsolete.
+            # Batch callers restore all unprocessed claims to pending.
+            raise
+        except Exception as e:
+            # Infrastructure error (API / vector backend) – mark the entry
+            # as failed but re-raise so the worker circuit breaker can react.
+            logger.error(f"Failed to generate embedding for entry {entry_id}: {e}")
+            await self._mark_failed_fenced(entry_id, str(e))
+            raise
+
+    async def _store_embedding(
+        self,
+        *,
+        entry: Entry,
+        embedding: list[float],
+        language: str,
+        word_count: int,
+    ) -> list[str]:
+        """Fence the vector write against collection recreation."""
+        entry_id = entry.id
+        feed_id = entry.feed_id
+        published_at = entry.published_at
+        author = entry.author or ""
+        lock = None
+        acquired = False
+        if self.generation_lock is not None:
+            lock = self.generation_lock.lock(
+                RedisKeys.REBUILD_LOCK_KEY,
+                timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+                blocking_timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+            )
+            acquired = await lock.acquire()
+            if not acquired:
+                raise StaleEmbeddingGenerationError("Could not acquire embedding generation fence")
+
+        try:
+            if self.generation_guard is not None and not await self.generation_guard():
+                raise StaleEmbeddingGenerationError("Embedding generation is stale")
             await self.vector_client.insert_entry_embedding(
                 entry_id=entry_id,
                 embedding=embedding,
-                feed_id=entry.feed_id,
-                published_at=entry.published_at,
+                feed_id=feed_id,
+                published_at=published_at,
                 language=language,
                 word_count=word_count,
-                author=entry.author or "",
+                author=author,
             )
-
-            # Update entry status
+            # Commit vector presence and the relational done marker under the
+            # same rebuild fence. Otherwise a rebuild can clear the vector and
+            # mark the row pending, then an old job can flip it back to done.
+            if self.generation_guard is not None and not await self.generation_guard():
+                raise StaleEmbeddingGenerationError(
+                    "Embedding generation changed after vector write"
+                )
             await self.db.execute(
                 update(Entry)
                 .where(Entry.id == entry_id)
@@ -161,16 +231,13 @@ class EmbeddingService:
                     embedding_error=None,
                 )
             )
-            await self.db.flush()
-
-            return True
-
-        except Exception as e:
-            # Infrastructure error (API / vector backend) – mark the entry
-            # as failed but re-raise so the worker circuit breaker can react.
-            logger.error(f"Failed to generate embedding for entry {entry_id}: {e}")
-            await self._mark_failed_safe(entry_id, str(e))
-            raise
+            affected_user_ids = await self._mark_affected_preferences_dirty_in_db(entry_id)
+            await self.db.commit()
+            return affected_user_ids
+        finally:
+            if lock is not None and acquired:
+                with contextlib.suppress(Exception):
+                    await lock.release()
 
     async def _mark_failed(self, entry_id: str, error: str) -> None:
         """Mark entry embedding as failed."""
@@ -181,28 +248,94 @@ class EmbeddingService:
         )
         await self.db.flush()
 
+    async def _mark_affected_preferences_dirty_in_db(
+        self,
+        entry_id: str,
+    ) -> list[str]:
+        """Durably dirty users in the same transaction as the done marker."""
+        result = await self.db.execute(
+            union(
+                select(UserEntry.user_id).where(
+                    UserEntry.entry_id == entry_id,
+                    UserEntry.is_liked.is_not(None),
+                ),
+                select(Bookmark.user_id).where(Bookmark.entry_id == entry_id),
+            )
+        )
+        user_ids = [str(row[0]) for row in result.all()]
+        await mark_preferences_dirty(self.db, user_ids)
+        return user_ids
+
+    async def _mark_affected_preferences_pending(
+        self,
+        entry_id: str,
+        user_ids: list[str],
+    ) -> None:
+        """Accelerate delivery of users already dirtied in PostgreSQL."""
+        if not user_ids or self.generation_lock is None:
+            return
+        try:
+            await self.generation_lock.sadd(
+                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                *user_ids,
+            )
+        except Exception:
+            logger.warning(
+                "Could not mark affected preference users pending",
+                extra={"entry_id": entry_id, "user_count": len(user_ids)},
+                exc_info=True,
+            )
+
+    async def _mark_failed_fenced(self, entry_id: str, error: str) -> None:
+        """Persist a failure only while this config generation still owns it."""
+        lock = None
+        acquired = False
+        if self.generation_lock is not None:
+            lock = self.generation_lock.lock(
+                RedisKeys.REBUILD_LOCK_KEY,
+                timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+                blocking_timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+            )
+            acquired = await lock.acquire()
+            if not acquired:
+                raise StaleEmbeddingGenerationError(
+                    "Could not acquire embedding failure generation fence"
+                )
+        try:
+            if self.generation_guard is not None and not await self.generation_guard():
+                raise StaleEmbeddingGenerationError(
+                    "Embedding generation changed while handling a failure"
+                )
+            await self._mark_failed_safe(entry_id, error)
+        finally:
+            if lock is not None and acquired:
+                with contextlib.suppress(Exception):
+                    await lock.release()
+
     async def _mark_failed_safe(self, entry_id: str, error: str) -> None:
-        """Mark entry as failed, recovering from a poisoned session if needed.
+        """Durably mark entry as failed, recovering a poisoned session if needed.
 
         When a prior flush/execute fails, asyncpg puts the connection into a
         failed-transaction state where all subsequent SQL is rejected.  This
-        helper rolls back the aborted transaction before writing the UPDATE so
-        that the failure is recorded even after an infrastructure error.
+        helper rolls back the aborted transaction before writing and committing
+        the UPDATE so later worker error handling cannot discard the status.
 
         Side-effect: a rollback discards any unflushed changes on the session
         (the caller should commit per-entry to minimise data loss).
         """
-        try:
-            await self.db.rollback()
-            await self._mark_failed(entry_id, error)
-        except Exception:
+        for attempt in range(2):
             try:
                 await self.db.rollback()
                 await self._mark_failed(entry_id, error)
+                await self.db.commit()
+                return
             except Exception:
+                if attempt == 0:
+                    continue
                 logger.warning(
                     "Could not mark entry as failed after session recovery",
                     extra={"entry_id": entry_id},
+                    exc_info=True,
                 )
 
     def _detect_language(self, text: str) -> str:
@@ -272,7 +405,7 @@ class EmbeddingService:
         processed = 0
         failed = 0
 
-        for entry_id in entry_ids:
+        for index, entry_id in enumerate(entry_ids):
             try:
                 success = await self.generate_embedding(entry_id)
                 await self.db.commit()
@@ -280,6 +413,10 @@ class EmbeddingService:
                     processed += 1
                 else:
                     failed += 1
+            except StaleEmbeddingGenerationError:
+                await self.db.rollback()
+                await self.restore_claimed_entries(entry_ids[index:])
+                break
             except Exception:
                 # Infrastructure error.  generate_embedding already tried
                 # _mark_failed_safe (which may have rolled back).  Ensure
@@ -287,7 +424,6 @@ class EmbeddingService:
                 # so the next iteration starts with a clean session.
                 with contextlib.suppress(Exception):
                     await self.db.rollback()
-                await self._try_mark_failed_and_commit(entry_id, "Infrastructure error")
                 failed += 1
 
         return {"processed": processed, "failed": failed}
@@ -327,7 +463,7 @@ class EmbeddingService:
         processed = 0
         failed = 0
 
-        for entry_id in entry_ids:
+        for index, entry_id in enumerate(entry_ids):
             try:
                 success = await self.generate_embedding(entry_id)
                 await self.db.commit()
@@ -335,22 +471,33 @@ class EmbeddingService:
                     processed += 1
                 else:
                     failed += 1
+            except StaleEmbeddingGenerationError:
+                await self.db.rollback()
+                await self.restore_claimed_entries(entry_ids[index:])
+                break
             except Exception:
                 with contextlib.suppress(Exception):
                     await self.db.rollback()
-                await self._try_mark_failed_and_commit(entry_id, "Infrastructure error (retry)")
                 failed += 1
 
         return {"processed": processed, "failed": failed}
 
-    async def _try_mark_failed_and_commit(self, entry_id: str, error: str) -> None:
-        """Best-effort: mark entry failed and commit in a fresh transaction."""
-        try:
-            await self._mark_failed(entry_id, error)
-            await self.db.commit()
-        except Exception:
-            with contextlib.suppress(Exception):
-                await self.db.rollback()
+    async def restore_claimed_entries(self, entry_ids: list[str]) -> None:
+        """Return stale generation claims to the pending queue."""
+        if not entry_ids:
+            return
+        await self.db.execute(
+            update(Entry)
+            .where(
+                Entry.id.in_(entry_ids),
+                Entry.embedding_status == "processing",
+            )
+            .values(
+                embedding_status="pending",
+                embedding_error=None,
+            )
+        )
+        await self.db.commit()
 
     async def delete_embedding(self, entry_id: str) -> None:
         """

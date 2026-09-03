@@ -2,12 +2,67 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.models import Entry, UserPreferenceStats
 from glean_vector.clients.vector_store import VectorStoreClient
-from glean_vector.services.score_service import ScoreService
+from glean_vector.services.score_service import (
+    ScoreService,
+    _combine_preference_similarity,
+    _cosine_similarity,
+)
+
+
+def test_cosine_similarity_treats_mixed_dimensions_as_neutral() -> None:
+    assert _cosine_similarity(np.array([1.0, 0.0]), np.array([1.0, 0.0, 0.0])) == 0.0
+
+
+def test_cosine_similarity_treats_non_finite_vectors_as_neutral() -> None:
+    assert _cosine_similarity(np.array([1.0, np.nan]), np.array([1.0, 0.0])) == 0.0
+
+
+def test_dual_preference_similarity_is_normalized_to_unit_range() -> None:
+    assert (
+        _combine_preference_similarity(
+            1.0,
+            -1.0,
+            has_positive=True,
+            has_negative=True,
+        )
+        == 1.0
+    )
+    assert (
+        _combine_preference_similarity(
+            -1.0,
+            1.0,
+            has_positive=True,
+            has_negative=True,
+        )
+        == -1.0
+    )
+
+
+def test_single_preference_prototype_keeps_full_range() -> None:
+    assert (
+        _combine_preference_similarity(
+            1.0,
+            0.0,
+            has_positive=True,
+            has_negative=False,
+        )
+        == 1.0
+    )
+    assert (
+        _combine_preference_similarity(
+            0.0,
+            1.0,
+            has_positive=False,
+            has_negative=True,
+        )
+        == -1.0
+    )
 
 
 @pytest.fixture

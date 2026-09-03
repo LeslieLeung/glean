@@ -236,6 +236,13 @@ docker compose logs backend | grep "Admin Account Created"
 
 ## Service Architecture
 
+> **Upgrade note:** Deploy the API and arq workers from the same release. Do
+> not leave old and new workers consuming the shared Redis queue during a
+> rolling upgrade. Drain or stop old workers before changing
+> `VECTOR_BACKEND`, then start the new API and workers together. Keep the old
+> vector store until the embedding status returns to `idle`; a backend or
+> embedding-model change can require a full rebuild.
+
 ### Using pgvector (Recommended)
 
 Uses PostgreSQL with pgvector extension for vector storage (6 services total). Use `docker-compose.pgvector.yml` for this configuration.
@@ -260,15 +267,28 @@ Uses PostgreSQL with pgvector extension for vector storage (6 services total). U
 - All services communicate via `glean-network` bridge network
 - Only `web` (port 80) and `admin` (port 3001) are exposed to host
 
-**Recommended pgvector index:**
+**pgvector similarity index:**
 
-Run this after migrations if you expect non-trivial similarity-search volume. Adjust the table name if you customized `PGVECTOR_ENTRIES_TABLE`.
+Glean creates a dimension-specific HNSW expression index when it initializes an
+empty vector store, and replaces that index atomically during a full model
+rebuild. This is required because the underlying column is intentionally
+dimension-agnostic so deployments can switch embedding models.
+
+For an existing populated installation that predates automatic index management,
+create the index concurrently. Replace `1536` with the
+configured embedding dimension, and adjust the table/index names if you
+customized `PGVECTOR_ENTRIES_TABLE`. Run this statement outside a transaction:
 
 ```sql
-CREATE INDEX IF NOT EXISTS idx_entry_embeddings_embedding_hnsw
-ON entry_embeddings USING hnsw (embedding vector_cosine_ops)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_entry_embeddings_embedding_hnsw
+ON entry_embeddings USING hnsw
+  ((embedding::vector(1536)) vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 ```
+
+The pgvector `vector` HNSW operator class supports at most 2,000 dimensions.
+Glean keeps exact sequential search available but does not create an HNSW index
+for higher-dimensional models.
 
 ### Using Milvus
 

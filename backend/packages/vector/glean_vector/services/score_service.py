@@ -20,10 +20,32 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     range) correct regardless of provider. For unit vectors this equals the dot
     product, so it is a no-op for the common case.
     """
+    # Corrupt or stale data must not make an entire smart-view request fail.
+    # Backends enforce dimensions on new writes, but this guard also protects
+    # upgrades from legacy rows and mocked/custom VectorStoreClient instances.
+    if a.ndim != 1 or b.ndim != 1 or a.shape != b.shape:
+        return 0.0
+    if not np.all(np.isfinite(a)) or not np.all(np.isfinite(b)):
+        return 0.0
+
     denom = float(np.linalg.norm(a) * np.linalg.norm(b))
     if denom < 1e-8:
         return 0.0
     return float(np.dot(a, b) / denom)
+
+
+def _combine_preference_similarity(
+    positive_similarity: float,
+    negative_similarity: float,
+    *,
+    has_positive: bool,
+    has_negative: bool,
+) -> float:
+    """Average signed prototype similarities into the documented [-1, 1]."""
+    prototype_count = int(has_positive) + int(has_negative)
+    if prototype_count == 0:
+        return 0.0
+    return (positive_similarity - negative_similarity) / prototype_count
 
 
 class ScoreService:
@@ -120,8 +142,15 @@ class ScoreService:
             neg_vec = np.array(prefs["negative"]["embedding"])
             negative_sim = _cosine_similarity(entry_vec, neg_vec)
 
-        # Raw score from similarities [-1, 1]
-        raw_score = positive_sim - negative_sim
+        # The difference of two cosine similarities spans [-2, 2].
+        # Average the signed prototypes so single- and dual-prototype models
+        # both retain a well-defined [-1, 1] range.
+        raw_score = _combine_preference_similarity(
+            positive_sim,
+            negative_sim,
+            has_positive=bool(prefs.get("positive")),
+            has_negative=bool(prefs.get("negative")),
+        )
 
         # Calculate confidence
         total_samples = 0.0
@@ -256,8 +285,12 @@ class ScoreService:
             positive_sim = _cosine_similarity(entry_vec, pos_vec) if pos_vec is not None else 0.0
             negative_sim = _cosine_similarity(entry_vec, neg_vec) if neg_vec is not None else 0.0
 
-            # Raw score from similarities [-1, 1]
-            raw_score = positive_sim - negative_sim
+            raw_score = _combine_preference_similarity(
+                positive_sim,
+                negative_sim,
+                has_positive=pos_vec is not None,
+                has_negative=neg_vec is not None,
+            )
 
             # Normalize to [0, 100], low confidence trends toward 50
             base_score = (raw_score + 1) / 2 * 100

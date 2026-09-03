@@ -5,12 +5,36 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from arq import Retry
 
-from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+from glean_core.schemas.config import (
+    EmbeddingConfig,
+    EmbeddingRebuildPhase,
+    VectorizationStatus,
+)
+from glean_vector.config import (
+    embedding_model_fingerprint,
+    vector_backend_config,
+    vector_store_fingerprint,
+)
 from glean_worker.tasks.preference_worker import (
     _check_vectorization_enabled,
     rebuild_user_preference,
     update_user_preference,
 )
+
+
+def _mark_active(config: EmbeddingConfig) -> EmbeddingConfig:
+    return config.model_copy(
+        update={
+            "vector_backend": vector_backend_config.backend,
+            "vector_store_fingerprint": vector_store_fingerprint(),
+            "model_fingerprint": embedding_model_fingerprint(
+                config.provider,
+                config.model,
+                config.dimension,
+                config.base_url,
+            ),
+        }
+    )
 
 
 class TestCheckVectorizationEnabled:
@@ -96,12 +120,14 @@ class TestCheckVectorizationEnabled:
         """When vectorization is IDLE, should return config normally."""
         # Arrange
         mock_session = MagicMock()
-        mock_config = EmbeddingConfig(
-            enabled=True,
-            status=VectorizationStatus.IDLE,
-            provider="sentence-transformers",
-            model="test-model",
-            dimension=384,
+        mock_config = _mark_active(
+            EmbeddingConfig(
+                enabled=True,
+                status=VectorizationStatus.IDLE,
+                provider="sentence-transformers",
+                model="test-model",
+                dimension=384,
+            )
         )
 
         with patch("glean_worker.tasks.preference_worker.TypedConfigService") as mock_service_class:
@@ -116,8 +142,8 @@ class TestCheckVectorizationEnabled:
             assert result == mock_config
 
     @pytest.mark.asyncio
-    async def test_rebuilding_status_returns_config(self):
-        """When vectorization is REBUILDING, should return config normally."""
+    async def test_rebuilding_status_retries_ordinary_preference_job(self):
+        """Ordinary preference events wait for the staged preference phase."""
         # Arrange
         mock_session = MagicMock()
         mock_config = EmbeddingConfig(
@@ -133,11 +159,36 @@ class TestCheckVectorizationEnabled:
             mock_service.get.return_value = mock_config
             mock_service_class.return_value = mock_service
 
-            # Act
-            result = await _check_vectorization_enabled(mock_session)
+            with pytest.raises(Retry):
+                await _check_vectorization_enabled(mock_session)
 
-            # Assert
-            assert result == mock_config
+    @pytest.mark.asyncio
+    async def test_matching_preference_rebuild_generation_is_allowed(self):
+        """The matching generation may run during the preference phase."""
+        mock_session = MagicMock()
+        mock_config = _mark_active(
+            EmbeddingConfig(
+                enabled=True,
+                status=VectorizationStatus.REBUILDING,
+                rebuild_id="rebuild-1",
+                rebuild_phase=EmbeddingRebuildPhase.PREFERENCES,
+                provider="sentence-transformers",
+                model="test-model",
+                dimension=384,
+            )
+        )
+
+        with patch("glean_worker.tasks.preference_worker.TypedConfigService") as service_class:
+            service = AsyncMock()
+            service.get.return_value = mock_config
+            service_class.return_value = service
+
+            result = await _check_vectorization_enabled(
+                mock_session,
+                expected_rebuild_id="rebuild-1",
+            )
+
+        assert result == mock_config
 
 
 class TestUpdateUserPreference:
@@ -147,7 +198,7 @@ class TestUpdateUserPreference:
     async def test_validating_state_propagates_retry(self):
         """When vectorization is validating, Retry exception should propagate to arq."""
         # Arrange
-        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": AsyncMock()}
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.VALIDATING,
@@ -177,7 +228,7 @@ class TestUpdateUserPreference:
     async def test_disabled_state_returns_error_without_retry(self):
         """When vectorization is disabled, should return error dict without raising Retry."""
         # Arrange
-        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": AsyncMock()}
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,
@@ -214,7 +265,7 @@ class TestRebuildUserPreference:
     async def test_error_state_propagates_retry(self):
         """When vectorization is in ERROR state, Retry exception should propagate."""
         # Arrange
-        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": AsyncMock()}
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.ERROR,
@@ -243,7 +294,7 @@ class TestRebuildUserPreference:
     async def test_disabled_state_returns_error_without_retry(self):
         """When vectorization is disabled, should return error dict without raising Retry."""
         # Arrange
-        ctx = {"vector_client": MagicMock(), "redis": MagicMock()}
+        ctx = {"vector_client": MagicMock(), "redis": AsyncMock()}
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,

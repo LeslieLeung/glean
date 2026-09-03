@@ -18,6 +18,9 @@ from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
 from glean_database.session import get_session_context
 from glean_rss import fetch_and_extract_fulltext, fetch_feed, parse_feed, postprocess_html
+from glean_vector.config import is_active_embedding_model, is_active_vector_backend
+
+from ._vector_client import ensure_vector_client
 
 logger = get_logger(__name__)
 
@@ -31,10 +34,46 @@ async def _is_vectorization_enabled(session: AsyncSession) -> bool:
     """Check if vectorization is enabled and healthy."""
     config_service = TypedConfigService(session)
     config = await config_service.get(EmbeddingConfig)
-    return config.enabled and config.status in (
-        VectorizationStatus.IDLE,
-        VectorizationStatus.REBUILDING,
+    return (
+        config.enabled
+        and is_active_vector_backend(
+            config.vector_backend,
+            config.vector_store_fingerprint,
+        )
+        and is_active_embedding_model(
+            config.model_fingerprint,
+            provider=config.provider,
+            model=config.model,
+            dimension=config.dimension,
+            base_url=config.base_url,
+        )
+        and config.status
+        in (
+            VectorizationStatus.IDLE,
+            VectorizationStatus.REBUILDING,
+        )
     )
+
+
+async def _should_embed_entries(ctx: dict[str, Any], session: AsyncSession) -> bool:
+    """Return whether new entries should enqueue embedding jobs.
+
+    A worker is intentionally allowed to start while the vector backend is
+    unavailable.  Recover the app-scoped client on demand here so a transient
+    startup failure does not disable embedding generation for the lifetime of
+    the worker process.
+    """
+    if not await _is_vectorization_enabled(session):
+        return False
+
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if vector_client is None:
+        logger.warning(
+            "Vector backend unavailable while fetching feed; entries will remain pending",
+            extra={"error": vector_error},
+        )
+        return False
+    return True
 
 
 async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | int]:
@@ -123,9 +162,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 feed.last_modified = cache_headers["last-modified"]
 
             # Check vectorization once for the entire batch
-            should_embed = bool(
-                ctx.get("vector_client") and await _is_vectorization_enabled(session)
-            )
+            should_embed = await _should_embed_entries(ctx, session)
 
             # Process entries
             new_entries = 0

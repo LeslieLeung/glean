@@ -1,10 +1,21 @@
 """Test error handling in MilvusClient."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from pymilvus import MilvusException
 
 from glean_vector.clients.milvus_client import MilvusClient
+
+
+def _mock_collection(description: str, dimension: int = 1536) -> MagicMock:
+    collection = MagicMock()
+    collection.description = description
+    vector_field = MagicMock()
+    vector_field.name = "embedding"
+    vector_field.params = {"dim": dimension}
+    collection.schema.fields = [vector_field]
+    return collection
 
 
 class TestMilvusClientErrorHandling:
@@ -100,8 +111,7 @@ class TestMilvusClientErrorHandling:
         """Test that check_model_compatibility continues checking when one collection fails."""
         client = MilvusClient()
 
-        mock_collection = MagicMock()
-        mock_collection.description = "Entry embeddings | model=openai:different-model:1536"
+        mock_collection = _mock_collection("Entry embeddings | model=openai:different-model:1536")
 
         # Mock connect to succeed
         with patch.object(client, "connect"):
@@ -130,12 +140,30 @@ class TestMilvusClientErrorHandling:
                 assert reason is not None
                 assert "Preferences collection" in reason
 
-    def test_check_model_compatibility_missing_signature_requires_rebuild(self) -> None:
-        """Existing collections without model metadata must not be treated as compatible."""
+    def test_check_model_compatibility_accepts_legacy_unsigned_collection(self) -> None:
+        """Legacy collections are compatible when their vector dimension matches."""
         client = MilvusClient()
 
-        mock_collection = MagicMock()
-        mock_collection.description = "Entry embeddings without signature"
+        mock_collection = _mock_collection("Entry embeddings without signature")
+
+        with (
+            patch.object(client, "connect"),
+            patch("glean_vector.clients.milvus_client.utility.has_collection", return_value=True),
+            patch("glean_vector.clients.milvus_client.Collection", return_value=mock_collection),
+        ):
+            is_compatible, reason = client.check_model_compatibility(
+                dimension=1536,
+                provider="openai",
+                model="text-embedding-3-small",
+            )
+
+        assert is_compatible is True
+        assert reason is None
+
+    def test_check_model_compatibility_rejects_dimension_mismatch(self) -> None:
+        """Unsigned legacy collections must still use the requested dimension."""
+        client = MilvusClient()
+        mock_collection = _mock_collection("Legacy collection", dimension=384)
 
         with (
             patch.object(client, "connect"),
@@ -150,4 +178,48 @@ class TestMilvusClientErrorHandling:
 
         assert is_compatible is False
         assert reason is not None
-        assert "existing=None" in reason
+        assert "dimension mismatch" in reason
+
+    @pytest.mark.asyncio
+    async def test_ensure_collections_never_recreates_on_signature_mismatch(self) -> None:
+        """Normal startup must not destroy collections created for another model."""
+        client = MilvusClient()
+        mock_collection = _mock_collection("Entry embeddings | model=openai:different-model:1536")
+
+        with (
+            patch.object(client, "connect"),
+            patch("glean_vector.clients.milvus_client.utility.has_collection", return_value=True),
+            patch("glean_vector.clients.milvus_client.Collection", return_value=mock_collection),
+            patch.object(client, "recreate_collections", new=AsyncMock()) as recreate,
+            patch("glean_vector.clients.milvus_client.utility.drop_collection") as drop,
+            pytest.raises(RuntimeError, match="explicit vector rebuild"),
+        ):
+            await client.ensure_collections(
+                dimension=1536,
+                provider="openai",
+                model="text-embedding-3-small",
+            )
+
+        recreate.assert_not_awaited()
+        drop.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_collections_loads_legacy_unsigned_collections(self) -> None:
+        """Normal startup may attach to compatible pre-signature collections."""
+        client = MilvusClient()
+        mock_collection = _mock_collection("Legacy collection")
+
+        with (
+            patch.object(client, "connect"),
+            patch("glean_vector.clients.milvus_client.utility.has_collection", return_value=True),
+            patch("glean_vector.clients.milvus_client.Collection", return_value=mock_collection),
+            patch.object(client, "recreate_collections", new=AsyncMock()) as recreate,
+        ):
+            await client.ensure_collections(
+                dimension=1536,
+                provider="openai",
+                model="text-embedding-3-small",
+            )
+
+        recreate.assert_not_awaited()
+        assert mock_collection.load.call_count == 2

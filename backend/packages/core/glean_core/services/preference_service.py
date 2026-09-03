@@ -1,12 +1,15 @@
 """Preference service."""
 
-from typing import Any
+from typing import Any, cast
 
 from arq.connections import ArqRedis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core import RedisKeys
 from glean_database.models import Bookmark, Feed, UserEntry, UserPreferenceStats
+
+from .preference_dirty_service import mark_preferences_dirty
 
 
 class PreferenceService:
@@ -135,6 +138,12 @@ class PreferenceService:
         Args:
             user_id: User UUID
         """
+        await mark_preferences_dirty(self.db, [user_id])
+        await self.db.commit()
+        await cast(Any, self.redis).sadd(
+            RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+            user_id,
+        )
         await self.redis.enqueue_job(
             "rebuild_user_preference",
             user_id=user_id,

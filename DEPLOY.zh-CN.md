@@ -237,6 +237,11 @@ docker compose logs backend | grep "Admin Account Created"
 
 ## 服务架构
 
+> **升级说明：** API 与 arq worker 必须使用同一版本发布。滚动升级时，不要让新旧
+> worker 同时消费同一个 Redis 队列。修改 `VECTOR_BACKEND` 前应先排空或停止旧
+> worker，再一起启动新版 API 和 worker。在 embedding 状态恢复为 `idle` 前请保留
+> 原向量库；切换向量后端或 embedding 模型可能触发完整重建。
+
 ### 使用 pgvector（推荐）
 
 使用带 pgvector 扩展的 PostgreSQL 进行向量存储（共 6 个服务）。使用 `docker-compose.pgvector.yml` 配置。
@@ -260,6 +265,21 @@ docker compose logs backend | grep "Admin Account Created"
 **网络：**
 - 所有服务通过 `glean-network` 桥接网络通信
 - 仅 `web`（端口 80）和 `admin`（端口 3001）暴露到宿主机
+
+**pgvector 相似度索引：**
+
+Glean 会在初始化空向量库时创建与当前维度匹配的 HNSW 表达式索引，并在完整模型重建时原子替换该索引。之所以使用表达式索引，是因为底层列保持为无固定维度的 `vector`，以支持切换 embedding 模型。
+
+已有数据且早于自动索引管理的部署，可在事务外并发创建索引。请把下面的 `1536` 替换为当前 embedding 维度；如果自定义了 `PGVECTOR_ENTRIES_TABLE`，也需要调整表名和索引名：
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_entry_embeddings_embedding_hnsw
+ON entry_embeddings USING hnsw
+  ((embedding::vector(1536)) vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+
+pgvector 的 `vector` HNSW 操作符类最多支持 2,000 维。对于更高维度的模型，Glean 仍可使用精确的顺序搜索，但不会创建 HNSW 索引。
 
 ### 使用 Milvus
 

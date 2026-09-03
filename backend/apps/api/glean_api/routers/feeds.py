@@ -4,12 +4,13 @@ Feeds and subscriptions router.
 Provides endpoints for feed discovery, subscription management, and OPML import/export.
 """
 
-from typing import Annotated
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, UploadFile, status
 
+from glean_core import RedisKeys, get_logger
 from glean_core.schemas import (
     BatchDeleteSubscriptionsRequest,
     BatchDeleteSubscriptionsResponse,
@@ -29,6 +30,7 @@ from glean_rss import discover_feed, generate_opml, parse_opml_with_folders
 from ..dependencies import get_current_user, get_feed_service, get_folder_service, get_redis_pool
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("")
@@ -251,7 +253,33 @@ async def delete_subscription(
 
         # Queue vector embedding cleanup if feed was orphaned
         if orphaned_feed_id and entry_ids:
-            await redis.enqueue_job("cleanup_orphan_embeddings", orphaned_feed_id, entry_ids)
+            try:
+                await redis.enqueue_job(
+                    "cleanup_orphan_embeddings",
+                    orphaned_feed_id,
+                    entry_ids,
+                )
+            except Exception:
+                logger.warning(
+                    "Immediate vector cleanup enqueue failed; durable outbox will retry",
+                    extra={"feed_id": orphaned_feed_id},
+                    exc_info=True,
+                )
+        try:
+            await cast(Any, redis).sadd(
+                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                current_user.id,
+            )
+            await redis.enqueue_job(
+                "rebuild_user_preference",
+                user_id=current_user.id,
+            )
+        except Exception:
+            logger.warning(
+                "Immediate preference enqueue failed; durable revision will retry",
+                extra={"user_id": current_user.id},
+                exc_info=True,
+            )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -284,7 +312,34 @@ async def batch_delete_subscriptions(
     # Queue vector embedding cleanup for each orphaned feed
     for feed_id, entry_ids in orphaned_feeds.items():
         if entry_ids:
-            await redis.enqueue_job("cleanup_orphan_embeddings", feed_id, entry_ids)
+            try:
+                await redis.enqueue_job(
+                    "cleanup_orphan_embeddings",
+                    feed_id,
+                    entry_ids,
+                )
+            except Exception:
+                logger.warning(
+                    "Immediate vector cleanup enqueue failed; durable outbox will retry",
+                    extra={"feed_id": feed_id},
+                    exc_info=True,
+                )
+    if deleted_count > 0:
+        try:
+            await cast(Any, redis).sadd(
+                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                current_user.id,
+            )
+            await redis.enqueue_job(
+                "rebuild_user_preference",
+                user_id=current_user.id,
+            )
+        except Exception:
+            logger.warning(
+                "Immediate preference enqueue failed; durable revision will retry",
+                extra={"user_id": current_user.id},
+                exc_info=True,
+            )
 
     return BatchDeleteSubscriptionsResponse(deleted_count=deleted_count, failed_count=failed_count)
 

@@ -16,7 +16,16 @@ from glean_core.schemas import (
     SubscriptionResponse,
     SubscriptionSyncResponse,
 )
-from glean_database.models import Entry, Feed, Subscription, UserEntry, UserPreferenceStats
+from glean_database.models import (
+    Entry,
+    Feed,
+    Subscription,
+    UserEntry,
+    UserPreferenceStats,
+    VectorCleanupPending,
+)
+
+from .preference_dirty_service import mark_preferences_dirty
 
 # Sentinel for unset values
 UNSET: object = object()
@@ -389,6 +398,7 @@ class FeedService:
         # 4. Check if feed has any other subscribers
         orphaned_feed_id, entry_ids = await self._cleanup_orphan_feed(feed_id)
 
+        await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         return orphaned_feed_id, entry_ids
 
@@ -441,6 +451,10 @@ class FeedService:
             feed_result = await self.session.execute(feed_stmt)
             feed = feed_result.scalar_one_or_none()
             if feed:
+                self.session.add_all(
+                    VectorCleanupPending(entry_id=entry_id, feed_id=feed_id)
+                    for entry_id in entry_ids
+                )
                 await self.session.delete(feed)
                 return feed_id, entry_ids
 
@@ -565,5 +579,7 @@ class FeedService:
             if orphaned_feed_id:
                 orphaned_feeds[orphaned_feed_id] = entry_ids
 
+        if deleted_count > 0:
+            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         return deleted_count, failed_count, orphaned_feeds
