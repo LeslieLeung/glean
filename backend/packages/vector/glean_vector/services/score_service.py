@@ -7,8 +7,45 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.models import Entry, UserPreferenceStats
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.config import preference_config
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity in [-1, 1], robust to non-unit-length vectors.
+
+    Entry embeddings are stored verbatim from the provider; while OpenAI and the
+    sentence-transformer backend return unit vectors, other providers may not.
+    Normalising here keeps the downstream score math (which assumes a [-1, 1]
+    range) correct regardless of provider. For unit vectors this equals the dot
+    product, so it is a no-op for the common case.
+    """
+    # Corrupt or stale data must not make an entire smart-view request fail.
+    # Backends enforce dimensions on new writes, but this guard also protects
+    # upgrades from legacy rows and mocked/custom VectorStoreClient instances.
+    if a.ndim != 1 or b.ndim != 1 or a.shape != b.shape:
+        return 0.0
+    if not np.all(np.isfinite(a)) or not np.all(np.isfinite(b)):
+        return 0.0
+
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denom < 1e-8:
+        return 0.0
+    return float(np.dot(a, b) / denom)
+
+
+def _combine_preference_similarity(
+    positive_similarity: float,
+    negative_similarity: float,
+    *,
+    has_positive: bool,
+    has_negative: bool,
+) -> float:
+    """Average signed prototype similarities into the documented [-1, 1]."""
+    prototype_count = int(has_positive) + int(has_negative)
+    if prototype_count == 0:
+        return 0.0
+    return (positive_similarity - negative_similarity) / prototype_count
 
 
 class ScoreService:
@@ -22,17 +59,17 @@ class ScoreService:
     def __init__(
         self,
         db_session: AsyncSession,
-        milvus_client: MilvusClient,
+        vector_client: VectorStoreClient,
     ) -> None:
         """
         Initialize score service.
 
         Args:
             db_session: Database session
-            milvus_client: Milvus vector database client
+            vector_client: Vector database client
         """
         self.db = db_session
-        self.milvus = milvus_client
+        self.vector_client = vector_client
         self.pref_config = preference_config
         self._user_stats_cache: dict[str, UserPreferenceStats | None] = {}
 
@@ -62,8 +99,8 @@ class ScoreService:
         Returns:
             Dictionary with score and factors
         """
-        # Get entry embedding from Milvus
-        embedding = await self.milvus.get_entry_embedding(entry_id)
+        # Get entry embedding from vector backend
+        embedding = await self.vector_client.get_entry_embedding(entry_id)
         if not embedding:
             # Entry not embedded yet, return default
             return {
@@ -82,7 +119,7 @@ class ScoreService:
                 }
 
         # Get user preferences
-        prefs = await self.milvus.get_user_preferences(user_id)
+        prefs = await self.vector_client.get_user_preferences(user_id)
 
         if not prefs.get("positive") and not prefs.get("negative"):
             # No preference model yet
@@ -99,14 +136,21 @@ class ScoreService:
 
         if prefs.get("positive"):
             pos_vec = np.array(prefs["positive"]["embedding"])
-            positive_sim = float(np.dot(entry_vec, pos_vec))
+            positive_sim = _cosine_similarity(entry_vec, pos_vec)
 
         if prefs.get("negative"):
             neg_vec = np.array(prefs["negative"]["embedding"])
-            negative_sim = float(np.dot(entry_vec, neg_vec))
+            negative_sim = _cosine_similarity(entry_vec, neg_vec)
 
-        # Raw score from similarities [-1, 1]
-        raw_score = positive_sim - negative_sim
+        # The difference of two cosine similarities spans [-2, 2].
+        # Average the signed prototypes so single- and dual-prototype models
+        # both retain a well-defined [-1, 1] range.
+        raw_score = _combine_preference_similarity(
+            positive_sim,
+            negative_sim,
+            has_positive=bool(prefs.get("positive")),
+            has_negative=bool(prefs.get("negative")),
+        )
 
         # Calculate confidence
         total_samples = 0.0
@@ -194,7 +238,7 @@ class ScoreService:
         scores: dict[str, float] = {}
 
         # Get user preferences once
-        prefs = await self.milvus.get_user_preferences(user_id)
+        prefs = await self.vector_client.get_user_preferences(user_id)
 
         # Get affinity stats once (and cache for any subsequent individual calls)
         stats = await self._get_user_stats(user_id)
@@ -225,7 +269,7 @@ class ScoreService:
 
         # Get all entry embeddings in batch
         entry_ids = [entry.id for entry in entries]
-        embeddings = await self.milvus.batch_get_entry_embeddings(entry_ids)
+        embeddings = await self.vector_client.batch_get_entry_embeddings(entry_ids)
 
         # Calculate scores
         for entry in entries:
@@ -238,11 +282,15 @@ class ScoreService:
             entry_vec = np.array(embedding)
 
             # Calculate similarities
-            positive_sim = float(np.dot(entry_vec, pos_vec)) if pos_vec is not None else 0.0
-            negative_sim = float(np.dot(entry_vec, neg_vec)) if neg_vec is not None else 0.0
+            positive_sim = _cosine_similarity(entry_vec, pos_vec) if pos_vec is not None else 0.0
+            negative_sim = _cosine_similarity(entry_vec, neg_vec) if neg_vec is not None else 0.0
 
-            # Raw score from similarities [-1, 1]
-            raw_score = positive_sim - negative_sim
+            raw_score = _combine_preference_similarity(
+                positive_sim,
+                negative_sim,
+                has_positive=pos_vec is not None,
+                has_negative=neg_vec is not None,
+            )
 
             # Normalize to [0, 100], low confidence trends toward 50
             base_score = (raw_score + 1) / 2 * 100

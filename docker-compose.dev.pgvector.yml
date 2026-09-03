@@ -1,0 +1,48 @@
+# Development infrastructure for pgvector backend
+# Usage: docker compose -f docker-compose.dev.pgvector.yml up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: glean-dev-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glean
+      POSTGRES_USER: glean
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glean"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-dev-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: glean-dev-redis
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - glean-dev-network
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
+
+networks:
+  glean-dev-network:
+    driver: bridge

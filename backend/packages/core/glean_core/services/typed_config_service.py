@@ -13,13 +13,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_database.models import SystemConfig
 
 if TYPE_CHECKING:
-    pass
+    from glean_core.schemas.config import EmbeddingConfig
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -51,6 +51,13 @@ class TypedConfigService:
         self.session = session
         self._allow_env = allow_env_override
 
+    async def _lock_namespace(self, namespace: str) -> None:
+        """Serialize updates even before the first config row exists."""
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:namespace))"),
+            {"namespace": f"glean:system_config:{namespace}"},
+        )
+
     async def _get_from_db(self, namespace: str) -> dict[str, Any] | None:
         """Get raw config data from database."""
         result = await self.session.execute(
@@ -61,6 +68,7 @@ class TypedConfigService:
 
     async def _set_to_db(self, namespace: str, value: dict[str, Any]) -> None:
         """Save config data to database."""
+        await self._lock_namespace(namespace)
         result = await self.session.execute(
             select(SystemConfig).where(SystemConfig.key == namespace)
         )
@@ -161,8 +169,22 @@ class TypedConfigService:
         if not namespace:
             raise ValueError(f"Config class {config_class.__name__} must have NAMESPACE")
 
-        # Get current config
-        current = await self.get(config_class)
+        # Serialize concurrent partial updates through the config row.  The
+        # previous get-then-set implementation could lose a version/status
+        # transition when an API request and a worker completed at the same
+        # time because both rewrote the whole JSON document from stale data.
+        await self._lock_namespace(namespace)
+        result = await self.session.execute(
+            select(SystemConfig).where(SystemConfig.key == namespace).with_for_update()
+        )
+        existing = result.scalar_one_or_none()
+        db_data = existing.value if existing else None
+
+        if self._allow_env:
+            env_data = self._get_from_env(namespace, config_class)
+            current = config_class(**{**env_data, **(db_data or {})})
+        else:
+            current = config_class(**(db_data or {}))
 
         # Apply updates
         updated = current.model_copy(update=updates)
@@ -170,7 +192,11 @@ class TypedConfigService:
         # Serialize and save
         # Use mode="json" for proper datetime serialization
         data = updated.model_dump(mode="json", exclude={"NAMESPACE"})
-        await self._set_to_db(namespace, data)
+        if existing:
+            existing.value = data
+        else:
+            self.session.add(SystemConfig(key=namespace, value=data))
+        await self.session.commit()
 
         return updated
 
@@ -204,6 +230,7 @@ class TypedConfigService:
         if not namespace:
             raise ValueError(f"Config class {config_class.__name__} must have NAMESPACE")
 
+        await self._lock_namespace(namespace)
         result = await self.session.execute(
             select(SystemConfig).where(SystemConfig.key == namespace)
         )
@@ -257,36 +284,201 @@ class TypedConfigService:
 
         await self.update(EmbeddingConfig, **updates)
 
-    async def start_rebuild(self) -> str:
+    async def update_embedding_generation(
+        self,
+        *,
+        expected_version: str | None,
+        expected_rebuild_id: str | None,
+        expected_statuses: set[str] | None = None,
+        expected_values: dict[str, Any] | None = None,
+        **updates: Any,
+    ) -> EmbeddingConfig | None:
+        """Atomically update only the matching embedding generation.
+
+        Long-running provider calls and vector-store recreation can finish
+        after an administrator has disabled, cancelled, or replaced the
+        configuration.  Locking and checking the JSON row in one transaction
+        prevents those stale workers from overwriting the newer lifecycle
+        state.
+        """
+        from glean_core.schemas.config import EmbeddingConfig
+
+        await self._lock_namespace(EmbeddingConfig.NAMESPACE)
+        result = await self.session.execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == EmbeddingConfig.NAMESPACE)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        row = result.scalar_one_or_none()
+        current = EmbeddingConfig(**(row.value if row else {}))
+        if (
+            current.version != expected_version
+            or current.rebuild_id != expected_rebuild_id
+            or (expected_statuses is not None and current.status.value not in expected_statuses)
+            or (
+                expected_values is not None
+                and any(
+                    getattr(current, field_name) != expected_value
+                    for field_name, expected_value in expected_values.items()
+                )
+            )
+        ):
+            await self.session.rollback()
+            return None
+
+        updated = current.model_copy(update=updates)
+        data = updated.model_dump(mode="json", exclude={"NAMESPACE"})
+        if row is None:
+            self.session.add(SystemConfig(key=EmbeddingConfig.NAMESPACE, value=data))
+        else:
+            row.value = data
+        await self.session.commit()
+        return updated
+
+    async def record_embedding_failure(
+        self,
+        *,
+        expected_version: str | None,
+        expected_rebuild_id: str | None,
+        error: Exception,
+        circuit_threshold: int,
+    ) -> tuple[int, bool] | None:
+        """Atomically count a failure for one active embedding generation."""
+        from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+
+        await self._lock_namespace(EmbeddingConfig.NAMESPACE)
+        result = await self.session.execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == EmbeddingConfig.NAMESPACE)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        row = result.scalar_one_or_none()
+        current = EmbeddingConfig(**(row.value if row else {}))
+        if (
+            current.version != expected_version
+            or current.rebuild_id != expected_rebuild_id
+            or current.status not in (VectorizationStatus.IDLE, VectorizationStatus.REBUILDING)
+        ):
+            await self.session.rollback()
+            return None
+
+        error_count = current.error_count + 1
+        circuit_open = error_count >= circuit_threshold
+        updates: dict[str, Any] = {"error_count": error_count}
+        if circuit_open:
+            updates.update(
+                status=VectorizationStatus.ERROR,
+                last_error=f"Circuit breaker: {error}",
+                last_error_at=datetime.now(UTC),
+                rebuild_id=None,
+                rebuild_started_at=None,
+                rebuild_phase=None,
+                target_vector_backend=None,
+                target_vector_store_fingerprint=None,
+                target_model_fingerprint=None,
+                target_force_rebuild=False,
+            )
+
+        updated = current.model_copy(update=updates)
+        data = updated.model_dump(mode="json", exclude={"NAMESPACE"})
+        if row is None:
+            self.session.add(SystemConfig(key=EmbeddingConfig.NAMESPACE, value=data))
+        else:
+            row.value = data
+        await self.session.commit()
+        return error_count, circuit_open
+
+    async def reset_embedding_errors(
+        self,
+        *,
+        expected_version: str | None,
+        expected_rebuild_id: str | None,
+    ) -> bool:
+        """Reset the failure counter only for the generation that succeeded."""
+        from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+
+        await self._lock_namespace(EmbeddingConfig.NAMESPACE)
+        result = await self.session.execute(
+            select(SystemConfig)
+            .where(SystemConfig.key == EmbeddingConfig.NAMESPACE)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        row = result.scalar_one_or_none()
+        current = EmbeddingConfig(**(row.value if row else {}))
+        if (
+            current.version != expected_version
+            or current.rebuild_id != expected_rebuild_id
+            or current.status not in (VectorizationStatus.IDLE, VectorizationStatus.REBUILDING)
+        ):
+            await self.session.rollback()
+            return False
+        if current.error_count == 0:
+            await self.session.rollback()
+            return True
+
+        updated = current.model_copy(update={"error_count": 0})
+        if row is None:
+            self.session.add(
+                SystemConfig(
+                    key=EmbeddingConfig.NAMESPACE,
+                    value=updated.model_dump(mode="json", exclude={"NAMESPACE"}),
+                )
+            )
+        else:
+            row.value = updated.model_dump(mode="json", exclude={"NAMESPACE"})
+        await self.session.commit()
+        return True
+
+    async def start_rebuild(self, expected_version: str | None = None) -> str | None:
         """
         Mark rebuild as started and return rebuild ID.
 
         Returns:
             The rebuild ID.
         """
-        from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+        from glean_core.schemas.config import (
+            EmbeddingConfig,
+            EmbeddingRebuildPhase,
+            VectorizationStatus,
+        )
 
         rebuild_id = str(uuid.uuid4())
-        await self.update(
-            EmbeddingConfig,
+        current = await self.get(EmbeddingConfig)
+        version = expected_version if expected_version is not None else current.version
+        updated = await self.update_embedding_generation(
+            expected_version=version,
+            expected_rebuild_id=current.rebuild_id,
+            expected_statuses={VectorizationStatus.VALIDATING.value},
             status=VectorizationStatus.REBUILDING,
             rebuild_id=rebuild_id,
             rebuild_started_at=datetime.now(UTC),
+            rebuild_phase=EmbeddingRebuildPhase.PREPARING,
         )
-        return rebuild_id
+        return rebuild_id if updated is not None else None
 
-    async def complete_rebuild(self) -> None:
-        """Mark rebuild as completed."""
+    async def complete_rebuild(self, expected_rebuild_id: str | None = None) -> bool:
+        """Mark rebuild as completed if it is still the expected generation."""
         from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 
-        await self.update(
-            EmbeddingConfig,
+        current = await self.get(EmbeddingConfig)
+        if expected_rebuild_id is not None and current.rebuild_id != expected_rebuild_id:
+            return False
+
+        updated = await self.update_embedding_generation(
+            expected_version=current.version,
+            expected_rebuild_id=current.rebuild_id,
+            expected_statuses={VectorizationStatus.REBUILDING.value},
             status=VectorizationStatus.IDLE,
             rebuild_id=None,
             rebuild_started_at=None,
+            rebuild_phase=None,
             error_count=0,
             last_error=None,
         )
+        return updated is not None
 
     async def is_vectorization_enabled(self) -> bool:
         """

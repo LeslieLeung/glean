@@ -1,25 +1,10 @@
-# Glean Docker Compose Configuration (Lite Version)
-# This configuration excludes Milvus services for lighter deployments
-#
+# Glean Docker Compose Configuration (pgvector backend)
 # Usage:
-#   Lite deployment: docker compose -f docker-compose.lite.yml up -d
-#
-# For full deployment with Milvus (Phase 3 features), use:
-#   docker compose up -d
-#
-# Environment variables can be set in .env file:
-#   - IMAGE_TAG: Docker image version (default: latest, e.g., v0.3.0-alpha.1)
-#   - WEB_PORT: Web interface port (default: 80)
-#   - ADMIN_PORT: Admin dashboard port (default: 3001)
-#   - POSTGRES_DB/USER/PASSWORD: Database credentials
-#   - SECRET_KEY: JWT signing key
-#   - CREATE_ADMIN: Create admin account on startup (default: true)
-#   - ADMIN_USERNAME/PASSWORD: Admin credentials (default: admin/Admin123!)
-#   - DEBUG: Enable debug mode (default: false)
+#   docker compose -f docker-compose.pgvector.yml up -d
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: glean-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-glean}
@@ -60,14 +45,16 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
       CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
-      # Only backend runs migrations to avoid race conditions
+      VECTOR_BACKEND: pgvector
       RUN_MIGRATIONS: "true"
-      # Admin auto-creation (enabled by default, set to false to disable)
       CREATE_ADMIN: ${CREATE_ADMIN:-true}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
       ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
-      # Logging configuration
+      PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
+      PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
+      PGVECTOR_PREFS_TABLE: ${PGVECTOR_PREFS_TABLE:-user_preference_vectors}
+      PGVECTOR_METADATA_TABLE: ${PGVECTOR_METADATA_TABLE:-vector_store_metadata}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-api.log}
       LOG_ROTATION: ${LOG_ROTATION:-100 MB}
@@ -99,7 +86,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
-      # Logging configuration
+      VECTOR_BACKEND: pgvector
+      PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
+      PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
+      PGVECTOR_PREFS_TABLE: ${PGVECTOR_PREFS_TABLE:-user_preference_vectors}
+      PGVECTOR_METADATA_TABLE: ${PGVECTOR_METADATA_TABLE:-vector_store_metadata}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-worker.log}
       LOG_ROTATION: ${LOG_ROTATION:-100 MB}

@@ -7,6 +7,7 @@ This package contains all background task implementations.
 from . import (
     bookmark_metadata,
     cleanup,
+    embedding_maintenance,
     embedding_rebuild,
     embedding_worker,
     feed_fetcher,
@@ -20,6 +21,7 @@ __all__ = [
     "bookmark_metadata",
     "embedding_worker",
     "embedding_rebuild",
+    "embedding_maintenance",
     "preference_worker",
     "subscription_cleanup",
 ]

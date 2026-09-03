@@ -36,13 +36,15 @@ A self-hosted RSS reader and personal knowledge management tool.
 
 ## Quick Start
 
-### One-Command Deployment
+### Using pgvector (Recommended)
+
+Uses PostgreSQL's built-in pgvector extension — no extra infrastructure required:
 
 ```bash
-# Download docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+# Download pgvector compose
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
-# Start Glean (full deployment with Milvus)
+# Start Glean
 docker compose up -d
 
 # Access:
@@ -55,16 +57,20 @@ docker compose up -d
 - Password: `Admin123!`
 - ⚠️ **Change this password in production!**
 
-**Lite Deployment** (without Milvus, if you don't need Phase 3 features):
+### Using Milvus
+
+For deployments that prefer a dedicated Milvus vector database:
 
 ```bash
-# Download lite version
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
+# Download docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
 # Start Glean
 docker compose up -d
 
-# Admin Dashboard: http://localhost:3001 (default: admin/Admin123!)
+# Access:
+# - Web App: http://localhost
+# - Admin Dashboard: http://localhost:3001 (default: admin/Admin123!)
 ```
 
 ### Customize Admin Account (Optional)
@@ -156,16 +162,15 @@ See available pre-release versions on the [Releases page](https://github.com/Les
 
 ## Deployment
 
-The default deployment includes all services (full version):
+Both deployments include the same core services:
 - **Web App** (port 80) - Main user interface
 - **Admin Dashboard** (port 3001) - User management and system monitoring
 - **Backend API** - FastAPI server
 - **Worker** - Background task processor (feed fetching, cleanup)
 - **PostgreSQL** - Database
 - **Redis** - Task queue
-- **Milvus** - Vector database for smart recommendations and preference learning (Phase 3)
 
-**Lite deployment** (without Milvus) is also available using `docker-compose.lite.yml`.
+The difference is the vector backend: `docker-compose.pgvector.yml` uses PostgreSQL's pgvector extension (recommended), while `docker-compose.yml` uses a dedicated Milvus vector database.
 
 For detailed deployment instructions and configuration, see [DEPLOY.md](DEPLOY.md).
 
@@ -235,17 +240,16 @@ Hooks automatically run on commit and check:
 | ------------------------- | --------- | -------------------------------------------------------------- |
 | **Phase 1: MVP**          | ✅ Done    | User system, RSS subscription, reader, admin dashboard         |
 | **Phase 2: Organization** | ✅ Done    | Bookmarks, folders, tags, read later                           |
-| **Phase 3: Preferences**  | 🚧 WIP     | Embedding pipeline, preference learning, smart recommendations |
+| **Phase 3: Preferences**  | ✅ Done     | Embedding pipeline, preference learning, smart recommendations |
 | **Phase 4: Rules**        | 📋 Planned | Rule engine, Jinja2 conditions, automated actions              |
 | **Phase 5: AI**           | 📋 Planned | AI summaries, auto-tagging, keyword extraction, BYOK support   |
 | **Phase 6: Extensions**   | 📋 Planned | Chrome extension, PWA, web snapshots                           |
 
-See **[Product Requirements](./docs/glean-prd-v1.2.md)** for detailed feature specifications.
 
 ## Documentation
 
 - **[Development Guide](./DEVELOPMENT.md)** - Set up your development environment
-- **[Deployment Guide](./deploy/README.md)** - Production deployment details
+- **[Deployment Guide](./DEPLOY.md)** - Production deployment details
 
 ## Contributing
 

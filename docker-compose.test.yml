@@ -6,7 +6,7 @@
 
 services:
   postgres-test:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: glean-test-postgres
     environment:
       POSTGRES_DB: glean_test
