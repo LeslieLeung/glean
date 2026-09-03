@@ -16,10 +16,15 @@ from typing import Any, cast
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from glean_core import get_logger, init_logging
+from glean_vector.config import (
+    embedding_model_fingerprint,
+    vector_backend_config,
+    vector_store_fingerprint,
+)
 
 from .config import settings
 from .mcp import create_mcp_server
@@ -35,6 +40,11 @@ from .routers import (
     preference,
     system,
     tags,
+)
+from .vector_lifecycle import (
+    ensure_app_vector_client,
+    initialize_vector_client_state,
+    reconcile_vector_backend,
 )
 
 # Initialize logging system
@@ -108,7 +118,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-        from glean_database.session import init_database
+        from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+        from glean_core.services import TypedConfigService
+        from glean_database.session import get_session_context, init_database
 
         logger.info(f"Starting Glean API v{settings.version}")
         init_database(settings.database_url)
@@ -117,6 +129,72 @@ def create_app(
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
         _app.state.redis_pool = await create_pool(redis_settings)
         logger.info("Redis pool initialized")
+
+        initialize_vector_client_state(_app)
+        try:
+            async with get_session_context() as session:
+                config_service = TypedConfigService(session)
+                config = await reconcile_vector_backend(_app, session)
+
+                if config.enabled and config.status == VectorizationStatus.IDLE:
+                    vector_client, vector_error = await ensure_app_vector_client(
+                        _app,
+                        config.dimension,
+                        config.provider,
+                        config.model,
+                    )
+                    if vector_client is None:
+                        raise RuntimeError(vector_error or "Vector backend unavailable")
+
+                    # Empty pgvector installations and legacy Milvus stores are
+                    # safe to adopt only after schema/model compatibility has
+                    # actually been verified.
+                    if (
+                        config.vector_backend is None
+                        or config.vector_store_fingerprint is None
+                        or config.model_fingerprint is None
+                    ):
+                        adopted = await config_service.update_embedding_generation(
+                            expected_version=config.version,
+                            expected_rebuild_id=config.rebuild_id,
+                            expected_statuses={VectorizationStatus.IDLE.value},
+                            expected_values={
+                                "enabled": config.enabled,
+                                "provider": config.provider,
+                                "model": config.model,
+                                "dimension": config.dimension,
+                                "base_url": config.base_url,
+                            },
+                            vector_backend=vector_backend_config.backend.lower(),
+                            vector_store_fingerprint=vector_store_fingerprint(),
+                            model_fingerprint=embedding_model_fingerprint(
+                                config.provider,
+                                config.model,
+                                config.dimension,
+                                config.base_url,
+                            ),
+                            target_vector_backend=None,
+                            target_vector_store_fingerprint=None,
+                            target_model_fingerprint=None,
+                            target_force_rebuild=False,
+                        )
+                        if adopted is not None:
+                            config = adopted
+                        else:
+                            config = await config_service.get(EmbeddingConfig)
+
+            if config.enabled and config.status == VectorizationStatus.IDLE:
+                logger.info(
+                    "Vector client initialized",
+                    extra={"backend": vector_backend_config.backend},
+                )
+        except Exception as e:
+            _app.state.vector_client = None
+            _app.state.vector_client_error = str(e)
+            logger.warning(
+                "Vector client unavailable for API scoring",
+                extra={"backend": vector_backend_config.backend, "error": str(e)},
+            )
 
         # Run extra startup hook
         if extra_startup:
@@ -132,6 +210,14 @@ def create_app(
             if extra_shutdown:
                 await extra_shutdown()
         finally:
+            vector_client = getattr(_app.state, "vector_client", None)
+            if vector_client:
+                await vector_client.disconnect()
+                _app.state.vector_client = None
+                logger.info(
+                    "Vector client disconnected",
+                    extra={"backend": vector_backend_config.backend},
+                )
             redis_pool = getattr(_app.state, "redis_pool", None)
             if redis_pool:
                 await redis_pool.close()
@@ -182,8 +268,57 @@ def create_app(
     return application
 
 
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
+async def health_check(request: Request) -> dict[str, str]:
+    """Readiness check, including the active vector backend when enabled."""
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+    from glean_core.services import TypedConfigService
+    from glean_database.session import get_session_context
+    from glean_vector.config import is_active_embedding_model, is_active_vector_backend
+
+    try:
+        async with get_session_context() as session:
+            config_service = TypedConfigService(session)
+            config = await config_service.get(EmbeddingConfig)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database unavailable: {exc}",
+        ) from exc
+
+    # VALIDATING/REBUILDING may intentionally point at a not-yet-recreated
+    # store. Keep the API ready so the worker can perform that rebuild; IDLE is
+    # the state that promises a usable active backend.
+    if config.enabled and config.status == VectorizationStatus.IDLE:
+        if not is_active_vector_backend(
+            config.vector_backend,
+            config.vector_store_fingerprint,
+        ) or not is_active_embedding_model(
+            config.model_fingerprint,
+            provider=config.provider,
+            model=config.model,
+            dimension=config.dimension,
+            base_url=config.base_url,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Vector backend transition is pending: "
+                    f"stored={config.vector_backend or 'unknown'}, "
+                    f"runtime={vector_backend_config.backend}"
+                ),
+            )
+        vector_client, vector_error = await ensure_app_vector_client(
+            request.app,
+            config.dimension,
+            config.provider,
+            config.model,
+        )
+        if vector_client is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Vector backend unavailable: {vector_error or 'unknown error'}",
+            )
+
     return {"status": "healthy", "version": settings.version}
 
 

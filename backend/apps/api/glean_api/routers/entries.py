@@ -4,11 +4,9 @@ Entries router.
 Provides endpoints for reading and managing feed entries.
 """
 
-from contextlib import suppress
 from typing import Annotated
 from uuid import UUID
 
-from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
@@ -20,7 +18,7 @@ from glean_core.schemas import (
 )
 from glean_core.services import EntryService
 
-from ..dependencies import get_current_user, get_entry_service, get_redis_pool, get_score_service
+from ..dependencies import get_current_user, get_entry_service, get_score_service
 
 router = APIRouter()
 
@@ -162,7 +160,6 @@ async def like_entry(
     entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
-    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> EntryResponse:
     """
     Mark entry as liked.
@@ -174,8 +171,6 @@ async def like_entry(
         entry_id: Entry identifier.
         current_user: Current authenticated user.
         entry_service: Entry service.
-        redis_pool: Redis connection pool.
-
     Returns:
         Updated entry.
 
@@ -183,21 +178,9 @@ async def like_entry(
         HTTPException: If entry not found.
     """
     try:
-        result = await entry_service.update_entry_state(
+        return await entry_service.update_entry_state(
             str(entry_id), current_user.id, UpdateEntryStateRequest(is_liked=True)
         )
-
-        # Queue preference update task (M3)
-        # Don't fail the request if preference update fails
-        with suppress(Exception):
-            await redis_pool.enqueue_job(
-                "update_user_preference",
-                user_id=current_user.id,
-                entry_id=str(entry_id),
-                signal_type="like",
-            )
-
-        return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -207,7 +190,6 @@ async def dislike_entry(
     entry_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
-    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> EntryResponse:
     """
     Mark entry as disliked.
@@ -219,8 +201,6 @@ async def dislike_entry(
         entry_id: Entry identifier.
         current_user: Current authenticated user.
         entry_service: Entry service.
-        redis_pool: Redis connection pool.
-
     Returns:
         Updated entry.
 
@@ -228,21 +208,9 @@ async def dislike_entry(
         HTTPException: If entry not found.
     """
     try:
-        result = await entry_service.update_entry_state(
+        return await entry_service.update_entry_state(
             str(entry_id), current_user.id, UpdateEntryStateRequest(is_liked=False)
         )
-
-        # Queue preference update task (M3)
-        # Don't fail the request if preference update fails
-        with suppress(Exception):
-            await redis_pool.enqueue_job(
-                "update_user_preference",
-                user_id=current_user.id,
-                entry_id=str(entry_id),
-                signal_type="dislike",
-            )
-
-        return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 

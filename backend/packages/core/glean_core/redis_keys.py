@@ -87,6 +87,36 @@ class RedisKeys:
         return f"oidc_rate_limit:{action}:{client_id}"
 
     # ============================================================================
+    # Embedding Rebuild Keys
+    # ============================================================================
+
+    # Distributed lock for embedding rebuild
+    # Prevents concurrent rebuild jobs from running
+    # TTL: 10 minutes (generous for the enqueue phase)
+    REBUILD_LOCK_KEY = "glean:rebuild_embeddings_lock"
+    REBUILD_LOCK_TIMEOUT = 600
+    REBUILD_PREFERENCES_TTL = 86400
+    EMBEDDING_MAINTENANCE_THROTTLE_TTL = 240
+    EMBEDDING_PENDING_MAINTENANCE_KEY = "glean:embedding_maintenance:pending"
+    EMBEDDING_FAILED_MAINTENANCE_KEY = "glean:embedding_maintenance:failed"
+    PREFERENCE_PENDING_USERS_KEY = "glean:preference_pending_users"
+
+    @staticmethod
+    def embedding_validation_maintenance(version: str | None) -> str:
+        """Throttle recovery enqueue for one validation generation."""
+        return f"glean:embedding_maintenance:validation:{version or 'missing'}"
+
+    @staticmethod
+    def vector_cleanup_maintenance(feed_id: str) -> str:
+        """Throttle orphan-vector cleanup enqueue for one feed."""
+        return f"glean:embedding_maintenance:cleanup:{feed_id}"
+
+    @staticmethod
+    def rebuild_preferences(rebuild_id: str) -> str:
+        """Get the pending-user set key for a preference rebuild phase."""
+        return f"glean:rebuild_preferences:{rebuild_id}"
+
+    # ============================================================================
     # Preference System Keys
     # ============================================================================
 
@@ -117,6 +147,7 @@ class RedisKeys:
     # Format: preference_lock:{user_id}:{vector_type}
     # TTL: 10 seconds
     PREFERENCE_LOCK_TTL = 10
+    PREFERENCE_MODEL_LOCK_TTL = 300
     PREFERENCE_LOCK_BLOCKING_TIMEOUT = 5
 
     @staticmethod

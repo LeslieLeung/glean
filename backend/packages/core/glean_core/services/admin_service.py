@@ -618,19 +618,29 @@ class AdminService:
 
     async def get_embedding_progress(self) -> dict[str, int]:
         """
-        Compute embedding rebuild progress using entry counters.
+        Compute embedding rebuild progress using entry status counters.
+
+        Uses a single ``GROUP BY`` query instead of four round-trips.
+        ``total`` is derived from the sum of all known embedding states so that
+        entries arriving *during* a rebuild (with default status) are correctly
+        reflected and the auto-complete condition works reliably.
         """
-        total_result = await self.session.execute(select(func.count()).select_from(Entry))
-        total = total_result.scalar_one()
-
-        done_query = select(func.count()).select_from(Entry).where(Entry.embedding_status == "done")
-        done_result = await self.session.execute(done_query)
-        done = done_result.scalar_one()
-
-        failed_query = (
-            select(func.count()).select_from(Entry).where(Entry.embedding_status == "failed")
+        result = await self.session.execute(
+            select(Entry.embedding_status, func.count())
+            .where(Entry.embedding_status.in_(["pending", "processing", "done", "failed"]))
+            .group_by(Entry.embedding_status)
         )
-        failed_result = await self.session.execute(failed_query)
-        failed = failed_result.scalar_one()
+        counts: dict[str, int] = {str(row[0]): int(row[1]) for row in result.all()}
 
-        return {"total": total, "done": done, "failed": failed}
+        pending = counts.get("pending", 0)
+        processing = counts.get("processing", 0)
+        done = counts.get("done", 0)
+        failed = counts.get("failed", 0)
+
+        return {
+            "total": pending + processing + done + failed,
+            "pending": pending,
+            "processing": processing,
+            "done": done,
+            "failed": failed,
+        }

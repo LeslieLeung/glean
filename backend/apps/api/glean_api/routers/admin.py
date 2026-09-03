@@ -4,16 +4,18 @@ Admin router.
 Provides endpoints for administrative operations.
 """
 
+import contextlib
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core import RedisKeys
 from glean_core.schemas import EmbeddingConfigUpdateRequest
 from glean_core.schemas.admin import (
     AdminBatchEntryRequest,
@@ -35,6 +37,11 @@ from glean_core.schemas.admin import (
 )
 from glean_core.services import AdminService, TypedConfigService
 from glean_database.session import get_session
+from glean_vector.config import (
+    embedding_model_fingerprint,
+    vector_backend_config,
+    vector_store_fingerprint,
+)
 
 from ..config import settings
 from ..dependencies import (
@@ -712,6 +719,34 @@ async def update_embedding_config(
 
     # Build updates dict from request
     updates = request.model_dump(exclude_unset=True)
+    requested_enabled = updates.pop("enabled", None)
+    if requested_enabled is not None and requested_enabled != current.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the dedicated embedding enable/disable endpoint",
+        )
+    nullable_fields = {"api_key", "base_url"}
+    invalid_null_fields = sorted(
+        field for field, value in updates.items() if value is None and field not in nullable_fields
+    )
+    if invalid_null_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=("Embedding config fields cannot be null: " + ", ".join(invalid_null_fields)),
+        )
+
+    rebuild_fields = {"provider", "model", "dimension", "base_url"}
+    config_changed = any(
+        field in updates and getattr(current, field) != updates[field] for field in rebuild_fields
+    )
+    if config_changed and current.status in (
+        VectorizationStatus.VALIDATING,
+        VectorizationStatus.REBUILDING,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding model configuration cannot change during validation or rebuild",
+        )
 
     # Auto-infer dimension if not provided and provider/model changed
     provider_changed = "provider" in updates or "model" in updates
@@ -741,25 +776,81 @@ async def update_embedding_config(
         inferred_dimension = infer_result.details.get("dimension")
         updates["dimension"] = inferred_dimension
 
-    # Check if this is a config change that requires rebuild
-    # Only provider, model, and dimension changes require rebuild
-    # api_key and base_url changes don't affect embeddings (same model = same vectors)
-    config_changed = False
-    rebuild_fields = {"provider", "model", "dimension"}
-    for field in rebuild_fields:
-        if field in updates and getattr(current, field) != updates[field]:
-            config_changed = True
-            break
+    # Dimension inference can turn an otherwise identical provider/model
+    # request into a real model-generation change. Recompute from final values
+    # and apply the lifecycle gate again.
+    config_changed = any(
+        field in updates and getattr(current, field) != updates[field] for field in rebuild_fields
+    )
+    if config_changed and current.status in (
+        VectorizationStatus.VALIDATING,
+        VectorizationStatus.REBUILDING,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding model configuration cannot change during validation or rebuild",
+        )
 
-    # Apply updates
-    updated = await config_service.update(EmbeddingConfig, **updates)
+    # base_url identifies the embedding implementation for OpenAI-compatible
+    # providers. The same model name and dimension at another endpoint is not
+    # guaranteed to share a vector space.
+    version: str | None = None
+    if current.enabled and config_changed:
+        version = str(uuid4())
+        target_backend = vector_backend_config.backend.lower()
+        target_store_fingerprint = vector_store_fingerprint()
+        target_model_fingerprint = embedding_model_fingerprint(
+            str(updates.get("provider", current.provider)),
+            str(updates.get("model", current.model)),
+            int(updates.get("dimension", current.dimension)),
+            updates.get("base_url", current.base_url),
+        )
+        updates.update(
+            {
+                "version": version,
+                "status": VectorizationStatus.VALIDATING,
+                "target_vector_backend": target_backend,
+                "target_vector_store_fingerprint": target_store_fingerprint,
+                "target_model_fingerprint": target_model_fingerprint,
+                "target_force_rebuild": True,
+                "rebuild_id": None,
+                "rebuild_started_at": None,
+                "rebuild_phase": None,
+                "last_error": None,
+                "last_error_at": None,
+                "error_count": 0,
+            }
+        )
+    updated = await config_service.update_embedding_generation(
+        expected_version=current.version,
+        expected_rebuild_id=current.rebuild_id,
+        expected_statuses={current.status.value},
+        expected_values={
+            "enabled": current.enabled,
+            "provider": current.provider,
+            "model": current.model,
+            "dimension": current.dimension,
+            "api_key": current.api_key,
+            "base_url": current.base_url,
+        },
+        **updates,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding configuration changed concurrently; retry with the latest values",
+        )
 
-    # If enabled and config changed, trigger rebuild
-    if updated.enabled and config_changed:
-        # Generate new version and trigger rebuild
-        await config_service.update_embedding_version()
-        await config_service.update(EmbeddingConfig, status=VectorizationStatus.VALIDATING)
-        await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+    if version is not None:
+        await redis_pool.enqueue_job(
+            "validate_and_rebuild_embeddings",
+            force_rebuild=True,
+            expected_version=version,
+            expected_backend=updated.target_vector_backend,
+            expected_store_fingerprint=updated.target_vector_store_fingerprint,
+            expected_model_fingerprint=updated.target_model_fingerprint,
+            _job_id=f"validate_embedding_{version}",
+        )
 
     return TypedEmbeddingConfigResponse.from_config(updated)
 
@@ -773,7 +864,7 @@ async def enable_embedding(
     """
     Enable vectorization.
 
-    Validates provider and Milvus connection, then triggers rebuild.
+    Validates provider and configured vector backend, then triggers rebuild.
     """
     from glean_core.schemas.config import (
         EmbeddingConfig,
@@ -790,15 +881,55 @@ async def enable_embedding(
     if config.enabled:
         return TypedEmbeddingConfigResponse.from_config(config)
 
-    # Enable and set to validating
-    updated = await config_service.update(
-        EmbeddingConfig,
+    version = str(uuid4())
+    target_backend = vector_backend_config.backend.lower()
+    target_store_fingerprint = vector_store_fingerprint()
+    target_model_fingerprint = embedding_model_fingerprint(
+        config.provider,
+        config.model,
+        config.dimension,
+        config.base_url,
+    )
+    updated = await config_service.update_embedding_generation(
+        expected_version=config.version,
+        expected_rebuild_id=config.rebuild_id,
+        expected_statuses={config.status.value},
+        expected_values={
+            "enabled": config.enabled,
+            "provider": config.provider,
+            "model": config.model,
+            "dimension": config.dimension,
+            "base_url": config.base_url,
+        },
+        version=version,
         enabled=True,
         status=VectorizationStatus.VALIDATING,
+        target_vector_backend=target_backend,
+        target_vector_store_fingerprint=target_store_fingerprint,
+        target_model_fingerprint=target_model_fingerprint,
+        target_force_rebuild=False,
+        rebuild_id=None,
+        rebuild_started_at=None,
+        rebuild_phase=None,
+        last_error=None,
+        last_error_at=None,
+        error_count=0,
     )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding configuration changed concurrently; retry enabling",
+        )
 
     # Trigger validation and rebuild in background
-    await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+    await redis_pool.enqueue_job(
+        "validate_and_rebuild_embeddings",
+        expected_version=version,
+        expected_backend=updated.target_vector_backend,
+        expected_store_fingerprint=updated.target_vector_store_fingerprint,
+        expected_model_fingerprint=updated.target_model_fingerprint,
+        _job_id=f"validate_embedding_{version}",
+    )
 
     return TypedEmbeddingConfigResponse.from_config(updated)
 
@@ -807,6 +938,7 @@ async def enable_embedding(
 async def disable_embedding(
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ):
     """
     Disable vectorization.
@@ -822,14 +954,35 @@ async def disable_embedding(
     )
     from glean_core.services import TypedConfigService
 
-    config_service = TypedConfigService(session)
-    updated = await config_service.update(
-        EmbeddingConfig,
-        enabled=False,
-        status=VectorizationStatus.DISABLED,
-        rebuild_id=None,
-        rebuild_started_at=None,
+    lock = redis_pool.lock(
+        RedisKeys.REBUILD_LOCK_KEY,
+        timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+        blocking_timeout=30,
     )
+    acquired = await lock.acquire()
+    if not acquired:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding rebuild is busy; retry disabling shortly",
+        )
+    try:
+        config_service = TypedConfigService(session)
+        updated = await config_service.update(
+            EmbeddingConfig,
+            version=str(uuid4()),
+            enabled=False,
+            status=VectorizationStatus.DISABLED,
+            target_vector_backend=None,
+            target_vector_store_fingerprint=None,
+            target_model_fingerprint=None,
+            target_force_rebuild=False,
+            rebuild_id=None,
+            rebuild_started_at=None,
+            rebuild_phase=None,
+        )
+    finally:
+        with contextlib.suppress(Exception):
+            await lock.release()
 
     return TypedEmbeddingConfigResponse.from_config(updated)
 
@@ -840,7 +993,7 @@ async def validate_embedding_config(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
     """
-    Test provider and Milvus connection without saving.
+    Test provider and configured vector backend connection without saving.
 
     Returns validation results.
     """
@@ -884,16 +1037,63 @@ async def trigger_embedding_rebuild(
             detail="Vectorization is not enabled",
         )
 
-    if config.status == VectorizationStatus.REBUILDING:
+    if config.status in (
+        VectorizationStatus.VALIDATING,
+        VectorizationStatus.REBUILDING,
+    ):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Rebuild already in progress",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding validation or rebuild already in progress",
         )
 
-    # Generate new version and trigger rebuild
-    await config_service.update_embedding_version()
-    await config_service.update(EmbeddingConfig, status=VectorizationStatus.VALIDATING)
-    await redis_pool.enqueue_job("validate_and_rebuild_embeddings")
+    # Generate new version and trigger rebuild, clear stale error fields
+    version = str(uuid4())
+    target_backend = vector_backend_config.backend.lower()
+    target_store_fingerprint = vector_store_fingerprint()
+    target_model_fingerprint = embedding_model_fingerprint(
+        config.provider,
+        config.model,
+        config.dimension,
+        config.base_url,
+    )
+    updated = await config_service.update_embedding_generation(
+        expected_version=config.version,
+        expected_rebuild_id=config.rebuild_id,
+        expected_statuses={config.status.value},
+        expected_values={
+            "enabled": config.enabled,
+            "provider": config.provider,
+            "model": config.model,
+            "dimension": config.dimension,
+            "base_url": config.base_url,
+        },
+        version=version,
+        status=VectorizationStatus.VALIDATING,
+        target_vector_backend=target_backend,
+        target_vector_store_fingerprint=target_store_fingerprint,
+        target_model_fingerprint=target_model_fingerprint,
+        target_force_rebuild=True,
+        rebuild_id=None,
+        rebuild_started_at=None,
+        rebuild_phase=None,
+        last_error=None,
+        last_error_at=None,
+        error_count=0,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding configuration changed concurrently; retry rebuilding",
+        )
+    await redis_pool.enqueue_job(
+        "validate_and_rebuild_embeddings",
+        True,
+        version,
+        updated.target_vector_backend,
+        updated.target_vector_store_fingerprint,
+        updated.target_model_fingerprint,
+        _job_id=f"validate_embedding_{version}",
+    )
 
     return {"message": "Rebuild triggered", "status": "validating"}
 
@@ -902,6 +1102,7 @@ async def trigger_embedding_rebuild(
 async def cancel_embedding_rebuild(
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, Any]:
     """
     Cancel ongoing embedding rebuild.
@@ -909,24 +1110,50 @@ async def cancel_embedding_rebuild(
     from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
     from glean_core.services import TypedConfigService
 
-    config_service = TypedConfigService(session)
-    config = await config_service.get(EmbeddingConfig)
-
-    if config.status != VectorizationStatus.REBUILDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No rebuild in progress",
-        )
-
-    # Set status back to IDLE (or ERROR if there was an error)
-    await config_service.update(
-        EmbeddingConfig,
-        status=VectorizationStatus.IDLE,
-        rebuild_id=None,
-        rebuild_started_at=None,
+    lock = redis_pool.lock(
+        RedisKeys.REBUILD_LOCK_KEY,
+        timeout=RedisKeys.REBUILD_LOCK_TIMEOUT,
+        blocking_timeout=30,
     )
+    acquired = await lock.acquire()
+    if not acquired:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Embedding rebuild is at its destructive boundary; retry cancellation shortly",
+        )
+    try:
+        config_service = TypedConfigService(session)
+        config = await config_service.get(EmbeddingConfig)
 
-    return {"message": "Rebuild cancelled", "status": "idle"}
+        if config.status != VectorizationStatus.REBUILDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No rebuild in progress",
+            )
+
+        # Once a rebuild starts, vector data may already be partial. Invalidate
+        # every queued job and require an explicit full rebuild instead of
+        # falsely advertising an IDLE, complete store.
+        await config_service.update(
+            EmbeddingConfig,
+            version=str(uuid4()),
+            status=VectorizationStatus.ERROR,
+            last_error="Embedding rebuild was cancelled; run a full rebuild",
+            last_error_at=datetime.now(UTC),
+            error_count=config.error_count + 1,
+            target_vector_backend=None,
+            target_vector_store_fingerprint=None,
+            target_model_fingerprint=None,
+            target_force_rebuild=False,
+            rebuild_id=None,
+            rebuild_started_at=None,
+            rebuild_phase=None,
+        )
+    finally:
+        with contextlib.suppress(Exception):
+            await lock.release()
+
+    return {"message": "Rebuild cancelled; full rebuild required", "status": "error"}
 
 
 @router.get("/embedding/status")
@@ -938,8 +1165,8 @@ async def get_embedding_status(
     """
     Get embedding system status and rebuild progress.
 
-    If status is REBUILDING and all entries are processed (done + failed == total),
-    automatically updates status to IDLE.
+    Rebuild phase transitions are owned by worker maintenance so preference
+    reconstruction cannot be bypassed by polling this endpoint.
     """
     from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
     from glean_core.services import TypedConfigService
@@ -950,17 +1177,7 @@ async def get_embedding_status(
     # Get progress from entry counts
     progress = await admin_service.get_embedding_progress()
 
-    # Auto-complete rebuild if all entries are processed
     current_status = config.status
-    if config.status == VectorizationStatus.REBUILDING:
-        total = progress.get("total", 0)
-        done = progress.get("done", 0)
-        failed = progress.get("failed", 0)
-
-        # If all entries are processed (done + failed == total), mark as complete
-        if total > 0 and (done + failed) >= total:
-            await config_service.complete_rebuild()
-            current_status = VectorizationStatus.IDLE
 
     return {
         "enabled": config.enabled,
@@ -972,6 +1189,7 @@ async def get_embedding_status(
         "rebuild_started_at": (
             config.rebuild_started_at.isoformat() if config.rebuild_started_at else None
         ),
+        "rebuild_phase": config.rebuild_phase.value if config.rebuild_phase else None,
         "progress": progress,
     }
 
