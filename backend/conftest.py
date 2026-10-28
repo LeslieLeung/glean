@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import os
 from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from typing import Any, cast
 
 import dotenv
 import pytest
@@ -72,6 +72,15 @@ class MockArqRedis:
             return False
         self._ttl[key] = ttl_seconds
         return True
+
+    async def sadd(self, key: str, *values: Any) -> int:
+        stored = self._store.setdefault(key, set())
+        if not isinstance(stored, set):
+            raise TypeError(f"Redis key {key} does not contain a set")
+        members = cast(set[Any], stored)
+        before = len(members)
+        members.update(values)
+        return len(members) - before
 
     async def ttl(self, key: str) -> int:
         return self._ttl.get(key, -1)

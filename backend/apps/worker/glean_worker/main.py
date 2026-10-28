@@ -17,7 +17,12 @@ from glean_database.session import init_database
 from glean_vector.clients.vector_store import create_vector_store_client
 from glean_vector.config import vector_backend_config
 
-from .config import settings
+from .config import (
+    WORKER_JOB_TIMEOUT_SECONDS,
+    WORKER_KEEP_RESULT_SECONDS,
+    WORKER_MAX_JOBS,
+    settings,
+)
 from .tasks import (
     bookmark_metadata,
     cleanup,
@@ -175,6 +180,6 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
 
     # Worker settings
-    max_jobs = 20
-    job_timeout = 300
-    keep_result = 3600
+    max_jobs = WORKER_MAX_JOBS
+    job_timeout = WORKER_JOB_TIMEOUT_SECONDS
+    keep_result = WORKER_KEEP_RESULT_SECONDS

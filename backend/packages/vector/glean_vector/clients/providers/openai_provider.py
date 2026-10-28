@@ -105,8 +105,9 @@ class OpenAIProvider(EmbeddingProvider):
                 input=texts, model=self.model, encoding_format="float"
             )
 
-            # Extract embeddings in original order
-            embeddings = [item.embedding for item in response.data]
+            # Extract embeddings in original input order
+            sorted_data = sorted(response.data, key=lambda item: getattr(item, "index", 0))
+            embeddings = [item.embedding for item in sorted_data]
 
             metadata = {
                 "model": response.model,

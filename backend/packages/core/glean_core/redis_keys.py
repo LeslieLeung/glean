@@ -100,6 +100,8 @@ class RedisKeys:
     EMBEDDING_PENDING_MAINTENANCE_KEY = "glean:embedding_maintenance:pending"
     EMBEDDING_FAILED_MAINTENANCE_KEY = "glean:embedding_maintenance:failed"
     PREFERENCE_PENDING_USERS_KEY = "glean:preference_pending_users"
+    # Shared sliding-window limiter for embedding provider calls (all jobs).
+    EMBEDDING_RATE_LIMIT_KEY = "glean:embedding_rate_limit"
 
     @staticmethod
     def embedding_validation_maintenance(version: str | None) -> str:

@@ -30,6 +30,7 @@ from glean_vector.config import (
 )
 from glean_vector.services.preference_service import get_preference_history_user_ids
 
+from .embedding_limits import embedding_job_entry_limit, enqueue_embedding_batch_job
 from .embedding_rebuild import start_preference_rebuild_phase
 
 logger = get_logger(__name__)
@@ -38,8 +39,6 @@ logger = get_logger(__name__)
 # Should be comfortably larger than the worker job_timeout (300s by default).
 STUCK_PROCESSING_THRESHOLD = timedelta(minutes=10)
 STUCK_REBUILD_PREPARING_THRESHOLD = timedelta(minutes=15)
-
-MAINTENANCE_BATCH_SIZE = 200
 
 
 async def _recover_stuck_entries(session: AsyncSession) -> int:
@@ -103,12 +102,15 @@ async def _re_enqueue_pending(
     expected_backend: str | None = None,
     expected_store_fingerprint: str | None = None,
     expected_model_fingerprint: str | None = None,
+    *,
+    rpm: int,
+    batch_size: int,
 ) -> int:
-    """Enqueue batch jobs for remaining pending entries.
+    """Enqueue one continuation-sized job for remaining pending entries.
 
     This is the safety net for the rebuild: if the initial batch of jobs
-    finishes (or partially fails) and pending entries remain, we enqueue
-    more work so the rebuild can make progress.
+    finishes (or is lost) and pending entries remain, we enqueue more work
+    so the rebuild can make progress.
 
     Returns:
         Number of batch jobs enqueued.
@@ -116,24 +118,22 @@ async def _re_enqueue_pending(
     if pending <= 0:
         return 0
 
-    num_batches = max(1, (pending + MAINTENANCE_BATCH_SIZE - 1) // MAINTENANCE_BATCH_SIZE)
-    batch_prefix = f"maint_{uuid4().hex}"
-    for i in range(num_batches):
-        await redis.enqueue_job(
-            "batch_generate_embeddings",
-            MAINTENANCE_BATCH_SIZE,
-            rebuild_id,
-            expected_backend,
-            expected_store_fingerprint,
-            expected_model_fingerprint,
-            _job_id=f"{batch_prefix}_{i}",
-        )
+    queued = await enqueue_embedding_batch_job(
+        redis,
+        rpm=rpm,
+        batch_size=batch_size,
+        rebuild_id=rebuild_id,
+        expected_backend=expected_backend,
+        expected_store_fingerprint=expected_store_fingerprint,
+        expected_model_fingerprint=expected_model_fingerprint,
+        job_id_prefix=f"maint_{uuid4().hex}",
+    )
 
     logger.info(
         "Re-enqueued batch embedding jobs from maintenance",
-        extra={"pending": pending, "num_batches": num_batches},
+        extra={"pending": pending, "num_batches": queued},
     )
-    return num_batches
+    return queued
 
 
 async def _recover_preference_phase(
@@ -232,6 +232,9 @@ async def _advance_rebuild_phase(
 async def _enqueue_idle_recovery(
     redis: Any,
     counts: dict[str, int],
+    *,
+    rpm: int,
+    batch_size: int,
 ) -> tuple[int, int]:
     """Recover pending/failed entries during normal IDLE operation."""
     if counts.get("processing", 0) > 0:
@@ -247,10 +250,12 @@ async def _enqueue_idle_recovery(
             nx=True,
         )
         if acquired:
-            await redis.enqueue_job(
-                "batch_generate_embeddings",
-                MAINTENANCE_BATCH_SIZE,
-                None,
+            await enqueue_embedding_batch_job(
+                redis,
+                rpm=rpm,
+                batch_size=batch_size,
+                rebuild_id=None,
+                job_id_prefix="idle_pending",
             )
             pending_queued = 1
 
@@ -264,7 +269,7 @@ async def _enqueue_idle_recovery(
         if acquired:
             await redis.enqueue_job(
                 "retry_failed_embeddings",
-                MAINTENANCE_BATCH_SIZE,
+                embedding_job_entry_limit(rpm, batch_size),
             )
             failed_queued = 1
     return pending_queued, failed_queued
@@ -462,6 +467,8 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
                     config.vector_backend,
                     config.vector_store_fingerprint,
                     config.model_fingerprint,
+                    rpm=config.get_rate_limit_for_provider(),
+                    batch_size=config.batch_size,
                 )
 
             if redis is not None and not failed_preparation:
@@ -492,6 +499,8 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
                 re_enqueued, retried_failed = await _enqueue_idle_recovery(
                     redis,
                     idle_counts,
+                    rpm=config.get_rate_limit_for_provider(),
+                    batch_size=config.batch_size,
                 )
                 recovered_preference_users = await _enqueue_pending_preference_users(
                     session,

@@ -1,5 +1,7 @@
 """Embedding generation worker tasks."""
 
+import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -14,6 +16,7 @@ from glean_core.services import TypedConfigService
 from glean_database.models import Entry
 from glean_database.session import get_session_context
 from glean_vector.clients.embedding_client import EmbeddingClient
+from glean_vector.clients.rate_limiter import RateLimitDeadlineError
 from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 from glean_vector.config import (
     embedding_model_fingerprint,
@@ -28,6 +31,11 @@ from glean_vector.services.embedding_service import (
 )
 
 from ._vector_client import ensure_vector_client
+from .embedding_limits import (
+    embedding_job_deadline,
+    embedding_job_entry_limit,
+    enqueue_embedding_batch_job,
+)
 
 logger = get_logger(__name__)
 
@@ -169,8 +177,6 @@ async def _safe_handle_error(
     failed-transaction state.  This helper rolls back before touching the
     session so the circuit-breaker logic can still read/write config.
     """
-    import contextlib
-
     with contextlib.suppress(Exception):
         await session.rollback()
     try:
@@ -206,6 +212,41 @@ def _embedding_retry_delay(ctx: dict[str, Any]) -> timedelta:
     return timedelta(seconds=min(60 * (2 ** (job_try - 1)), 15 * 60))
 
 
+async def _enqueue_embedding_followup_if_needed(
+    session: AsyncSession,
+    redis: Any,
+    *,
+    rpm: int,
+    batch_size: int,
+    rebuild_id: str | None,
+    expected_backend: str | None,
+    expected_store_fingerprint: str | None,
+    expected_model_fingerprint: str | None,
+) -> None:
+    """Continue rebuild/idle work without waiting for the 5-minute maintenance cron."""
+    if redis is None:
+        return
+    pending_result = await session.execute(
+        select(Entry.embedding_status, func.count())
+        .where(Entry.embedding_status.in_(["pending", "processing"]))
+        .group_by(Entry.embedding_status)
+    )
+    counts = {str(row[0]): int(row[1]) for row in pending_result.all()}
+    if counts.get("pending", 0) <= 0 or counts.get("processing", 0) > 0:
+        return
+    prefix = f"embed_followup_{rebuild_id or 'idle'}"
+    await enqueue_embedding_batch_job(
+        redis,
+        rpm=rpm,
+        batch_size=batch_size,
+        rebuild_id=rebuild_id,
+        expected_backend=expected_backend,
+        expected_store_fingerprint=expected_store_fingerprint,
+        expected_model_fingerprint=expected_model_fingerprint,
+        job_id_prefix=prefix,
+    )
+
+
 async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[str, Any]:
     """
     Generate embedding for a single entry.
@@ -237,8 +278,13 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
             return {"success": False, "entry_id": entry_id, "error": "Vectorization disabled"}
 
         settings, rate_limit = await _load_embedding_settings(config)
-        embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
+        embedding_client = EmbeddingClient(
+            config=settings,
+            rate_limit=rate_limit,
+            redis=ctx.get("redis"),
+        )
         embedding_service: EmbeddingService | None = None
+        deadline = embedding_job_deadline()
 
         try:
             # Ensure vector storage exists with correct model config
@@ -258,7 +304,10 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
                 generation_lock=ctx.get("redis"),
             )
 
-            success = await embedding_service.generate_embedding(entry_id)
+            success = await embedding_service.generate_embedding(
+                entry_id,
+                deadline=deadline,
+            )
 
             if success:
                 await _reset_error_count(
@@ -278,6 +327,22 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
                 "entry_id": entry_id,
                 "skipped": "Stale embedding generation",
             }
+        except RateLimitDeadlineError:
+            await session.rollback()
+            if embedding_service is not None:
+                await embedding_service.restore_claimed_entries([entry_id])
+            return {
+                "success": False,
+                "entry_id": entry_id,
+                "skipped": "Embedding job deadline reached",
+            }
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await session.rollback()
+            if embedding_service is not None:
+                with contextlib.suppress(Exception):
+                    await embedding_service.restore_claimed_entries([entry_id])
+            raise
         except Exception as e:
             # Infrastructure errors are persisted as "failed" by the service
             # layer.  Count the failure durably and ask arq for a bounded,
@@ -366,7 +431,13 @@ async def batch_generate_embeddings(
             return {"processed": 0, "failed": 0, "skipped": "Stale embedding model"}
 
         settings, rate_limit = await _load_embedding_settings(config)
-        embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
+        embedding_client = EmbeddingClient(
+            config=settings,
+            rate_limit=rate_limit,
+            redis=ctx.get("redis"),
+        )
+        deadline = embedding_job_deadline()
+        job_limit = min(limit, embedding_job_entry_limit(rate_limit, settings.batch_size))
 
         try:
             # Ensure vector storage exists with correct model config
@@ -386,7 +457,11 @@ async def batch_generate_embeddings(
                 generation_lock=ctx.get("redis"),
             )
 
-            result = await embedding_service.batch_generate(limit=limit)
+            result = await embedding_service.batch_generate(
+                limit=job_limit,
+                chunk_size=settings.batch_size,
+                deadline=deadline,
+            )
 
             processed = result.get("processed", 0)
             failed = result.get("failed", 0)
@@ -406,6 +481,19 @@ async def batch_generate_embeddings(
                     expected_version=config.version,
                     expected_rebuild_id=rebuild_id,
                 )
+
+            await _enqueue_embedding_followup_if_needed(
+                session,
+                ctx.get("redis"),
+                rpm=rate_limit,
+                batch_size=settings.batch_size,
+                rebuild_id=rebuild_id,
+                expected_backend=expected_backend or config.vector_backend,
+                expected_store_fingerprint=(
+                    expected_store_fingerprint or config.vector_store_fingerprint
+                ),
+                expected_model_fingerprint=(expected_model_fingerprint or config.model_fingerprint),
+            )
 
             return result  # type: ignore[return-value]
 
@@ -449,7 +537,13 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
             return {"processed": 0, "failed": 0, "skipped": "Vectorization disabled"}
 
         settings, rate_limit = await _load_embedding_settings(config)
-        embedding_client = EmbeddingClient(config=settings, rate_limit=rate_limit)
+        embedding_client = EmbeddingClient(
+            config=settings,
+            rate_limit=rate_limit,
+            redis=ctx.get("redis"),
+        )
+        deadline = embedding_job_deadline()
+        job_limit = min(limit, embedding_job_entry_limit(rate_limit, settings.batch_size))
 
         try:
             # Ensure vector storage exists with correct model config
@@ -469,7 +563,11 @@ async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[
                 generation_lock=ctx.get("redis"),
             )
 
-            result = await embedding_service.retry_failed(limit=limit)
+            result = await embedding_service.retry_failed(
+                limit=job_limit,
+                chunk_size=settings.batch_size,
+                deadline=deadline,
+            )
 
             processed = result.get("processed", 0)
             failed = result.get("failed", 0)

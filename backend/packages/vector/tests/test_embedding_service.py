@@ -1,5 +1,6 @@
 """Tests for EmbeddingService transaction handling."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -121,24 +122,133 @@ async def test_stale_batch_restores_unfinished_claims_to_pending() -> None:
     embedding_client = AsyncMock(spec=EmbeddingClient)
     vector_client = AsyncMock()
 
-    claim_result = MagicMock()
-    claim_result.all.return_value = [("entry-1",), ("entry-2",)]
-    session.execute.side_effect = [
-        claim_result,
-        MagicMock(),
-        MagicMock(),
-    ]
+    service = EmbeddingService(
+        db_session=session,
+        embedding_client=embedding_client,
+        vector_client=vector_client,
+    )
+    service._claim_entries = AsyncMock(return_value=["entry-1", "entry-2"])  # type: ignore[method-assign]
+    service._embed_claimed_entries = AsyncMock(  # type: ignore[method-assign]
+        side_effect=StaleEmbeddingGenerationError()
+    )
+    service.restore_claimed_entries = AsyncMock()  # type: ignore[method-assign]
+
+    result = await service.batch_generate(limit=2, chunk_size=2)
+
+    assert result == {"processed": 0, "failed": 0}
+    service._claim_entries.assert_awaited_once()
+    service.restore_claimed_entries.assert_awaited_once_with(["entry-1", "entry-2"])
+    embedding_client.acquire_rate_limit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_generate_claims_one_provider_chunk_at_a_time() -> None:
+    """Jobs must not mark a 200-entry slice as processing before they can finish it."""
+    session = AsyncMock(spec=AsyncSession)
+    embedding_client = AsyncMock(spec=EmbeddingClient)
+    vector_client = AsyncMock()
+    claimed_limits: list[int] = []
+
+    async def claim_entries(*, status: str, limit: int, order_by: object) -> list[str]:
+        claimed_limits.append(limit)
+        if len(claimed_limits) == 1:
+            return ["entry-1", "entry-2"]
+        return []
 
     service = EmbeddingService(
         db_session=session,
         embedding_client=embedding_client,
         vector_client=vector_client,
     )
-    service.generate_embedding = AsyncMock(side_effect=StaleEmbeddingGenerationError())
+    service._claim_entries = claim_entries  # type: ignore[method-assign]
+    service._embed_claimed_entries = AsyncMock(return_value=(2, 0))  # type: ignore[method-assign]
 
-    result = await service.batch_generate(limit=2)
+    result = await service.batch_generate(limit=200, chunk_size=2)
+
+    assert result == {"processed": 2, "failed": 0}
+    assert claimed_limits == [2, 2]
+    assert embedding_client.acquire_rate_limit.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_batch_generate_stops_before_job_deadline() -> None:
+    """A rate-limited job must stop in time to avoid arq's 300s timeout."""
+    session = AsyncMock(spec=AsyncSession)
+    embedding_client = AsyncMock(spec=EmbeddingClient)
+    vector_client = AsyncMock()
+    service = EmbeddingService(
+        db_session=session,
+        embedding_client=embedding_client,
+        vector_client=vector_client,
+    )
+    service._claim_entries = AsyncMock(return_value=["entry-1"])  # type: ignore[method-assign]
+
+    result = await service.batch_generate(limit=200, chunk_size=20, deadline=0)
 
     assert result == {"processed": 0, "failed": 0}
-    assert session.execute.await_count == 3
-    assert session.commit.await_count == 2
+    service._claim_entries.assert_not_awaited()
+    embedding_client.acquire_rate_limit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_batch_restores_current_provider_chunk() -> None:
+    """arq cancellation must immediately return every in-flight claim to pending."""
+    session = AsyncMock(spec=AsyncSession)
+    embedding_client = AsyncMock(spec=EmbeddingClient)
+    vector_client = AsyncMock()
+    service = EmbeddingService(
+        db_session=session,
+        embedding_client=embedding_client,
+        vector_client=vector_client,
+    )
+    service._claim_entries = AsyncMock(return_value=["entry-1", "entry-2"])  # type: ignore[method-assign]
+    service._embed_claimed_entries = AsyncMock(  # type: ignore[method-assign]
+        side_effect=asyncio.CancelledError()
+    )
+    service.restore_claimed_entries = AsyncMock()  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError):
+        await service.batch_generate(limit=2, chunk_size=2)
+
     session.rollback.assert_awaited_once()
+    service.restore_claimed_entries.assert_awaited_once_with(["entry-1", "entry-2"])
+
+
+@pytest.mark.asyncio
+async def test_batch_generate_uses_provider_batch_api() -> None:
+    """Rebuild/idle jobs should consume one RPM slot per provider batch, not per entry."""
+    session = AsyncMock(spec=AsyncSession)
+    embedding_client = AsyncMock(spec=EmbeddingClient)
+    vector_client = AsyncMock()
+
+    entry = MagicMock(spec=Entry)
+    entry.id = "entry-1"
+    entry.title = "Title"
+    entry.content = "Body text"
+    entry.summary = None
+    entry.embedding_status = "processing"
+    entry.feed_id = "feed-1"
+    entry.published_at = None
+    entry.author = None
+
+    claim_result = MagicMock()
+    claim_result.all.return_value = [("entry-1",)]
+    load_result = MagicMock()
+    load_result.scalars.return_value.all.return_value = [entry]
+    session.execute.side_effect = [claim_result, MagicMock(), load_result]
+
+    embedding_client.generate_embeddings_batch_acquired.return_value = ([[0.1, 0.2]], {})
+
+    service = EmbeddingService(
+        db_session=session,
+        embedding_client=embedding_client,
+        vector_client=vector_client,
+    )
+    service._store_embedding = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    service._mark_affected_preferences_pending = AsyncMock()  # type: ignore[method-assign]
+
+    result = await service.batch_generate(limit=1, chunk_size=1)
+
+    assert result == {"processed": 1, "failed": 0}
+    embedding_client.generate_embeddings_batch_acquired.assert_awaited_once()
+    embedding_client.generate_embedding.assert_not_called()

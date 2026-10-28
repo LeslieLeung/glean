@@ -1,18 +1,22 @@
 """Embedding generation service."""
 
+import asyncio
 import contextlib
 import re
-from collections.abc import Awaitable, Callable
+import time
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, union, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from glean_core import RedisKeys, get_logger
 from glean_core.services.preference_dirty_service import mark_preferences_dirty
 from glean_database.models import Bookmark, Entry, UserEntry
 from glean_vector.clients.embedding_client import EmbeddingClient
+from glean_vector.clients.rate_limiter import RateLimitDeadlineError
 from glean_vector.clients.vector_store import VectorStoreClient
 
 logger = get_logger(__name__)
@@ -105,12 +109,18 @@ class EmbeddingService:
         words = re.findall(r"\w+", text)
         return len(words)
 
-    async def generate_embedding(self, entry_id: str) -> bool:
+    async def generate_embedding(
+        self,
+        entry_id: str,
+        *,
+        deadline: float | None = None,
+    ) -> bool:
         """
         Generate embedding for a single entry.
 
         Args:
             entry_id: Entry UUID
+            deadline: Optional monotonic timestamp to stop waiting on rate limits
 
         Returns:
             True if successful, False otherwise
@@ -148,7 +158,10 @@ class EmbeddingService:
 
         try:
             # Generate embedding via provider API
-            embedding, _ = await self.embedding_client.generate_embedding(text)
+            embedding, _ = await self.embedding_client.generate_embedding(
+                text,
+                deadline=deadline,
+            )
 
             # Detect language (simple heuristic)
             language = self._detect_language(text)
@@ -169,6 +182,8 @@ class EmbeddingService:
         except StaleEmbeddingGenerationError:
             # Do not mark an entry failed when the job itself is obsolete.
             # Batch callers restore all unprocessed claims to pending.
+            raise
+        except RateLimitDeadlineError:
             raise
         except Exception as e:
             # Infrastructure error (API / vector backend) – mark the entry
@@ -361,97 +376,162 @@ class EmbeddingService:
 
         return "en"
 
-    async def batch_generate(self, limit: int = 100) -> dict[str, int]:
+    async def batch_generate(
+        self,
+        limit: int = 100,
+        *,
+        chunk_size: int | None = None,
+        deadline: float | None = None,
+    ) -> dict[str, int]:
         """
         Generate embeddings for pending entries in batch.
 
-        Uses SELECT FOR UPDATE SKIP LOCKED so that concurrent workers each
-        claim disjoint sets of entries and no entry is processed twice (or
-        left permanently pending because every job grabbed the same rows).
-
-        Each entry is committed independently so that a single failure
-        doesn't poison the session for remaining entries.
+        Claims are incremental (one provider request at a time) so a job
+        timeout cannot leave a large processing pile behind. Provider calls
+        use the configured embedding batch size.
 
         Args:
             limit: Maximum number of entries to process
+            chunk_size: Max texts per provider request (defaults to client batch_size)
+            deadline: Monotonic timestamp to stop claiming more work
 
         Returns:
             Dictionary with processed and failed counts
         """
-        # Atomically claim pending entries.  Rows locked by another concurrent
-        # worker are skipped, ensuring each worker gets a unique slice.
-        claim_result = await self.db.execute(
-            select(Entry.id)
-            .where(Entry.embedding_status == "pending")
-            .order_by(Entry.created_at.desc())
-            .limit(limit)
-            .with_for_update(skip_locked=True)
+        return await self._process_status_queue(
+            status="pending",
+            limit=limit,
+            order_by=Entry.created_at.desc(),
+            chunk_size=chunk_size,
+            deadline=deadline,
         )
-        entry_ids = [row[0] for row in claim_result.all()]
 
-        if not entry_ids:
-            return {"processed": 0, "failed": 0}
-
-        # Mark all claimed entries as processing and commit to make the
-        # claim durable.  This also releases the FOR UPDATE locks; since
-        # the status is now 'processing', no other worker will pick them up.
-        await self.db.execute(
-            update(Entry)
-            .where(Entry.id.in_(entry_ids))
-            .values(embedding_status="processing", embedding_error=None)
-        )
-        await self.db.commit()
-
-        processed = 0
-        failed = 0
-
-        for index, entry_id in enumerate(entry_ids):
-            try:
-                success = await self.generate_embedding(entry_id)
-                await self.db.commit()
-                if success:
-                    processed += 1
-                else:
-                    failed += 1
-            except StaleEmbeddingGenerationError:
-                await self.db.rollback()
-                await self.restore_claimed_entries(entry_ids[index:])
-                break
-            except Exception:
-                # Infrastructure error.  generate_embedding already tried
-                # _mark_failed_safe (which may have rolled back).  Ensure
-                # any pending changes are either committed or rolled back
-                # so the next iteration starts with a clean session.
-                with contextlib.suppress(Exception):
-                    await self.db.rollback()
-                failed += 1
-
-        return {"processed": processed, "failed": failed}
-
-    async def retry_failed(self, limit: int = 50) -> dict[str, int]:
+    async def retry_failed(
+        self,
+        limit: int = 50,
+        *,
+        chunk_size: int | None = None,
+        deadline: float | None = None,
+    ) -> dict[str, int]:
         """
         Retry failed embeddings.
 
         Uses SELECT FOR UPDATE SKIP LOCKED to avoid concurrent retriers
-        picking up the same entries.  Each entry is committed independently.
+        picking up the same entries. Claims are incremental so timeouts
+        restore only the in-flight provider chunk.
 
         Args:
             limit: Maximum number of entries to retry
+            chunk_size: Max texts per provider request (defaults to client batch_size)
+            deadline: Monotonic timestamp to stop claiming more work
 
         Returns:
             Dictionary with processed and failed counts
         """
+        return await self._process_status_queue(
+            status="failed",
+            limit=limit,
+            order_by=Entry.updated_at.asc(),
+            chunk_size=chunk_size,
+            deadline=deadline,
+        )
+
+    async def _process_status_queue(
+        self,
+        *,
+        status: str,
+        limit: int,
+        order_by: ColumnElement[Any],
+        chunk_size: int | None,
+        deadline: float | None,
+    ) -> dict[str, int]:
+        """Claim and embed entries until the quota or job deadline is reached."""
+        remaining_quota = max(0, limit)
+        request_chunk = (
+            chunk_size
+            if chunk_size is not None
+            else getattr(self.embedding_client, "batch_size", 20)
+        )
+        if not isinstance(request_chunk, int) or request_chunk <= 0:
+            request_chunk = 20
+        processed = 0
+        failed = 0
+
+        while remaining_quota > 0:
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            try:
+                await self.embedding_client.acquire_rate_limit(deadline=deadline)
+            except RateLimitDeadlineError:
+                break
+
+            take = min(remaining_quota, request_chunk)
+            entry_ids = await self._claim_entries(
+                status=status,
+                limit=take,
+                order_by=order_by,
+            )
+            if not entry_ids:
+                break
+
+            try:
+                chunk_processed, chunk_failed = await self._embed_claimed_entries(
+                    entry_ids,
+                    already_acquired=True,
+                    deadline=deadline,
+                )
+            except StaleEmbeddingGenerationError:
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                await self.restore_claimed_entries(entry_ids)
+                break
+            except RateLimitDeadlineError:
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                await self.restore_claimed_entries(entry_ids)
+                break
+            except asyncio.CancelledError:
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                with contextlib.suppress(Exception):
+                    await self.restore_claimed_entries(entry_ids)
+                raise
+            except Exception:
+                logger.error(
+                    "Unexpected error while embedding claimed entries",
+                    extra={"entry_count": len(entry_ids)},
+                    exc_info=True,
+                )
+                with contextlib.suppress(Exception):
+                    await self.db.rollback()
+                await self.restore_claimed_entries(entry_ids)
+                remaining_quota -= len(entry_ids)
+                continue
+
+            processed += chunk_processed
+            failed += chunk_failed
+            remaining_quota -= len(entry_ids)
+
+        return {"processed": processed, "failed": failed}
+
+    async def _claim_entries(
+        self,
+        *,
+        status: str,
+        limit: int,
+        order_by: ColumnElement[Any],
+    ) -> list[str]:
+        """Atomically claim a small disjoint slice of the embedding queue."""
         claim_result = await self.db.execute(
             select(Entry.id)
-            .where(Entry.embedding_status == "failed")
-            .order_by(Entry.updated_at.asc())
+            .where(Entry.embedding_status == status)
+            .order_by(order_by)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
         entry_ids = [row[0] for row in claim_result.all()]
-
         if not entry_ids:
-            return {"processed": 0, "failed": 0}
+            return []
 
         await self.db.execute(
             update(Entry)
@@ -459,28 +539,90 @@ class EmbeddingService:
             .values(embedding_status="processing", embedding_error=None)
         )
         await self.db.commit()
+        return entry_ids
+
+    async def _embed_claimed_entries(
+        self,
+        entry_ids: Sequence[str],
+        *,
+        already_acquired: bool,
+        deadline: float | None,
+    ) -> tuple[int, int]:
+        """Embed a claimed chunk with one provider request, then store each vector."""
+        result = await self.db.execute(select(Entry).where(Entry.id.in_(entry_ids)))
+        entries_by_id = {entry.id: entry for entry in result.scalars().all()}
 
         processed = 0
         failed = 0
+        embeddable: list[tuple[Entry, str, int]] = []
 
-        for index, entry_id in enumerate(entry_ids):
-            try:
-                success = await self.generate_embedding(entry_id)
-                await self.db.commit()
-                if success:
-                    processed += 1
-                else:
-                    failed += 1
-            except StaleEmbeddingGenerationError:
-                await self.db.rollback()
-                await self.restore_claimed_entries(entry_ids[index:])
-                break
-            except Exception:
-                with contextlib.suppress(Exception):
-                    await self.db.rollback()
+        for entry_id in entry_ids:
+            entry = entries_by_id.get(entry_id)
+            if not entry:
                 failed += 1
+                continue
+            if entry.embedding_status == "done":
+                processed += 1
+                continue
+            text = self._extract_text(entry)
+            if not text:
+                await self._mark_failed_fenced(entry_id, "No text content to embed")
+                failed += 1
+                continue
+            embeddable.append((entry, text, self._calculate_word_count(text)))
 
-        return {"processed": processed, "failed": failed}
+        if not embeddable:
+            return processed, failed
+
+        texts = [text for _, text, _ in embeddable]
+        unprocessed = [entry.id for entry, _, _ in embeddable]
+        try:
+            if already_acquired:
+                embeddings, _ = await self.embedding_client.generate_embeddings_batch_acquired(
+                    texts
+                )
+            else:
+                embeddings, _ = await self.embedding_client.generate_embeddings_batch(
+                    texts,
+                    deadline=deadline,
+                )
+            if len(embeddings) != len(embeddable):
+                raise RuntimeError(
+                    "Embedding batch size mismatch: "
+                    f"expected {len(embeddable)}, got {len(embeddings)}"
+                )
+            for (entry, text, word_count), embedding in zip(embeddable, embeddings, strict=True):
+                language = self._detect_language(text)
+                affected_user_ids = await self._store_embedding(
+                    entry=entry,
+                    embedding=embedding,
+                    language=language,
+                    word_count=word_count,
+                )
+                await self._mark_affected_preferences_pending(entry.id, affected_user_ids)
+                unprocessed.pop(0)
+                processed += 1
+        except (
+            StaleEmbeddingGenerationError,
+            RateLimitDeadlineError,
+            asyncio.CancelledError,
+        ):
+            with contextlib.suppress(Exception):
+                await self.db.rollback()
+            await self.restore_claimed_entries(unprocessed)
+            raise
+        except Exception as error:
+            logger.error(
+                "Failed to generate or store embedding batch",
+                extra={"remaining": len(unprocessed), "error": str(error)},
+            )
+            with contextlib.suppress(Exception):
+                await self.db.rollback()
+            for leftover_id in unprocessed:
+                await self._mark_failed_fenced(leftover_id, str(error))
+            failed += len(unprocessed)
+
+        return processed, failed
 
     async def restore_claimed_entries(self, entry_ids: list[str]) -> None:
         """Return stale generation claims to the pending queue."""

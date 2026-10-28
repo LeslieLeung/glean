@@ -7,7 +7,7 @@ Provides endpoints for administrative operations.
 import contextlib
 from datetime import UTC, datetime, timedelta
 from math import ceil
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core import RedisKeys
+from glean_core import RedisKeys, get_logger
 from glean_core.schemas import EmbeddingConfigUpdateRequest
 from glean_core.schemas.admin import (
     AdminBatchEntryRequest,
@@ -35,7 +35,7 @@ from glean_core.schemas.admin import (
     UserListItem,
     UserListResponse,
 )
-from glean_core.services import AdminService, TypedConfigService
+from glean_core.services import AdminService, FeedDeletionEffects, TypedConfigService
 from glean_database.session import get_session
 from glean_vector.config import (
     embedding_model_fingerprint,
@@ -52,6 +52,42 @@ from ..dependencies import (
 )
 
 router = APIRouter()
+logger = get_logger(__name__)
+
+
+async def _enqueue_feed_deletion_effects(
+    redis: ArqRedis, effects: list[FeedDeletionEffects]
+) -> None:
+    """Accelerate durable cleanup/preference outboxes after the DB commit."""
+    user_ids: set[str] = set()
+    for deletion in effects:
+        user_ids.update(deletion.user_ids)
+        if not deletion.entry_ids:
+            continue
+        try:
+            await redis.enqueue_job(
+                "cleanup_orphan_embeddings",
+                deletion.feed_id,
+                list(deletion.entry_ids),
+            )
+        except Exception:
+            logger.warning(
+                "Immediate admin vector cleanup enqueue failed; durable outbox will retry",
+                extra={"feed_id": deletion.feed_id},
+                exc_info=True,
+            )
+    if user_ids:
+        try:
+            await cast(Any, redis).sadd(
+                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                *sorted(user_ids),
+            )
+        except Exception:
+            logger.warning(
+                "Immediate admin preference enqueue failed; durable revisions will retry",
+                extra={"user_count": len(user_ids)},
+                exc_info=True,
+            )
 
 
 @router.post("/auth/login", response_model=AdminLoginResponse)
@@ -478,6 +514,7 @@ async def delete_feed(
     feed_id: UUID,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> None:
     """
     Delete a feed.
@@ -490,10 +527,11 @@ async def delete_feed(
     Raises:
         HTTPException: If feed not found.
     """
-    deleted = await admin_service.delete_feed(str(feed_id))
+    deletion = await admin_service.delete_feed(str(feed_id))
 
-    if not deleted:
+    if deletion is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Feed not found")
+    await _enqueue_feed_deletion_effects(redis, [deletion])
 
 
 @router.post("/feeds/batch")
@@ -501,6 +539,7 @@ async def batch_feed_operation(
     request: AdminBatchFeedRequest,
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, int]:
     """
     Perform batch operation on feeds.
@@ -513,7 +552,8 @@ async def batch_feed_operation(
     Returns:
         Number of affected feeds.
     """
-    count = await admin_service.batch_feed_operation(request.action, request.feed_ids)
+    count, deletions = await admin_service.batch_feed_operation(request.action, request.feed_ids)
+    await _enqueue_feed_deletion_effects(redis, deletions)
     return {"affected": count}
 
 

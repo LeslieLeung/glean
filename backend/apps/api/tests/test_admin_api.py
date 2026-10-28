@@ -4,6 +4,18 @@ Admin API endpoint tests.
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from glean_core import RedisKeys
+from glean_database.models import (
+    Entry,
+    Feed,
+    Subscription,
+    User,
+    UserPreferenceStats,
+    VectorCleanupPending,
+)
 
 
 @pytest.mark.asyncio
@@ -178,3 +190,114 @@ class TestAdminHealth:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
+
+
+@pytest.mark.asyncio
+class TestAdminFeedDeletion:
+    """Admin feed deletion must preserve external cleanup and preference invariants."""
+
+    async def test_delete_feed_stages_cleanup_and_invalidates_preferences(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+        test_mock_redis,
+    ) -> None:
+        test_feed = Feed(url="https://example.com/admin-delete.xml", title="Admin delete feed")
+        db_session.add(test_feed)
+        await db_session.flush()
+        test_subscription = Subscription(user_id=test_user.id, feed_id=test_feed.id)
+        entry = Entry(
+            feed_id=test_feed.id,
+            url="https://example.com/admin-delete-entry",
+            title="Admin delete entry",
+            guid="admin-delete-entry",
+        )
+        stats = UserPreferenceStats(
+            user_id=test_user.id,
+            source_affinity={test_feed.id: {"positive": 2, "negative": 0}},
+        )
+        db_session.add_all([test_subscription, entry, stats])
+        await db_session.commit()
+        await db_session.refresh(entry)
+        initial_revision = test_user.preference_revision
+
+        response = await client.delete(f"/api/admin/feeds/{test_feed.id}", headers=admin_headers)
+
+        assert response.status_code == 204
+        pending = (
+            await db_session.execute(
+                select(VectorCleanupPending).where(VectorCleanupPending.entry_id == entry.id)
+            )
+        ).scalar_one()
+        assert pending.feed_id == test_feed.id
+        await db_session.refresh(test_user)
+        await db_session.refresh(stats)
+        assert test_user.preference_revision == initial_revision + 1
+        assert test_feed.id not in stats.source_affinity
+        assert ("cleanup_orphan_embeddings", (test_feed.id, [entry.id])) in (
+            test_mock_redis.enqueued_jobs
+        )
+        assert test_mock_redis.has_key(RedisKeys.PREFERENCE_PENDING_USERS_KEY)
+
+    async def test_batch_delete_stages_each_feed_and_dirties_user_once(
+        self,
+        client: AsyncClient,
+        admin_headers: dict[str, str],
+        db_session: AsyncSession,
+        test_user: User,
+        test_mock_redis,
+    ) -> None:
+        feeds = [
+            Feed(url=f"https://example.com/admin-batch-{index}.xml", title=f"Feed {index}")
+            for index in range(2)
+        ]
+        db_session.add_all(feeds)
+        await db_session.flush()
+        entries = [
+            Entry(
+                feed_id=feed.id,
+                url=f"https://example.com/admin-batch-entry-{index}",
+                title=f"Entry {index}",
+                guid=f"admin-batch-entry-{index}",
+            )
+            for index, feed in enumerate(feeds)
+        ]
+        subscriptions = [Subscription(user_id=test_user.id, feed_id=feed.id) for feed in feeds]
+        stats = UserPreferenceStats(
+            user_id=test_user.id,
+            source_affinity={feed.id: {"positive": 1, "negative": 0} for feed in feeds},
+        )
+        db_session.add_all([*entries, *subscriptions, stats])
+        await db_session.commit()
+        initial_revision = test_user.preference_revision
+
+        response = await client.post(
+            "/api/admin/feeds/batch",
+            headers=admin_headers,
+            json={"action": "delete", "feed_ids": [feed.id for feed in feeds]},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"affected": 2}
+        pending_ids = set(
+            (
+                await db_session.execute(
+                    select(VectorCleanupPending.entry_id).where(
+                        VectorCleanupPending.entry_id.in_([entry.id for entry in entries])
+                    )
+                )
+            ).scalars()
+        )
+        assert pending_ids == {entry.id for entry in entries}
+        await db_session.refresh(test_user)
+        await db_session.refresh(stats)
+        assert test_user.preference_revision == initial_revision + 1
+        assert stats.source_affinity == {}
+        cleanup_jobs = [
+            args
+            for name, args in test_mock_redis.enqueued_jobs
+            if name == "cleanup_orphan_embeddings"
+        ]
+        assert {args[0] for args in cleanup_jobs} == {feed.id for feed in feeds}

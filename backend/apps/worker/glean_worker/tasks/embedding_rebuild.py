@@ -29,10 +29,9 @@ from glean_vector.config import (
 from glean_vector.services.preference_service import get_preference_history_user_ids
 
 from ._vector_client import ensure_vector_client
+from .embedding_limits import enqueue_embedding_batch_job
 
 logger = get_logger(__name__)
-
-REBUILD_BATCH_SIZE = 200
 
 
 class StaleEmbeddingRebuildError(RuntimeError):
@@ -376,23 +375,23 @@ async def _rebuild_embeddings_locked(
                 "dimension": dimension,
             }
 
-        # Enqueue batch embedding jobs (much more efficient than one job per entry)
-        num_batches = max(1, (total_pending + REBUILD_BATCH_SIZE - 1) // REBUILD_BATCH_SIZE)
-        batch_prefix = f"rebuild_{uuid4().hex}"
-        for i in range(num_batches):
-            await redis.enqueue_job(
-                "batch_generate_embeddings",
-                REBUILD_BATCH_SIZE,
-                rebuild_id,
-                runtime_backend,
-                runtime_store_fingerprint,
-                runtime_model_fingerprint,
-                _job_id=f"{batch_prefix}_{i}",
-            )
+        # Enqueue one continuation-sized job. Follow-up jobs are chained by
+        # the batch worker (and by maintenance if a job is lost) so we do not
+        # flood 20 concurrent workers with 200-entry claims.
+        queued_batches = await enqueue_embedding_batch_job(
+            redis,
+            rpm=current.get_rate_limit_for_provider(),
+            batch_size=current.batch_size,
+            rebuild_id=rebuild_id,
+            expected_backend=runtime_backend,
+            expected_store_fingerprint=runtime_store_fingerprint,
+            expected_model_fingerprint=runtime_model_fingerprint,
+            job_id_prefix=f"rebuild_{uuid4().hex}",
+        )
 
         logger.info(
             "Enqueued batch embedding jobs for rebuild",
-            extra={"total_pending": total_pending, "num_batches": num_batches},
+            extra={"total_pending": total_pending, "num_batches": queued_batches},
         )
 
         # Status stays REBUILDING in the embeddings phase. Maintenance starts
@@ -401,7 +400,7 @@ async def _rebuild_embeddings_locked(
         return {
             "success": True,
             "queued_entries": total_pending,
-            "queued_batches": num_batches,
+            "queued_batches": queued_batches,
             "queued_preferences": 0,
             "rebuild_id": rebuild_id,
             "dimension": dimension,

@@ -1,5 +1,6 @@
 """Tests for single-entry embedding retry and circuit-breaker behavior."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -156,3 +157,85 @@ async def test_generate_entry_embedding_retries_initial_connection_failure() -> 
         await generate_entry_embedding({"job_try": 3}, "entry-1")
 
     assert exc_info.value.defer_score == 240_000
+
+
+@pytest.mark.asyncio
+async def test_generate_entry_embedding_shares_redis_rate_limiter() -> None:
+    """Concurrent jobs must share one RPM budget instead of each creating a local limiter."""
+    session = AsyncMock(spec=AsyncSession)
+    vector_client = AsyncMock()
+    embedding_client = AsyncMock()
+    redis = AsyncMock()
+    service = AsyncMock()
+    service.generate_embedding.return_value = True
+    captured: dict[str, object] = {}
+
+    def _client(**kwargs: object) -> AsyncMock:
+        captured.update(kwargs)
+        return embedding_client
+
+    with (
+        patch(
+            "glean_worker.tasks.embedding_worker.get_session_context",
+            return_value=_session_context(session),
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker._check_vectorization_enabled",
+            new=AsyncMock(return_value=(True, _embedding_config())),
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker.EmbeddingClient",
+            side_effect=_client,
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker.EmbeddingService",
+            return_value=service,
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker._reset_error_count",
+            new=AsyncMock(),
+        ),
+    ):
+        result = await generate_entry_embedding(
+            {"vector_client": vector_client, "redis": redis},
+            "entry-1",
+        )
+
+    assert result == {"success": True, "entry_id": "entry-1"}
+    assert captured["redis"] is redis
+    embedding_client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_generate_entry_embedding_restores_claim_when_cancelled() -> None:
+    """arq cancellation must not leave a single-entry claim in processing."""
+    session = AsyncMock(spec=AsyncSession)
+    vector_client = AsyncMock()
+    embedding_client = AsyncMock()
+    service = AsyncMock()
+    service.generate_embedding.side_effect = asyncio.CancelledError()
+
+    with (
+        patch(
+            "glean_worker.tasks.embedding_worker.get_session_context",
+            return_value=_session_context(session),
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker._check_vectorization_enabled",
+            new=AsyncMock(return_value=(True, _embedding_config())),
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker.EmbeddingClient",
+            return_value=embedding_client,
+        ),
+        patch(
+            "glean_worker.tasks.embedding_worker.EmbeddingService",
+            return_value=service,
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await generate_entry_embedding({"vector_client": vector_client}, "entry-1")
+
+    session.rollback.assert_awaited_once()
+    service.restore_claimed_entries.assert_awaited_once_with(["entry-1"])
+    embedding_client.close.assert_awaited_once()

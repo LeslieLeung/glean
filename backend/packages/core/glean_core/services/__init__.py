@@ -4,7 +4,7 @@ Service layer.
 Business logic services for the application.
 """
 
-from .admin_service import AdminService
+from .admin_service import AdminService, FeedDeletionEffects
 from .api_token_service import APITokenService
 from .auth_service import AuthService
 from .bookmark_service import BookmarkService
@@ -21,6 +21,7 @@ from .user_service import UserService
 
 __all__ = [
     "AdminService",
+    "FeedDeletionEffects",
     "APITokenService",
     "AuthService",
     "UserService",

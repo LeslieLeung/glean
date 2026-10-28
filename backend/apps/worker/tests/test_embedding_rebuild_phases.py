@@ -120,10 +120,12 @@ async def test_idle_maintenance_recovers_pending_and_failed_with_throttle():
     pending, failed = await _enqueue_idle_recovery(
         redis,
         {"pending": 3, "failed": 2, "processing": 0},
+        rpm=10,
+        batch_size=20,
     )
 
     assert (pending, failed) == (1, 1)
-    assert redis.enqueue_job.await_args_list[0].args == (
+    assert redis.enqueue_job.await_args_list[0].args[:3] == (
         "batch_generate_embeddings",
         200,
         None,
@@ -143,6 +145,8 @@ async def test_idle_maintenance_does_not_compete_with_processing_jobs():
     queued = await _enqueue_idle_recovery(
         redis,
         {"pending": 3, "failed": 2, "processing": 1},
+        rpm=10,
+        batch_size=20,
     )
 
     assert queued == (0, 0)

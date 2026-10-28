@@ -4,6 +4,7 @@ Admin service.
 Provides business logic for administrative operations.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -16,9 +17,21 @@ from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
 from glean_database.models.subscription import Subscription
 from glean_database.models.user import User
+from glean_database.models.user_preference_stats import UserPreferenceStats
+from glean_database.models.vector_cleanup_pending import VectorCleanupPending
 
 from ..auth.password import hash_password, verify_password
+from .preference_dirty_service import mark_preferences_dirty
 from .system_config_service import SystemConfigService
+
+
+@dataclass(frozen=True)
+class FeedDeletionEffects:
+    """Durable side effects staged before an administrator deletes a feed."""
+
+    feed_id: str
+    entry_ids: tuple[str, ...]
+    user_ids: tuple[str, ...]
 
 
 class AdminService:
@@ -387,7 +400,7 @@ class AdminService:
 
         return await self.get_feed(feed_id)
 
-    async def delete_feed(self, feed_id: str) -> bool:
+    async def delete_feed(self, feed_id: str) -> FeedDeletionEffects | None:
         """
         Delete a feed and all related data.
 
@@ -395,19 +408,22 @@ class AdminService:
             feed_id: Feed identifier.
 
         Returns:
-            True if deleted, False if not found.
+            Cleanup effects if deleted, or None if not found.
         """
         result = await self.session.execute(select(Feed).where(Feed.id == feed_id))
         feed = result.scalar_one_or_none()
 
         if not feed:
-            return False
+            return None
 
-        await self.session.delete(feed)
+        effects = await self._stage_feed_deletion(feed)
+        await mark_preferences_dirty(self.session, effects.user_ids)
         await self.session.commit()
-        return True
+        return effects
 
-    async def batch_feed_operation(self, action: str, feed_ids: list[str]) -> int:
+    async def batch_feed_operation(
+        self, action: str, feed_ids: list[str]
+    ) -> tuple[int, list[FeedDeletionEffects]]:
         """
         Perform batch operation on feeds.
 
@@ -416,12 +432,13 @@ class AdminService:
             feed_ids: List of feed IDs.
 
         Returns:
-            Number of affected feeds.
+            Number of affected feeds and committed deletion effects.
         """
         result = await self.session.execute(select(Feed).where(Feed.id.in_(feed_ids)))
         feeds = list(result.scalars().all())
 
         count = 0
+        deletion_effects: list[FeedDeletionEffects] = []
         for feed in feeds:
             if action == "enable":
                 feed.status = FeedStatus.ACTIVE
@@ -430,11 +447,47 @@ class AdminService:
                 feed.status = FeedStatus.DISABLED
                 count += 1
             elif action == "delete":
-                await self.session.delete(feed)
+                deletion_effects.append(await self._stage_feed_deletion(feed))
                 count += 1
 
+        await mark_preferences_dirty(
+            self.session,
+            (user_id for effects in deletion_effects for user_id in effects.user_ids),
+        )
         await self.session.commit()
-        return count
+        return count, deletion_effects
+
+    async def _stage_feed_deletion(self, feed: Feed) -> FeedDeletionEffects:
+        """Stage external-vector cleanup and preference invalidation before deletion."""
+        entry_result = await self.session.execute(select(Entry.id).where(Entry.feed_id == feed.id))
+        entry_ids = tuple(str(row[0]) for row in entry_result.all())
+
+        user_result = await self.session.execute(
+            select(Subscription.user_id).where(Subscription.feed_id == feed.id)
+        )
+        user_ids = tuple(dict.fromkeys(str(row[0]) for row in user_result.all()))
+
+        if user_ids:
+            stats_result = await self.session.execute(
+                select(UserPreferenceStats).where(UserPreferenceStats.user_id.in_(user_ids))
+            )
+            for stats in stats_result.scalars().all():
+                if feed.id in stats.source_affinity:
+                    stats.source_affinity = {
+                        source_id: affinity
+                        for source_id, affinity in stats.source_affinity.items()
+                        if source_id != feed.id
+                    }
+
+        self.session.add_all(
+            VectorCleanupPending(entry_id=entry_id, feed_id=feed.id) for entry_id in entry_ids
+        )
+        await self.session.delete(feed)
+        return FeedDeletionEffects(
+            feed_id=feed.id,
+            entry_ids=entry_ids,
+            user_ids=user_ids,
+        )
 
     # M2: Entry management methods
     async def list_entries(
