@@ -38,6 +38,9 @@ The project includes multiple Docker Compose configurations for different use ca
 # Basic deployment (without admin dashboard)
 docker compose up -d
 
+# pgvector backend deployment
+docker compose -f docker-compose.pgvector.yml up -d
+
 # Full deployment with admin dashboard
 docker compose --profile admin up -d
 
@@ -55,11 +58,15 @@ IMAGE_TAG=v0.3.0-alpha.1 docker compose up -d
 # Start development infrastructure (PostgreSQL, Redis, Milvus)
 docker compose -f docker-compose.dev.yml up -d
 
+# Start development infrastructure (PostgreSQL with pgvector, Redis)
+docker compose -f docker-compose.dev.pgvector.yml up -d
+
 # View logs
 docker compose -f docker-compose.dev.yml logs -f
 
 # Stop services
 docker compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.dev.pgvector.yml down
 ```
 
 ### Local Development with Override

@@ -9,6 +9,7 @@ from .api_token import APIToken
 from .base import Base, TimestampMixin
 from .bookmark import Bookmark
 from .entry import Entry
+from .entry_embedding import EntryEmbedding
 from .feed import Feed, FeedStatus
 from .folder import Folder, FolderType
 from .junction import BookmarkFolder, BookmarkTag, UserEntryTag
@@ -18,6 +19,9 @@ from .user import User
 from .user_auth_provider import UserAuthProvider
 from .user_entry import UserEntry
 from .user_preference_stats import UserPreferenceStats
+from .user_preference_vector import UserPreferenceVector
+from .vector_cleanup_pending import VectorCleanupPending
+from .vector_store_metadata import VectorStoreMetadata
 
 __all__ = [
     "Base",
@@ -27,6 +31,7 @@ __all__ = [
     "Feed",
     "FeedStatus",
     "Entry",
+    "EntryEmbedding",
     "Subscription",
     "UserEntry",
     "AdminUser",
@@ -42,6 +47,9 @@ __all__ = [
     "UserEntryTag",
     # M3 models
     "UserPreferenceStats",
+    "UserPreferenceVector",
+    "VectorStoreMetadata",
+    "VectorCleanupPending",
     # MCP models
     "APIToken",
 ]

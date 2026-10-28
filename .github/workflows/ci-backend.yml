@@ -5,11 +5,18 @@ on:
     branches: [main, develop]
     paths:
       - 'backend/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'DEPLOY*.md'
       - '.github/workflows/ci-backend.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - 'backend/**'
+      - 'docker-compose*.yml'
+      - '.env.example'
+      - 'DEPLOY*.md'
+      - '.github/workflows/ci-backend.yml'
 
 defaults:
   run:
@@ -48,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: glean_test
           POSTGRES_USER: glean
@@ -84,3 +91,117 @@ jobs:
         with:
           files: backend/coverage.xml
           flags: backend
+
+  vector-schema:
+    name: Vector schema (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: fresh_pgvector
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: runtime_provision_after_milvus
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: cross_backend_downgrade_and_reupgrade
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: pgvector_crud
+            postgres_image: pgvector/pgvector:pg16
+          - scenario: milvus_upgrade_on_plain_postgres
+            postgres_image: postgres:16-alpine
+    services:
+      postgres:
+        image: ${{ matrix.postgres_image }}
+        env:
+          POSTGRES_DB: glean_vector_schema_test
+          POSTGRES_USER: glean
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run vector schema lifecycle scenario
+        env:
+          DEBUG: 'false'
+          DATABASE_URL: postgresql+asyncpg://glean:testpassword@localhost:5432/glean_vector_schema_test
+          TEST_DATABASE_URL: postgresql+asyncpg://glean:testpassword@localhost:5432/glean_vector_schema_test
+          RUN_VECTOR_SCHEMA_TESTS: '1'
+          VECTOR_SCHEMA_DATABASE_URL: postgresql+asyncpg://glean:testpassword@localhost:5432/glean_vector_schema_test
+        run: >-
+          uv run pytest
+          packages/database/tests/integration/test_vector_schema_lifecycle.py
+          -k "${{ matrix.scenario }}"
+          --no-cov
+          --quiet
+
+  compose-config:
+    name: Compose config (${{ matrix.deployment }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - deployment: production-milvus
+            files: -f docker-compose.yml
+          - deployment: production-pgvector
+            files: -f docker-compose.pgvector.yml
+          - deployment: development-milvus
+            files: -f docker-compose.dev.yml
+          - deployment: development-pgvector
+            files: -f docker-compose.dev.pgvector.yml
+          - deployment: test-database
+            files: -f docker-compose.test.yml
+          - deployment: local-override
+            files: -f docker-compose.yml -f docker-compose.override.yml
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate rendered Compose configuration
+        working-directory: ${{ github.workspace }}
+        run: >-
+          docker compose
+          --env-file .env.example
+          ${{ matrix.files }}
+          config
+          --quiet
+
+      - name: Verify Milvus deployment selects Milvus
+        if: matrix.deployment == 'production-milvus'
+        working-directory: ${{ github.workspace }}
+        run: >-
+          docker compose
+          --env-file .env.example
+          -f docker-compose.yml
+          config
+          --format json
+          | jq --exit-status
+          '.services.backend.environment.VECTOR_BACKEND == "milvus"
+          and (.services | has("milvus"))'
+
+      - name: Verify pgvector deployment excludes Milvus
+        if: matrix.deployment == 'production-pgvector'
+        working-directory: ${{ github.workspace }}
+        run: >-
+          docker compose
+          --env-file .env.example
+          -f docker-compose.pgvector.yml
+          config
+          --format json
+          | jq --exit-status
+          '.services.backend.environment.VECTOR_BACKEND == "pgvector"
+          and ((.services | has("milvus")) | not)'

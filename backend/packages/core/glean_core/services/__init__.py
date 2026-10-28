@@ -4,13 +4,14 @@ Service layer.
 Business logic services for the application.
 """
 
-from .admin_service import AdminService
+from .admin_service import AdminService, FeedDeletionEffects
 from .api_token_service import APITokenService
 from .auth_service import AuthService
 from .bookmark_service import BookmarkService
 from .entry_service import EntryService
 from .feed_service import FeedService
 from .folder_service import FolderService
+from .preference_dirty_service import mark_preferences_dirty
 from .preference_service import PreferenceService
 from .simple_score_service import SimpleScoreService
 from .system_config_service import SystemConfigService
@@ -20,6 +21,7 @@ from .user_service import UserService
 
 __all__ = [
     "AdminService",
+    "FeedDeletionEffects",
     "APITokenService",
     "AuthService",
     "UserService",
@@ -31,6 +33,7 @@ __all__ = [
     "TagService",
     # M3 services
     "PreferenceService",
+    "mark_preferences_dirty",
     "SimpleScoreService",
     "SystemConfigService",
     "TypedConfigService",

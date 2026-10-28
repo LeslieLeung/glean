@@ -19,7 +19,15 @@ class VectorizationStatus(str, Enum):
     IDLE = "idle"  # Enabled, normal operation
     VALIDATING = "validating"  # Testing provider connection
     REBUILDING = "rebuilding"  # Full re-embedding in progress
-    ERROR = "error"  # Provider/Milvus unavailable
+    ERROR = "error"  # Provider/vector backend unavailable
+
+
+class EmbeddingRebuildPhase(str, Enum):
+    """Current phase of a full embedding rebuild."""
+
+    PREPARING = "preparing"
+    EMBEDDINGS = "embeddings"
+    PREFERENCES = "preferences"
 
 
 class RateLimitConfig(BaseModel):
@@ -55,6 +63,16 @@ class EmbeddingConfig(BaseModel):
     # System state
     status: VectorizationStatus = VectorizationStatus.DISABLED
     version: str | None = None  # Config version (UUID, changes on update)
+    vector_backend: str | None = None  # Last backend that completed/adopted this generation
+    vector_store_fingerprint: str | None = None
+    model_fingerprint: str | None = None
+    # Desired identities while VALIDATING/REBUILDING. Keeping these separate
+    # from the active generation prevents an old API/worker replica from
+    # adopting its own deployment settings during a rolling backend switch.
+    target_vector_backend: str | None = None
+    target_vector_store_fingerprint: str | None = None
+    target_model_fingerprint: str | None = None
+    target_force_rebuild: bool = False
     last_error: str | None = None
     last_error_at: datetime | None = None
     error_count: int = 0
@@ -62,6 +80,7 @@ class EmbeddingConfig(BaseModel):
     # Rebuild tracking
     rebuild_id: str | None = None
     rebuild_started_at: datetime | None = None
+    rebuild_phase: EmbeddingRebuildPhase | None = None
 
     def get_rate_limit_for_provider(self) -> int:
         """Get rate limit for the current provider."""
@@ -132,11 +151,19 @@ class EmbeddingConfigResponse(BaseModel):
     rate_limit: RateLimitConfig
     status: VectorizationStatus
     version: str | None
+    vector_backend: str | None
+    vector_store_fingerprint: str | None
+    model_fingerprint: str | None
+    target_vector_backend: str | None
+    target_vector_store_fingerprint: str | None
+    target_model_fingerprint: str | None
+    target_force_rebuild: bool
     last_error: str | None
     last_error_at: datetime | None
     error_count: int
     rebuild_id: str | None
     rebuild_started_at: datetime | None
+    rebuild_phase: EmbeddingRebuildPhase | None
 
     @classmethod
     def from_config(cls, config: EmbeddingConfig) -> "EmbeddingConfigResponse":
@@ -151,11 +178,19 @@ class EmbeddingConfigResponse(BaseModel):
             rate_limit=config.rate_limit,
             status=config.status,
             version=config.version,
+            vector_backend=config.vector_backend,
+            vector_store_fingerprint=config.vector_store_fingerprint,
+            model_fingerprint=config.model_fingerprint,
+            target_vector_backend=config.target_vector_backend,
+            target_vector_store_fingerprint=config.target_vector_store_fingerprint,
+            target_model_fingerprint=config.target_model_fingerprint,
+            target_force_rebuild=config.target_force_rebuild,
             last_error=config.last_error,
             last_error_at=config.last_error_at,
             error_count=config.error_count,
             rebuild_id=config.rebuild_id,
             rebuild_started_at=config.rebuild_started_at,
+            rebuild_phase=config.rebuild_phase,
         )
 
 
@@ -180,7 +215,7 @@ class EmbeddingConfigUpdateRequest(BaseModel):
 
 
 class ValidationResult(BaseModel):
-    """Result of provider/Milvus validation."""
+    """Result of provider/vector-backend validation."""
 
     success: bool
     message: str

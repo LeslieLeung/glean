@@ -19,9 +19,45 @@ This guide provides comprehensive instructions for deploying Glean in production
 
 ## Quick Deployment
 
-### Full Deployment (Recommended)
+### Using pgvector (Recommended)
 
-Includes Milvus for Phase 3 features (smart recommendations, preference learning):
+Uses PostgreSQL's built-in pgvector extension for vector storage. No additional infrastructure required:
+
+```bash
+# Download pgvector compose
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
+
+# (Optional) Create .env file to customize admin credentials
+cat > .env << EOF
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=$(openssl rand -base64 24)
+SECRET_KEY=$(openssl rand -base64 32)
+EOF
+
+# ⚠️ IMPORTANT: Save the generated passwords before proceeding!
+cat .env
+
+# Start all services
+docker compose up -d
+
+# Access:
+# - Web App: http://localhost
+# - Admin Dashboard: http://localhost:3001 (default: admin / Admin123!)
+```
+
+**Default admin account**: If you don't create a `.env` file, the default credentials are:
+- Username: `admin`
+- Password: `Admin123!`
+- ⚠️ **Change this password in production!**
+
+**Next steps**:
+1. Log in to admin dashboard at http://localhost:3001
+2. Change the default password
+3. Configure additional environment variables for production (see [Environment Configuration](#environment-configuration))
+
+### Using Milvus
+
+Uses a dedicated Milvus vector database for vector storage:
 
 ```bash
 # Download docker-compose.yml
@@ -49,39 +85,6 @@ docker compose up -d
 - Username: `admin`
 - Password: `Admin123!`
 - ⚠️ **Change this password in production!**
-
-### Lite Deployment (Without Milvus)
-
-For lighter deployments if you don't need Phase 3 features:
-
-```bash
-# Download lite version
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.lite.yml -o docker-compose.yml
-
-# (Optional) Create .env file to customize admin credentials
-cat > .env << EOF
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=$(openssl rand -base64 24)
-SECRET_KEY=$(openssl rand -base64 32)
-EOF
-
-# ⚠️ IMPORTANT: Save the generated passwords
-cat .env
-
-# Start services
-docker compose up -d
-```
-
-**Default admin account**: If you don't create a `.env` file, the default credentials are:
-- Username: `admin`
-- Password: `Admin123!`
-- Dashboard: http://localhost:3001
-- ⚠️ **Change this password in production!**
-
-**Next steps**:
-1. Log in to admin dashboard at http://localhost:3001
-2. Change the default password
-3. Configure additional environment variables for production (see [Environment Configuration](#environment-configuration))
 
 ### Testing Pre-release Versions
 
@@ -233,9 +236,63 @@ docker compose logs backend | grep "Admin Account Created"
 
 ## Service Architecture
 
-### Full Deployment
+> **Upgrade note:** Deploy the API and arq workers from the same release. Do
+> not leave old and new workers consuming the shared Redis queue during a
+> rolling upgrade. Drain or stop old workers before changing
+> `VECTOR_BACKEND`, then start the new API and workers together. Keep the old
+> vector store until the embedding status returns to `idle`; a backend or
+> embedding-model change can require a full rebuild.
 
-Glean consists of 9 services orchestrated by Docker Compose:
+### Using pgvector (Recommended)
+
+Uses PostgreSQL with pgvector extension for vector storage (6 services total). Use `docker-compose.pgvector.yml` for this configuration.
+
+**Services:**
+
+| Service    | Container Name | Description                         | Dependencies       |
+| ---------- | -------------- | ----------------------------------- | ------------------ |
+| postgres   | glean-postgres | PostgreSQL 16 with pgvector         | -                  |
+| redis      | glean-redis    | Redis 8 for task queue              | -                  |
+| backend    | glean-backend  | FastAPI REST API server             | postgres, redis    |
+| worker     | glean-worker   | arq background worker (feed sync)   | postgres, redis    |
+| web        | glean-web      | React web frontend (nginx)          | backend            |
+| admin      | glean-admin    | Admin dashboard (nginx)             | backend            |
+
+**Data persistence:**
+- `postgres_data` - PostgreSQL database files (including vector data)
+- `redis_data` - Redis persistence (AOF)
+- `glean_logs` - Application logs (backend + worker)
+
+**Networking:**
+- All services communicate via `glean-network` bridge network
+- Only `web` (port 80) and `admin` (port 3001) are exposed to host
+
+**pgvector similarity index:**
+
+Glean creates a dimension-specific HNSW expression index when it initializes an
+empty vector store, and replaces that index atomically during a full model
+rebuild. This is required because the underlying column is intentionally
+dimension-agnostic so deployments can switch embedding models.
+
+For an existing populated installation that predates automatic index management,
+create the index concurrently. Replace `1536` with the
+configured embedding dimension, and adjust the table/index names if you
+customized `PGVECTOR_ENTRIES_TABLE`. Run this statement outside a transaction:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_entry_embeddings_embedding_hnsw
+ON entry_embeddings USING hnsw
+  ((embedding::vector(1536)) vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+```
+
+The pgvector `vector` HNSW operator class supports at most 2,000 dimensions.
+Glean keeps exact sequential search available but does not create an HNSW index
+for higher-dimensional models.
+
+### Using Milvus
+
+Uses a dedicated Milvus vector database (9 services total). Use `docker-compose.yml` for this configuration.
 
 **Core services:**
 
@@ -248,7 +305,7 @@ Glean consists of 9 services orchestrated by Docker Compose:
 | web        | glean-web      | React web frontend (nginx)          | backend            |
 | admin      | glean-admin    | Admin dashboard (nginx)             | backend            |
 
-**Milvus services (Phase 3 features):**
+**Milvus services:**
 
 | Service       | Container Name      | Description                    | Dependencies       |
 | ------------- | ------------------- | ------------------------------ | ------------------ |
@@ -262,10 +319,6 @@ Glean consists of 9 services orchestrated by Docker Compose:
 3. `worker` starts after backend is healthy
 4. `web` and `admin` start after backend is ready
 5. `milvus-etcd` and `milvus-minio` start in parallel, then `milvus`
-
-### Lite Deployment
-
-Excludes Milvus services (6 services total). Use `docker-compose.lite.yml` for this configuration.
 
 **Data persistence:**
 - `postgres_data` - PostgreSQL database files
@@ -317,16 +370,20 @@ Excludes Milvus services (6 services total). Use `docker-compose.lite.yml` for t
 | `LOG_RETENTION`   | `30 days`                    | Log retention period           |
 | `LOG_COMPRESSION` | `gz`                         | Log compression format         |
 
-### Milvus Configuration (Phase 3 Features)
+### Vector Backend Configuration
 
-Milvus is optional and provides vector database capabilities for smart recommendations and preference learning.
+Two vector backends are supported:
 
-**Enable Milvus:**
-```bash
-docker compose --profile milvus up -d
-```
+- `pgvector` (in `docker-compose.pgvector.yml`, **recommended** — no extra infrastructure needed)
+- `milvus` (in `docker-compose.yml` — for users who prefer a dedicated vector database)
 
-**Milvus connection settings:**
+**Backend selector:**
+
+| Variable         | Default  | Description                                   |
+| ---------------- | -------- | --------------------------------------------- |
+| `VECTOR_BACKEND` | `milvus` | Vector backend (`pgvector` or `milvus`)       |
+
+**Milvus connection settings (VECTOR_BACKEND=milvus):**
 
 | Variable                  | Default     | Description                       |
 | ------------------------- | ----------- | --------------------------------- |
@@ -337,9 +394,20 @@ docker compose --profile milvus up -d
 | `MILVUS_ENTRIES_COLLECTION` | `entries` | Collection name for entry vectors |
 | `MILVUS_PREFS_COLLECTION` | `user_preferences` | Collection name for user preferences |
 
-### Embedding Configuration (Phase 3 Features)
+**pgvector settings (VECTOR_BACKEND=pgvector):**
 
-Required when using Milvus for smart recommendations:
+| Variable                    | Default                    | Description                                              |
+| --------------------------- | -------------------------- | -------------------------------------------------------- |
+| `PGVECTOR_DATABASE_URL`     | -                          | Optional override, falls back to `DATABASE_URL`          |
+| `PGVECTOR_ENTRIES_TABLE`    | `entry_embeddings`         | Table name for entry vectors                             |
+| `PGVECTOR_PREFS_TABLE`      | `user_preference_vectors`  | Table name for user preference vectors                   |
+| `PGVECTOR_METADATA_TABLE`   | `vector_store_metadata`    | Table name for model signature metadata                  |
+
+When `PGVECTOR_DATABASE_URL` is left empty, Glean connects pgvector to `DATABASE_URL` using its own async pool. That is fine for most installs, but count it separately when tuning PostgreSQL connection limits.
+
+### Embedding Configuration
+
+Required for preference learning and smart recommendations:
 
 | Variable               | Default                  | Description                                      |
 | ---------------------- | ------------------------ | ------------------------------------------------ |

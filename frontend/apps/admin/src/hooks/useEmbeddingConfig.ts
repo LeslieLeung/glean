@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 
 export type VectorizationStatus = 'disabled' | 'idle' | 'validating' | 'rebuilding' | 'error'
+export type EmbeddingRebuildPhase = 'preparing' | 'embeddings' | 'preferences'
 
 export interface EmbeddingConfigResponse {
   enabled: boolean
@@ -16,11 +17,19 @@ export interface EmbeddingConfigResponse {
   }
   status: VectorizationStatus
   version: string | null
+  vector_backend: string | null
+  vector_store_fingerprint: string | null
+  model_fingerprint: string | null
+  target_vector_backend: string | null
+  target_vector_store_fingerprint: string | null
+  target_model_fingerprint: string | null
+  target_force_rebuild: boolean
   last_error: string | null
   last_error_at: string | null
   error_count: number
   rebuild_id: string | null
   rebuild_started_at: string | null
+  rebuild_phase: EmbeddingRebuildPhase | null
 }
 
 export interface EmbeddingConfigUpdatePayload {
@@ -44,6 +53,7 @@ export interface EmbeddingStatusResponse {
   error_count: number
   rebuild_id: string | null
   rebuild_started_at: string | null
+  rebuild_phase: EmbeddingRebuildPhase | null
   progress: {
     total: number
     done: number
@@ -196,6 +206,7 @@ export function useEmbeddingStatus(enabled = true) {
           error_count: statusData.error_count,
           rebuild_id: statusData.rebuild_id,
           rebuild_started_at: statusData.rebuild_started_at,
+          rebuild_phase: statusData.rebuild_phase,
         })
       }
 

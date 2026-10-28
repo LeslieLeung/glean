@@ -31,6 +31,7 @@ from glean_core.services import (
 from glean_database.session import get_session
 
 from .config import settings
+from .vector_lifecycle import ensure_app_vector_client
 
 # Security scheme for JWT bearer tokens
 security = HTTPBearer()
@@ -213,42 +214,59 @@ async def get_preference_service(
 
 
 async def get_score_service(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> object | None:
     """
     Get score service instance for real-time preference scoring.
 
     Returns:
-    - ScoreService if vectorization is enabled and Milvus is available
+    - ScoreService if vectorization is enabled and vector backend is available
     - SimpleScoreService if vectorization is disabled
     - None if there's an error
     """
     from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
     from glean_core.services import SimpleScoreService, TypedConfigService
+    from glean_vector.config import is_active_embedding_model, is_active_vector_backend
 
     # Check if vectorization is enabled
     config_service = TypedConfigService(session)
     config = await config_service.get(EmbeddingConfig)
 
-    if not config.enabled or config.status not in (
-        VectorizationStatus.IDLE,
-        VectorizationStatus.REBUILDING,
+    if (
+        not config.enabled
+        or config.status != VectorizationStatus.IDLE
+        or not is_active_vector_backend(
+            config.vector_backend,
+            config.vector_store_fingerprint,
+        )
+        or not is_active_embedding_model(
+            config.model_fingerprint,
+            provider=config.provider,
+            model=config.model,
+            dimension=config.dimension,
+            base_url=config.base_url,
+        )
     ):
         # Vectorization disabled - use simple scoring
         return SimpleScoreService(session)
 
     # Vectorization enabled - try to use vector scoring
     try:
-        from glean_vector.clients.milvus_client import MilvusClient
         from glean_vector.services.score_service import ScoreService
 
-        milvus_client = MilvusClient()
-        milvus_client.connect()
-        await milvus_client.ensure_collections(config.dimension, config.provider, config.model)
+        vector_client, _vector_error = await ensure_app_vector_client(
+            request.app,
+            config.dimension,
+            config.provider,
+            config.model,
+        )
+        if vector_client is None:
+            return SimpleScoreService(session)
 
-        return ScoreService(db_session=session, milvus_client=milvus_client)
+        return ScoreService(db_session=session, vector_client=vector_client)
     except Exception:
-        # Milvus not available, fall back to simple scoring
+        # Vector backend not available, fall back to simple scoring
         return SimpleScoreService(session)
 
 
