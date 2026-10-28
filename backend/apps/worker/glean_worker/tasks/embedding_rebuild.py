@@ -242,9 +242,11 @@ async def _rebuild_embeddings_locked(
             if config is None:
                 config = current.model_dump(mode="python")
 
-            settings = EmbeddingSettings(
-                **{k: v for k, v in config.items() if k in EmbeddingSettings.model_fields}
-            )
+            settings_data = {k: v for k, v in config.items() if k in EmbeddingSettings.model_fields}
+            # The persisted config represents an unset API key as None; the
+            # provider settings use an empty string (also for local providers).
+            settings_data["api_key"] = settings_data.get("api_key") or ""
+            settings = EmbeddingSettings(**settings_data)
             dimension = settings.dimension
             runtime_model_fingerprint = embedding_model_fingerprint(
                 settings.provider,

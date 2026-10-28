@@ -69,7 +69,9 @@ async def test_generate_embedding_rolls_back_before_marking_failed() -> None:
         await service.generate_embedding("entry-1")
 
     session.rollback.assert_awaited_once()
-    session.commit.assert_awaited_once()
+    # The processing claim is committed before the provider call, and the
+    # failure is committed separately after recovering the transaction.
+    assert session.commit.await_count == 2
     assert session.execute.await_count == 4
     assert session.flush.await_count == 2
 

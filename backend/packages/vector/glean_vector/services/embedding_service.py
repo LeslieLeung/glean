@@ -5,6 +5,7 @@ import contextlib
 import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +25,18 @@ logger = get_logger(__name__)
 
 class StaleEmbeddingGenerationError(RuntimeError):
     """Raised when a worker belongs to an obsolete config/rebuild generation."""
+
+
+@dataclass(frozen=True)
+class _EmbeddingInput:
+    """Batch input that survives session commits, rollbacks and generation checks."""
+
+    id: str
+    feed_id: str
+    published_at: datetime | None
+    author: str | None
+    embedding_status: str
+    text: str
 
 
 class EmbeddingService:
@@ -147,6 +160,10 @@ class EmbeddingService:
             .values(embedding_status="processing", embedding_error=None)
         )
         await self.db.flush()
+        # Release the entry row before waiting on the provider or Redis fence.
+        # Rebuilds acquire that fence before updating entries; retaining this
+        # row lock would invert the lock order and stall both jobs.
+        await self.db.commit()
 
         # Extract text (content-level issue → return False, no exception)
         text = self._extract_text(entry)
@@ -195,7 +212,7 @@ class EmbeddingService:
     async def _store_embedding(
         self,
         *,
-        entry: Entry,
+        entry: Entry | _EmbeddingInput,
         embedding: list[float],
         language: str,
         word_count: int,
@@ -550,11 +567,24 @@ class EmbeddingService:
     ) -> tuple[int, int]:
         """Embed a claimed chunk with one provider request, then store each vector."""
         result = await self.db.execute(select(Entry).where(Entry.id.in_(entry_ids)))
-        entries_by_id = {entry.id: entry for entry in result.scalars().all()}
+        # Snapshot every input before processing any item. A failure rollback
+        # expires all ORM instances, including the untouched remainder of this
+        # chunk; later synchronous attribute access would raise MissingGreenlet.
+        entries_by_id = {
+            entry.id: _EmbeddingInput(
+                id=entry.id,
+                feed_id=entry.feed_id,
+                published_at=entry.published_at,
+                author=entry.author,
+                embedding_status=entry.embedding_status,
+                text=self._extract_text(entry),
+            )
+            for entry in result.scalars().all()
+        }
 
         processed = 0
         failed = 0
-        embeddable: list[tuple[Entry, str, int]] = []
+        embeddable: list[tuple[_EmbeddingInput, str, int]] = []
 
         for entry_id in entry_ids:
             entry = entries_by_id.get(entry_id)
@@ -564,7 +594,7 @@ class EmbeddingService:
             if entry.embedding_status == "done":
                 processed += 1
                 continue
-            text = self._extract_text(entry)
+            text = entry.text
             if not text:
                 await self._mark_failed_fenced(entry_id, "No text content to embed")
                 failed += 1

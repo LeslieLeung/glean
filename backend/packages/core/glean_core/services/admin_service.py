@@ -21,7 +21,7 @@ from glean_database.models.user_preference_stats import UserPreferenceStats
 from glean_database.models.vector_cleanup_pending import VectorCleanupPending
 
 from ..auth.password import hash_password, verify_password
-from .preference_dirty_service import mark_preferences_dirty
+from .preference_dirty_service import get_feed_preference_user_ids, mark_preferences_dirty
 from .system_config_service import SystemConfigService
 
 
@@ -462,10 +462,7 @@ class AdminService:
         entry_result = await self.session.execute(select(Entry.id).where(Entry.feed_id == feed.id))
         entry_ids = tuple(str(row[0]) for row in entry_result.all())
 
-        user_result = await self.session.execute(
-            select(Subscription.user_id).where(Subscription.feed_id == feed.id)
-        )
-        user_ids = tuple(dict.fromkeys(str(row[0]) for row in user_result.all()))
+        user_ids = tuple(await get_feed_preference_user_ids(self.session, feed.id))
 
         if user_ids:
             stats_result = await self.session.execute(

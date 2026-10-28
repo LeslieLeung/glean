@@ -107,8 +107,8 @@ def _generation_guard(
     """Build a config-generation check used immediately before vector writes."""
 
     async def check() -> bool:
-        # Avoid reusing a cached SystemConfig row in a long-running batch.
-        session.expire_all()
+        # TypedConfigService refreshes only the config row. Expiring the whole
+        # session here also invalidates entries still needed by this batch.
         current = await TypedConfigService(session).get(EmbeddingConfig)
         if current.version != expected_version:
             return False
@@ -808,8 +808,20 @@ async def validate_and_rebuild_embeddings(
             entry_count_result = await session.execute(select(func.count()).select_from(Entry))
             backend_rebuild_required = int(entry_count_result.scalar_one()) > 0
 
+        backend_entry_count = backend_details.get("entry_vector_count")
+        if backend_entry_count is not None:
+            done_entry_count = int(
+                await session.scalar(
+                    select(func.count()).select_from(Entry).where(Entry.embedding_status == "done")
+                )
+                or 0
+            )
+            if int(backend_entry_count) < done_entry_count:
+                backend_rebuild_required = True
+                reason = "Vector storage is missing embeddings for entries marked done"
+
         if backend_rebuild_required:
-            reason = (
+            reason = reason or (
                 f"vector backend changed from {config.vector_backend or 'legacy/unknown'} "
                 f"to {runtime_backend}"
             )

@@ -61,7 +61,9 @@ class TypedConfigService:
     async def _get_from_db(self, namespace: str) -> dict[str, Any] | None:
         """Get raw config data from database."""
         result = await self.session.execute(
-            select(SystemConfig).where(SystemConfig.key == namespace)
+            select(SystemConfig)
+            .where(SystemConfig.key == namespace)
+            .execution_options(populate_existing=True)
         )
         row = result.scalar_one_or_none()
         return row.value if row else None
@@ -175,7 +177,10 @@ class TypedConfigService:
         # time because both rewrote the whole JSON document from stale data.
         await self._lock_namespace(namespace)
         result = await self.session.execute(
-            select(SystemConfig).where(SystemConfig.key == namespace).with_for_update()
+            select(SystemConfig)
+            .where(SystemConfig.key == namespace)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         existing = result.scalar_one_or_none()
         db_data = existing.value if existing else None

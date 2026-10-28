@@ -19,6 +19,25 @@ from glean_database.models import SystemConfig
 
 
 @pytest.mark.asyncio
+async def test_partial_update_refreshes_config_cached_before_another_writer(
+    test_engine: AsyncEngine,
+) -> None:
+    """A cached ORM row must not undo a newer lifecycle generation under the lock."""
+    sessions = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with sessions() as reader, sessions() as writer:
+        await TypedConfigService(writer).update(EmbeddingConfig, version="old")
+        cached = await reader.get(SystemConfig, EmbeddingConfig.NAMESPACE)
+        assert cached is not None
+        await TypedConfigService(writer).update(EmbeddingConfig, version="new")
+
+        updated = await TypedConfigService(reader).update(EmbeddingConfig, timeout=60)
+
+        assert updated.version == "new"
+        assert updated.timeout == 60
+        await TypedConfigService(reader).delete(EmbeddingConfig)
+
+
+@pytest.mark.asyncio
 async def test_stale_embedding_generation_update_is_rejected(
     db_session: AsyncSession,
 ) -> None:
