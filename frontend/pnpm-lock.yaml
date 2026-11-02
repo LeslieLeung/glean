@@ -71,7 +71,7 @@ importers:
         version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.0
-        version: 5.9.1(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)
+        version: 5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)
       '@tanstack/react-query':
         specifier: ^5.24.0
         version: 5.102.8(react@18.3.1)
@@ -156,7 +156,7 @@ importers:
         version: link:../../packages/ui
       '@hookform/resolvers':
         specifier: ^5.0.0
-        version: 5.9.1(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)
+        version: 5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)
       '@tanstack/react-query':
         specifier: ^5.24.0
         version: 5.102.8(react@18.3.1)
@@ -741,8 +741,8 @@ packages:
   '@gar/promisify@1.1.3':
     resolution: {integrity: sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw==}
 
-  '@hookform/resolvers@5.9.1':
-    resolution: {integrity: sha512-7b7vsbraJxKgjVSA1Nur9tLwj539WGJUBLA7QNvXnFoT2pM5Z7G+6rlukk4B2/QrTZy6huRtH6wKeESPKuIr6w==}
+  '@hookform/resolvers@5.9.2':
+    resolution: {integrity: sha512-RtjTnZqsC38s4NKp2XO3fD8IA5uyN4tB7McQ5C6uiMPcV+WWO8F+wVa3e+BXUpH2ScgxghAlwFRMVqjT9WChAQ==}
     peerDependencies:
       '@sinclair/typebox': '>=0.25.24'
       '@standard-schema/spec': ^1.0.0
@@ -752,7 +752,7 @@ packages:
       ajv-errors: ^3.0.0
       ajv-formats: ^2.1.1
       arktype: ^2.0.0
-      ata-validator: ^1.2.0
+      ata-validator: ^1.23.0
       class-transformer: '>=0.4.0'
       class-validator: '>=0.12.0'
       computed-types: ^1.0.0
@@ -4289,7 +4289,7 @@ snapshots:
 
   '@gar/promisify@1.1.3': {}
 
-  '@hookform/resolvers@5.9.1(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)':
+  '@hookform/resolvers@5.9.2(@standard-schema/spec@1.1.0)(ajv@8.20.0)(react-hook-form@7.69.0(react@18.3.1))(zod@4.3.5)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.69.0(react@18.3.1)
