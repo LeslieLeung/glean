@@ -202,7 +202,7 @@ export default function SubscriptionsPage() {
             </div>
             <div>
               <h1 className="font-display text-foreground text-2xl font-bold sm:text-3xl">
-                {t('manageFeeds.title')}
+                {t('manageSubscriptions.title')}
               </h1>
               <p className="text-muted-foreground mt-1 text-sm">
                 {t('manageSubscriptions.subscriptionCount', { count: totalItems })}{' '}

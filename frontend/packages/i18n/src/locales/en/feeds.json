@@ -92,6 +92,16 @@
       "delete": "Delete",
       "deleting": "Deleting...",
       "description": "Are you sure you want to delete the tag \"{{name}}\"? This will remove it from all associated bookmarks and entries. This action cannot be undone."
+    },
+    "createTag": {
+      "errors": {
+        "nameRequired": "Please enter a tag name"
+      }
+    },
+    "editTag": {
+      "errors": {
+        "nameRequired": "Please enter a tag name"
+      }
     }
   },
   "contextMenu": {
@@ -164,8 +174,9 @@
     "allBookmarks": "All Bookmarks"
   },
   "manageSubscriptions": {
-    "subscriptionCount": "{{count}} subscription",
-    "subscriptionCount_plural": "{{count}} subscriptions",
+    "title": "Manage Subscriptions",
+    "subscriptionCount_one": "{{count}} subscription",
+    "subscriptionCount_other": "{{count}} subscriptions",
     "searchPlaceholder": "Search subscriptions...",
     "selected": "selected",
     "deleteSelected": "Delete Selected",
