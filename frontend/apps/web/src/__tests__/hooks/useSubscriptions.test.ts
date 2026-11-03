@@ -5,6 +5,7 @@ import { createQueryWrapper } from '../helpers/queryWrapper'
 vi.mock('@glean/api-client', () => ({
   feedService: {
     getSubscriptions: vi.fn(),
+    getRefreshStatus: vi.fn(),
     syncAllSubscriptions: vi.fn(),
     getSubscription: vi.fn(),
     discoverFeed: vi.fn(),
@@ -29,6 +30,7 @@ import {
   useDeleteSubscription,
   useBatchDeleteSubscriptions,
   useRefreshFeed,
+  useFeedRefresh,
   useRefreshAllFeeds,
   useImportOPML,
   useExportOPML,
@@ -64,7 +66,13 @@ describe('useSubscriptions', () => {
   })
 
   it('should fetch paginated subscriptions', async () => {
-    const response = { items: [createMockSubscription({ id: 's1' })], total: 1, page: 1, per_page: 20, total_pages: 1 }
+    const response = {
+      items: [createMockSubscription({ id: 's1' })],
+      total: 1,
+      page: 1,
+      per_page: 20,
+      total_pages: 1,
+    }
     vi.mocked(feedService.getSubscriptions).mockResolvedValue(response)
     const { wrapper } = createQueryWrapper()
 
@@ -200,7 +208,9 @@ describe('useUpdateSubscription', () => {
   })
 
   it('should update a subscription', async () => {
-    vi.mocked(feedService.updateSubscription).mockResolvedValue(createMockSubscription({ id: 's1', custom_title: 'Updated' }))
+    vi.mocked(feedService.updateSubscription).mockResolvedValue(
+      createMockSubscription({ id: 's1', custom_title: 'Updated' })
+    )
     const { wrapper } = createQueryWrapper()
 
     const { result } = renderHook(() => useUpdateSubscription(), { wrapper })
@@ -238,7 +248,10 @@ describe('useBatchDeleteSubscriptions', () => {
   })
 
   it('should batch delete subscriptions', async () => {
-    vi.mocked(feedService.batchDeleteSubscriptions).mockResolvedValue({ deleted_count: 2, failed_count: 0 })
+    vi.mocked(feedService.batchDeleteSubscriptions).mockResolvedValue({
+      deleted_count: 2,
+      failed_count: 0,
+    })
     const { wrapper } = createQueryWrapper()
 
     const { result } = renderHook(() => useBatchDeleteSubscriptions(), { wrapper })
@@ -247,7 +260,9 @@ describe('useBatchDeleteSubscriptions', () => {
       await result.current.mutateAsync({ subscription_ids: ['s1', 's2'] })
     })
 
-    expect(feedService.batchDeleteSubscriptions).toHaveBeenCalledWith({ subscription_ids: ['s1', 's2'] })
+    expect(feedService.batchDeleteSubscriptions).toHaveBeenCalledWith({
+      subscription_ids: ['s1', 's2'],
+    })
   })
 })
 
@@ -257,7 +272,11 @@ describe('useRefreshFeed', () => {
   })
 
   it('should refresh a feed', async () => {
-    vi.mocked(feedService.refreshFeed).mockResolvedValue({ status: 'queued', job_id: 'j1', feed_id: 'f1' })
+    vi.mocked(feedService.refreshFeed).mockResolvedValue({
+      status: 'queued',
+      job_id: 'j1',
+      feed_id: 'f1',
+    })
     const { wrapper } = createQueryWrapper()
 
     const { result } = renderHook(() => useRefreshFeed(), { wrapper })
@@ -295,7 +314,12 @@ describe('useImportOPML', () => {
   })
 
   it('should import OPML file', async () => {
-    vi.mocked(feedService.importOPML).mockResolvedValue({ success: 3, failed: 1, total: 4, folders_created: 0 })
+    vi.mocked(feedService.importOPML).mockResolvedValue({
+      success: 3,
+      failed: 1,
+      total: 4,
+      folders_created: 0,
+    })
     const { wrapper } = createQueryWrapper()
 
     const { result } = renderHook(() => useImportOPML(), { wrapper })
@@ -321,7 +345,11 @@ describe('useExportOPML', () => {
     // Mock URL.createObjectURL and URL.revokeObjectURL
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test')
     const mockRevokeObjectURL = vi.fn()
-    vi.stubGlobal('URL', { ...URL, createObjectURL: mockCreateObjectURL, revokeObjectURL: mockRevokeObjectURL })
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: mockCreateObjectURL,
+      revokeObjectURL: mockRevokeObjectURL,
+    })
 
     const { wrapper } = createQueryWrapper()
 
@@ -334,5 +362,65 @@ describe('useExportOPML', () => {
     expect(feedService.exportOPML).toHaveBeenCalled()
 
     vi.unstubAllGlobals()
+  })
+})
+
+describe('useFeedRefresh', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('blocks duplicate submissions until the background job finishes and invalidates completed data', async () => {
+    const { wrapper, queryClient } = createQueryWrapper()
+    vi.mocked(feedService.getRefreshStatus).mockResolvedValue({
+      status: 'idle',
+      job_id: 'j1',
+      feed_id: 'f1',
+    })
+    vi.mocked(feedService.refreshFeed).mockResolvedValue({
+      status: 'queued',
+      job_id: 'j1',
+      feed_id: 'f1',
+    })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => useFeedRefresh('s1'), { wrapper })
+    await waitFor(() => expect(result.current.data?.status).toBe('idle'))
+    await act(async () => {
+      await Promise.all([result.current.refresh(), result.current.refresh()])
+    })
+    expect(feedService.refreshFeed).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(result.current.busy).toBe(true))
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(feedService.refreshFeed).toHaveBeenCalledTimes(1)
+    act(() =>
+      queryClient.setQueryData(['feed-refresh', 's1'], {
+        status: 'success',
+        job_id: 'j1',
+        feed_id: 'f1',
+        new_entries: 2,
+        finished_at: new Date().toISOString(),
+      })
+    )
+    await waitFor(() => expect(result.current.busy).toBe(false))
+    expect(result.current.coolingDown).toBe(true)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['entries'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['subscriptions'] })
+  })
+
+  it('recovers an existing running job when mounted', async () => {
+    const { wrapper } = createQueryWrapper()
+    vi.mocked(feedService.getRefreshStatus).mockResolvedValue({
+      status: 'in_progress',
+      job_id: 'j1',
+      feed_id: 'f1',
+    })
+    const { result } = renderHook(() => useFeedRefresh('s1'), { wrapper })
+    await waitFor(() => expect(result.current.busy).toBe(true))
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(feedService.refreshFeed).not.toHaveBeenCalled()
   })
 })

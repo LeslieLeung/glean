@@ -8,11 +8,13 @@ cron jobs, and Redis connection settings.
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
-from arq import cron
+from arq import cron, func
 from arq.connections import RedisSettings
 from arq.cron import CronJob
+from arq.worker import Function
 
 from glean_core import get_logger, init_logging
+from glean_core.feed_jobs import FEED_RESULT_SECONDS
 from glean_database.session import init_database
 from glean_vector.clients.vector_store import create_vector_store_client
 from glean_vector.config import vector_backend_config
@@ -89,8 +91,8 @@ async def startup(ctx: dict[str, Any]) -> None:
 
     # Dynamically log registered task functions
     logger.info("Registered task functions:")
-    for func in WorkerSettings.functions:
-        func_name = cast(str, getattr(func, "__name__", repr(func)))
+    for task in WorkerSettings.functions:
+        func_name = cast(str, getattr(task, "name", getattr(task, "__name__", repr(task))))
         logger.info(f"  - {func_name}")
 
     # Dynamically log scheduled cron jobs
@@ -124,10 +126,10 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     logger.info("=" * 60)
 
 
-def get_oss_functions() -> list[TaskFunction]:
+def get_oss_functions() -> list[TaskFunction | Function]:
     """Return all OSS task functions."""
     return [
-        feed_fetcher.fetch_feed_task,
+        func(feed_fetcher.fetch_feed_task, keep_result=FEED_RESULT_SECONDS),
         feed_fetcher.fetch_all_feeds,
         cleanup.cleanup_read_later,
         bookmark_metadata.fetch_bookmark_metadata_task,
@@ -169,7 +171,7 @@ class WorkerSettings:
     Defines task functions, cron jobs, and worker settings.
     """
 
-    functions: list[TaskFunction] = get_oss_functions()
+    functions: list[TaskFunction | Function] = get_oss_functions()
     cron_jobs: list[CronJob] = get_oss_cron_jobs()
 
     # Lifecycle handlers

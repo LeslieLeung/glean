@@ -6,8 +6,9 @@ import type {
   BatchDeleteSubscriptionsRequest,
   SubscriptionListParams,
   Subscription,
+  FeedRefreshResponse,
 } from '@glean/types'
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const SUBSCRIPTIONS_CACHE_KEY = 'glean_subscriptions_cache'
 const SUBSCRIPTIONS_ETAG_KEY = 'glean_subscriptions_etag'
@@ -55,7 +56,9 @@ export function useAllSubscriptions() {
       const cachedEtag = etagRef.current
 
       try {
-        const result = await feedService.syncAllSubscriptions(cachedEtag || undefined)
+        const result = await feedService.syncAllSubscriptions(
+          cachedData ? cachedEtag || undefined : undefined
+        )
 
         if (result.data) {
           // Data changed, update cache
@@ -209,8 +212,9 @@ export function useRefreshFeed() {
 
   return useMutation({
     mutationFn: (subscriptionId: string) => feedService.refreshFeed(subscriptionId),
-    onSuccess: () => {
-      // Optionally invalidate queries to show updated feed data
+    onSuccess: (data, subscriptionId) => {
+      queryClient.setQueryData(['feed-refresh', subscriptionId], data)
+      // Refetch only when the background job has actually completed as well.
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
   })
@@ -225,6 +229,7 @@ export function useRefreshAllFeeds() {
   return useMutation({
     mutationFn: () => feedService.refreshAllFeeds(),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feed-refresh'] })
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
   })
@@ -263,4 +268,57 @@ export function useExportOPML() {
       URL.revokeObjectURL(url)
     },
   })
+}
+
+/** Track server job lifetime, including refreshes initiated in another window. */
+export function useFeedRefresh(subscriptionId: string, enabled = true) {
+  const queryClient = useQueryClient()
+  const mutation = useRefreshFeed()
+  const submitting = useRef(false)
+  const [coolingDown, setCoolingDown] = useState(false)
+  const key = ['feed-refresh', subscriptionId] as const
+  const active = (value?: FeedRefreshResponse) =>
+    value?.status === 'queued' || value?.status === 'in_progress'
+  const cached = queryClient.getQueryData<FeedRefreshResponse>(key)
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => feedService.getRefreshStatus(subscriptionId),
+    enabled: enabled || active(cached),
+    refetchInterval: (value) => (active(value.state.data) ? 1500 : false),
+    retry: 1,
+  })
+  const wasActive = useRef(false)
+  useEffect(() => {
+    const running = active(query.data)
+    if (
+      (!running && wasActive.current) ||
+      query.data?.status === 'success' ||
+      query.data?.status === 'error'
+    ) {
+      clearSubscriptionCache()
+      void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
+      void queryClient.invalidateQueries({ queryKey: ['entries'] })
+    }
+    wasActive.current = running
+    const remaining = query.data?.finished_at
+      ? new Date(query.data.finished_at).getTime() + 5000 - Date.now()
+      : 0
+    setCoolingDown(remaining > 0)
+    if (remaining > 0) {
+      const timer = setTimeout(() => setCoolingDown(false), remaining)
+      return () => clearTimeout(timer)
+    }
+  }, [query.data, query.dataUpdatedAt, queryClient])
+
+  const busy = mutation.isPending || (!query.isError && active(query.data))
+  const refresh = async () => {
+    if (submitting.current || busy || coolingDown) return
+    submitting.current = true
+    try {
+      await mutation.mutateAsync(subscriptionId)
+    } finally {
+      submitting.current = false
+    }
+  }
+  return { ...query, refresh, busy, coolingDown, requestError: mutation.error }
 }

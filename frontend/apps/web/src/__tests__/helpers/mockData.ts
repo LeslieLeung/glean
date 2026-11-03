@@ -142,6 +142,7 @@ export const createMockSubscription = (
     error_count: 0,
     fetch_error_message: null,
     last_fetched_at: null,
+    last_success_at: null,
     last_entry_at: null,
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',

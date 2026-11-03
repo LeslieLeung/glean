@@ -68,6 +68,7 @@ class Feed(Base, TimestampMixin):
     error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     fetch_error_message: Mapped[str | None] = mapped_column(String(1000))
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_entry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     next_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 

@@ -1,29 +1,22 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   useSubscriptions,
   useDeleteSubscription,
-  useRefreshFeed,
+  useFeedRefresh,
   useUpdateSubscription,
   useBatchDeleteSubscriptions,
-  useDiscoverFeed,
   useImportOPML,
   useExportOPML,
 } from '../hooks/useSubscriptions'
+import { AddFeedDialog, EditFeedDialog } from '../components/dialogs/AddFeedDialog'
+import { OPMLImportResultDialog } from '../components/dialogs/OPMLImportResultDialog'
 import { useFolderStore } from '../stores/folderStore'
 import { useTranslation } from '@glean/i18n'
-import type { Subscription, FolderTreeNode } from '@glean/types'
+import type { Subscription, OPMLImportResponse, FolderTreeNode } from '@glean/types'
 import {
   Button,
   buttonVariants,
   Badge,
-  Input,
-  Label,
-  Dialog,
-  DialogPopup,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
   AlertDialog,
   AlertDialogPopup,
   AlertDialogHeader,
@@ -32,6 +25,7 @@ import {
   AlertDialogFooter,
   AlertDialogClose,
   Skeleton,
+  Input,
   Menu,
   MenuTrigger,
   MenuPopup,
@@ -40,8 +34,6 @@ import {
   MenuSub,
   MenuSubTrigger,
   MenuSubPopup,
-  Alert,
-  AlertDescription,
 } from '@glean/ui'
 import {
   Search,
@@ -59,13 +51,8 @@ import {
   Loader2,
   ListChecks,
   Plus,
-  Check,
-  X,
-  Folder,
-  ChevronDown,
   Upload,
   Download,
-  Sparkles,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -83,7 +70,6 @@ export default function SubscriptionsPage() {
   const { t } = useTranslation('feeds')
   const { feedFolders, fetchFolders } = useFolderStore()
   const deleteMutation = useDeleteSubscription()
-  const refreshMutation = useRefreshFeed()
   const batchDeleteMutation = useBatchDeleteSubscriptions()
   const importMutation = useImportOPML()
   const exportMutation = useExportOPML()
@@ -125,12 +111,7 @@ export default function SubscriptionsPage() {
   // OPML Import state
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileInputKey, setFileInputKey] = useState(0)
-  const [importResult, setImportResult] = useState<{
-    success: number
-    failed: number
-    total: number
-    folders_created: number
-  } | null>(null)
+  const [importResult, setImportResult] = useState<OPMLImportResponse | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
   const handleImportClick = () => {
@@ -140,6 +121,7 @@ export default function SubscriptionsPage() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
 
     try {
       const result = await importMutation.mutateAsync(file)
@@ -198,10 +180,6 @@ export default function SubscriptionsPage() {
       setSelectedIds(new Set(selectedIds))
       setShowSingleDeleteConfirm(null)
     }
-  }
-
-  const handleRefresh = async (subscriptionId: string) => {
-    await refreshMutation.mutateAsync(subscriptionId)
   }
 
   // Pagination handlers
@@ -378,13 +356,11 @@ export default function SubscriptionsPage() {
                 <SubscriptionRow
                   key={sub.id}
                   subscription={sub}
+                  folders={feedFolders}
                   isSelected={selectedIds.has(sub.id)}
                   onSelect={() => handleSelect(sub.id)}
                   onDelete={() => setShowSingleDeleteConfirm(sub.id)}
-                  onRefresh={() => handleRefresh(sub.id)}
                   onEdit={() => setEditingSubscription(sub)}
-                  isRefreshing={refreshMutation.isPending}
-                  folders={feedFolders}
                   style={{ animationDelay: `${index * 30}ms` }}
                 />
               ))}
@@ -544,17 +520,14 @@ export default function SubscriptionsPage() {
 
         {/* Edit Subscription Dialog */}
         {editingSubscription && (
-          <EditSubscriptionDialog
+          <EditFeedDialog
             subscription={editingSubscription}
-            folders={feedFolders}
             onClose={() => setEditingSubscription(null)}
           />
         )}
 
         {/* Add Feed Dialog */}
-        {showAddFeedDialog && (
-          <AddFeedDialog folders={feedFolders} onClose={() => setShowAddFeedDialog(false)} />
-        )}
+        {showAddFeedDialog && <AddFeedDialog onClose={() => setShowAddFeedDialog(false)} />}
 
         {/* Hidden file input for OPML import */}
         <input
@@ -567,32 +540,7 @@ export default function SubscriptionsPage() {
         />
 
         {/* Import result dialog */}
-        <AlertDialog open={!!importResult} onOpenChange={() => setImportResult(null)}>
-          <AlertDialogPopup>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t('opml.importCompleted')}</AlertDialogTitle>
-              <AlertDialogDescription>
-                <div className="space-y-1 text-left">
-                  <div>
-                    {t('opml.feedsImported')}: {importResult?.success}
-                  </div>
-                  <div>
-                    {t('opml.foldersCreated')}: {importResult?.folders_created}
-                  </div>
-                  <div>
-                    {t('opml.failed')}: {importResult?.failed}
-                  </div>
-                  <div>
-                    {t('opml.totalFeeds')}: {importResult?.total}
-                  </div>
-                </div>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogClose className={buttonVariants()}>{t('common.ok')}</AlertDialogClose>
-            </AlertDialogFooter>
-          </AlertDialogPopup>
-        </AlertDialog>
+        <OPMLImportResultDialog result={importResult} onClose={() => setImportResult(null)} />
 
         {/* Import error dialog */}
         <AlertDialog open={!!importError} onOpenChange={() => setImportError(null)}>
@@ -616,9 +564,7 @@ interface SubscriptionRowProps {
   isSelected: boolean
   onSelect: () => void
   onDelete: () => void
-  onRefresh: () => void
   onEdit: () => void
-  isRefreshing: boolean
   folders: FolderTreeNode[]
   style?: React.CSSProperties
 }
@@ -628,17 +574,16 @@ function SubscriptionRow({
   isSelected,
   onSelect,
   onDelete,
-  onRefresh,
   onEdit,
-  isRefreshing,
   folders,
   style,
 }: SubscriptionRowProps) {
   const { t } = useTranslation('feeds')
   const updateMutation = useUpdateSubscription()
+  const refresh = useFeedRefresh(subscription.id)
 
   const title = subscription.custom_title || subscription.feed.title || subscription.feed.url
-  const hasError = subscription.feed.status === 'ERROR'
+  const hasError = subscription.feed.status === 'error'
 
   // Flatten folders for move submenu
   const flattenFolders = (
@@ -732,8 +677,13 @@ function SubscriptionRow({
             <Pencil className="h-4 w-4" />
             <span>{t('contextMenu.edit')}</span>
           </MenuItem>
-          <MenuItem onClick={onRefresh} disabled={isRefreshing}>
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <MenuItem
+            onClick={() => {
+              void refresh.refresh().catch(() => {})
+            }}
+            disabled={refresh.busy || refresh.coolingDown}
+          >
+            <RefreshCw className={`h-4 w-4 ${refresh.busy ? 'animate-spin' : ''}`} />
             <span>{t('contextMenu.refresh')}</span>
           </MenuItem>
           {folders.length > 0 && (
@@ -762,614 +712,6 @@ function SubscriptionRow({
           </MenuItem>
         </MenuPopup>
       </Menu>
-    </div>
-  )
-}
-
-interface EditSubscriptionDialogProps {
-  subscription: Subscription
-  folders: FolderTreeNode[]
-  onClose: () => void
-}
-
-function EditSubscriptionDialog({ subscription, folders, onClose }: EditSubscriptionDialogProps) {
-  const { t } = useTranslation('feeds')
-  const updateMutation = useUpdateSubscription()
-  const { createFolder } = useFolderStore()
-  const [customTitle, setCustomTitle] = useState(subscription.custom_title || '')
-  const [feedUrl, setFeedUrl] = useState(subscription.feed.url || '')
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(
-    subscription.folder_id || null
-  )
-
-  // Folder selector state
-  const [isFolderDropdownOpen, setIsFolderDropdownOpen] = useState(false)
-  const [folderSearchQuery, setFolderSearchQuery] = useState('')
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Flatten folders for select
-  const flattenFolders = (
-    nodes: FolderTreeNode[],
-    depth = 0
-  ): { id: string; name: string; depth: number }[] => {
-    return nodes.flatMap((node) => [
-      { id: node.id, name: node.name, depth },
-      ...flattenFolders(node.children, depth + 1),
-    ])
-  }
-  const flatFolders = flattenFolders(folders)
-
-  // Filter folders based on search
-  const filteredFolders = useMemo(() => {
-    if (!folderSearchQuery.trim()) return flatFolders
-    const query = folderSearchQuery.toLowerCase()
-    return flatFolders.filter((f) => f.name.toLowerCase().includes(query))
-  }, [flatFolders, folderSearchQuery])
-
-  // Get selected folder name
-  const selectedFolderName = useMemo(() => {
-    if (!selectedFolderId) return t('common.noFolder')
-    const folder = flatFolders.find((f) => f.id === selectedFolderId)
-    return folder?.name || t('common.noFolder')
-  }, [selectedFolderId, flatFolders, t])
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsFolderDropdownOpen(false)
-        setIsCreatingFolder(false)
-        setNewFolderName('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const handleSave = async () => {
-    const updateData: { custom_title: string | null; folder_id: string | null; feed_url?: string } =
-      {
-        custom_title: customTitle || null,
-        folder_id: selectedFolderId,
-      }
-
-    // Only include feed_url if it was changed
-    if (feedUrl && feedUrl !== subscription.feed.url) {
-      updateData.feed_url = feedUrl
-    }
-
-    await updateMutation.mutateAsync({
-      subscriptionId: subscription.id,
-      data: updateData,
-    })
-    onClose()
-  }
-
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return
-
-    const folder = await createFolder({
-      name: newFolderName.trim(),
-      type: 'feed',
-    })
-
-    if (folder) {
-      setSelectedFolderId(folder.id)
-      setIsCreatingFolder(false)
-      setNewFolderName('')
-      setIsFolderDropdownOpen(false)
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogPopup className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t('manageSubscriptions.editSubscription')}</DialogTitle>
-          <DialogDescription>{t('manageSubscriptions.editDescription')}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 px-6 py-4">
-          {/* Custom Title */}
-          <div className="space-y-2">
-            <Label htmlFor="custom-title">{t('manageSubscriptions.customTitle')}</Label>
-            <Input
-              id="custom-title"
-              value={customTitle}
-              onChange={(e) => setCustomTitle(e.target.value)}
-              placeholder={subscription.feed.title || subscription.feed.url}
-            />
-            <p className="text-muted-foreground text-xs">{t('manageSubscriptions.leaveEmpty')}</p>
-          </div>
-
-          {/* Feed URL */}
-          <div className="space-y-2">
-            <Label htmlFor="feed-url">{t('manageSubscriptions.feedUrl')}</Label>
-            <Input
-              id="feed-url"
-              type="url"
-              value={feedUrl}
-              onChange={(e) => setFeedUrl(e.target.value)}
-              placeholder="https://example.com/feed.xml"
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('manageSubscriptions.rssUrlDescription')}
-            </p>
-          </div>
-
-          {/* Folder Selection with Search */}
-          <div className="space-y-2">
-            <Label>{t('manageSubscriptions.folder')}</Label>
-            <div className="relative" ref={dropdownRef}>
-              {/* Dropdown Trigger */}
-              <button
-                type="button"
-                onClick={() => setIsFolderDropdownOpen(!isFolderDropdownOpen)}
-                className="border-border bg-background hover:bg-accent/50 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Folder className="text-muted-foreground h-4 w-4" />
-                  <span className={selectedFolderId ? 'text-foreground' : 'text-muted-foreground'}>
-                    {selectedFolderName}
-                  </span>
-                </div>
-                <ChevronDown
-                  className={`text-muted-foreground h-4 w-4 transition-transform ${isFolderDropdownOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {/* Dropdown Content */}
-              {isFolderDropdownOpen && (
-                <div className="border-border bg-card absolute z-50 mt-1 w-full rounded-lg border shadow-lg">
-                  {/* Search Input */}
-                  <div className="border-border border-b p-2">
-                    <div className="relative">
-                      <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder={t('manageSubscriptions.searchFolders')}
-                        value={folderSearchQuery}
-                        onChange={(e) => setFolderSearchQuery(e.target.value)}
-                        className="border-border bg-background placeholder:text-muted-foreground focus:border-primary w-full rounded-md border py-1.5 pr-3 pl-8 text-sm focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  {/* Folder List */}
-                  <div className="max-h-48 overflow-y-auto p-1">
-                    {/* No folder option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFolderId(null)
-                        setIsFolderDropdownOpen(false)
-                        setFolderSearchQuery('')
-                      }}
-                      className={`hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors ${
-                        selectedFolderId === null ? 'bg-primary/10 text-primary' : ''
-                      }`}
-                    >
-                      <span className="text-muted-foreground">{t('common.noFolder')}</span>
-                      {selectedFolderId === null && <Check className="h-4 w-4" />}
-                    </button>
-
-                    {/* Filtered folders */}
-                    {filteredFolders.map((folder) => (
-                      <button
-                        key={folder.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedFolderId(folder.id)
-                          setIsFolderDropdownOpen(false)
-                          setFolderSearchQuery('')
-                        }}
-                        className={`hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors ${
-                          selectedFolderId === folder.id ? 'bg-primary/10 text-primary' : ''
-                        }`}
-                      >
-                        <span style={{ paddingLeft: `${folder.depth * 12}px` }}>{folder.name}</span>
-                        {selectedFolderId === folder.id && <Check className="h-4 w-4" />}
-                      </button>
-                    ))}
-
-                    {/* No results */}
-                    {filteredFolders.length === 0 && folderSearchQuery && !isCreatingFolder && (
-                      <p className="text-muted-foreground px-2 py-3 text-center text-sm">
-                        {t('manageSubscriptions.noFoldersFound')}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Create new folder */}
-                  <div className="border-border border-t p-2">
-                    {isCreatingFolder ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder={t('manageSubscriptions.folderName')}
-                          value={newFolderName}
-                          onChange={(e) => setNewFolderName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleCreateFolder()
-                            if (e.key === 'Escape') {
-                              setIsCreatingFolder(false)
-                              setNewFolderName('')
-                            }
-                          }}
-                          className="border-border bg-background placeholder:text-muted-foreground focus:border-primary flex-1 rounded-md border px-2 py-1 text-sm focus:outline-none"
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={handleCreateFolder}
-                          disabled={!newFolderName.trim()}
-                          className="text-primary hover:bg-primary/10 rounded-md p-1.5 transition-colors disabled:opacity-50"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsCreatingFolder(false)
-                            setNewFolderName('')
-                          }}
-                          className="text-muted-foreground hover:bg-accent rounded-md p-1.5 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingFolder(true)
-                          setNewFolderName(folderSearchQuery)
-                        }}
-                        className="text-muted-foreground hover:bg-accent hover:text-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span>{t('manageSubscriptions.createNewFolder')}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button onClick={handleSave} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t('common.saving')}
-              </>
-            ) : (
-              t('common.saveChanges')
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogPopup>
-    </Dialog>
-  )
-}
-
-interface AddFeedDialogProps {
-  folders: FolderTreeNode[]
-  onClose: () => void
-}
-
-function AddFeedDialog({ folders, onClose }: AddFeedDialogProps) {
-  const { t } = useTranslation('feeds')
-  const discoverMutation = useDiscoverFeed()
-  const { createFolder } = useFolderStore()
-  const [url, setUrl] = useState('')
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
-
-  // Folder selector state
-  const [isFolderDropdownOpen, setIsFolderDropdownOpen] = useState(false)
-  const [folderSearchQuery, setFolderSearchQuery] = useState('')
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Flatten folders for select
-  const flattenFolders = (
-    nodes: FolderTreeNode[],
-    depth = 0
-  ): { id: string; name: string; depth: number }[] => {
-    return nodes.flatMap((node) => [
-      { id: node.id, name: node.name, depth },
-      ...flattenFolders(node.children, depth + 1),
-    ])
-  }
-  const flatFolders = flattenFolders(folders)
-
-  // Filter folders based on search
-  const filteredFolders = useMemo(() => {
-    if (!folderSearchQuery.trim()) return flatFolders
-    const query = folderSearchQuery.toLowerCase()
-    return flatFolders.filter((f) => f.name.toLowerCase().includes(query))
-  }, [flatFolders, folderSearchQuery])
-
-  // Get selected folder name
-  const selectedFolderName = useMemo(() => {
-    if (!selectedFolderId) return t('common.noFolder')
-    const folder = flatFolders.find((f) => f.id === selectedFolderId)
-    return folder?.name || t('common.noFolder')
-  }, [selectedFolderId, flatFolders, t])
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsFolderDropdownOpen(false)
-        setIsCreatingFolder(false)
-        setNewFolderName('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!url.trim()) return
-
-    try {
-      await discoverMutation.mutateAsync({
-        url: url.trim(),
-        folder_id: selectedFolderId,
-      })
-      onClose()
-    } catch {
-      // Error is handled by mutation
-    }
-  }
-
-  const handleCreateFolder = async () => {
-    if (!newFolderName.trim()) return
-
-    const folder = await createFolder({
-      name: newFolderName.trim(),
-      type: 'feed',
-    })
-
-    if (folder) {
-      setSelectedFolderId(folder.id)
-      setIsCreatingFolder(false)
-      setNewFolderName('')
-      setIsFolderDropdownOpen(false)
-    }
-  }
-
-  return (
-    <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="animate-fade-in border-border bg-card w-full max-w-md rounded-2xl border p-6 shadow-xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl">
-              <Sparkles className="text-primary h-5 w-5" />
-            </div>
-            <h2 className="font-display text-foreground text-xl font-bold">
-              {t('manageSubscriptions.addFeed')}
-            </h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {discoverMutation.error && (
-            <Alert variant="error">
-              <AlertCircle />
-              <AlertDescription>{(discoverMutation.error as Error).message}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="feedUrl" className="text-foreground">
-              {t('manageSubscriptions.feedUrlOrWebsite')}
-            </Label>
-            <Input
-              id="feedUrl"
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/feed"
-              disabled={discoverMutation.isPending}
-              className="w-full"
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('manageSubscriptions.feedUrlDescription')}
-            </p>
-          </div>
-
-          {/* Folder Selection with Search */}
-          <div className="space-y-2">
-            <Label>{t('manageSubscriptions.folderOptional')}</Label>
-            <div className="relative" ref={dropdownRef}>
-              {/* Dropdown Trigger */}
-              <button
-                type="button"
-                onClick={() => setIsFolderDropdownOpen(!isFolderDropdownOpen)}
-                className="border-border bg-background hover:bg-accent/50 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Folder className="text-muted-foreground h-4 w-4" />
-                  <span className={selectedFolderId ? 'text-foreground' : 'text-muted-foreground'}>
-                    {selectedFolderName}
-                  </span>
-                </div>
-                <ChevronDown
-                  className={`text-muted-foreground h-4 w-4 transition-transform ${isFolderDropdownOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {/* Dropdown Content */}
-              {isFolderDropdownOpen && (
-                <div className="border-border bg-card absolute z-50 mt-1 w-full rounded-lg border shadow-lg">
-                  {/* Search Input */}
-                  <div className="border-border border-b p-2">
-                    <div className="relative">
-                      <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder={t('manageSubscriptions.searchFolders')}
-                        value={folderSearchQuery}
-                        onChange={(e) => setFolderSearchQuery(e.target.value)}
-                        className="border-border bg-background placeholder:text-muted-foreground focus:border-primary w-full rounded-md border py-1.5 pr-3 pl-8 text-sm focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  {/* Folder List */}
-                  <div className="max-h-48 overflow-y-auto p-1">
-                    {/* No folder option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFolderId(null)
-                        setIsFolderDropdownOpen(false)
-                        setFolderSearchQuery('')
-                      }}
-                      className={`hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors ${
-                        selectedFolderId === null ? 'bg-primary/10 text-primary' : ''
-                      }`}
-                    >
-                      <span className="text-muted-foreground">{t('common.noFolder')}</span>
-                      {selectedFolderId === null && <Check className="h-4 w-4" />}
-                    </button>
-
-                    {/* Filtered folders */}
-                    {filteredFolders.map((folder) => (
-                      <button
-                        key={folder.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedFolderId(folder.id)
-                          setIsFolderDropdownOpen(false)
-                          setFolderSearchQuery('')
-                        }}
-                        className={`hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors ${
-                          selectedFolderId === folder.id ? 'bg-primary/10 text-primary' : ''
-                        }`}
-                      >
-                        <span style={{ paddingLeft: `${folder.depth * 12}px` }}>{folder.name}</span>
-                        {selectedFolderId === folder.id && <Check className="h-4 w-4" />}
-                      </button>
-                    ))}
-
-                    {/* No results */}
-                    {filteredFolders.length === 0 && folderSearchQuery && !isCreatingFolder && (
-                      <p className="text-muted-foreground px-2 py-3 text-center text-sm">
-                        {t('manageSubscriptions.noFoldersFound')}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Create new folder */}
-                  <div className="border-border border-t p-2">
-                    {isCreatingFolder ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          placeholder={t('manageSubscriptions.folderName')}
-                          value={newFolderName}
-                          onChange={(e) => setNewFolderName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              handleCreateFolder()
-                            }
-                            if (e.key === 'Escape') {
-                              setIsCreatingFolder(false)
-                              setNewFolderName('')
-                            }
-                          }}
-                          className="border-border bg-background placeholder:text-muted-foreground focus:border-primary flex-1 rounded-md border px-2 py-1 text-sm focus:outline-none"
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          onClick={handleCreateFolder}
-                          disabled={!newFolderName.trim()}
-                          className="text-primary hover:bg-primary/10 rounded-md p-1.5 transition-colors disabled:opacity-50"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsCreatingFolder(false)
-                            setNewFolderName('')
-                          }}
-                          className="text-muted-foreground hover:bg-accent rounded-md p-1.5 transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingFolder(true)
-                          setNewFolderName(folderSearchQuery)
-                        }}
-                        className="text-muted-foreground hover:bg-accent hover:text-foreground flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span>{t('manageSubscriptions.createNewFolder')}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              disabled={discoverMutation.isPending}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="submit"
-              disabled={discoverMutation.isPending || !url.trim()}
-              className="btn-glow"
-            >
-              {discoverMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>{t('manageSubscriptions.adding')}</span>
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  <span>{t('manageSubscriptions.addFeed')}</span>
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-      </div>
     </div>
   )
 }

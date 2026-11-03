@@ -35,18 +35,17 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
         try:
             response = await client.get(url)
             response.raise_for_status()
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, httpx.InvalidURL) as e:
             raise ValueError(f"Failed to fetch URL: {e}") from e
 
+        # Validate content, even when a server uses an incorrect MIME type.
+        final_url = str(response.url)
+        try:
+            feed = await parse_feed(response.text, final_url)
+            return final_url, feed.title
+        except ValueError:
+            pass
         content_type = response.headers.get("content-type", "").lower()
-
-        # Try to parse as RSS directly
-        if "xml" in content_type or "rss" in content_type or "atom" in content_type:
-            try:
-                feed = await parse_feed(response.text, url)
-                return url, str(feed.title)
-            except ValueError:
-                pass
 
         # Try to find RSS link in HTML
         if "html" in content_type or not content_type:
@@ -67,14 +66,14 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
                     if not feed_url_str.startswith("http"):
                         from urllib.parse import urljoin
 
-                        feed_url_str = urljoin(url, feed_url_str)
+                        feed_url_str = urljoin(final_url, feed_url_str)
 
                     # Try to parse this feed
                     try:
                         feed_response = await client.get(feed_url_str)
                         feed_response.raise_for_status()
-                        feed = await parse_feed(feed_response.text, feed_url_str)
-                        return feed_url_str, str(feed.title)
+                        feed = await parse_feed(feed_response.text, str(feed_response.url))
+                        return str(feed_response.url), feed.title
                     except (httpx.HTTPError, ValueError):
                         continue
 
@@ -123,5 +122,5 @@ async def fetch_feed(
 
             return response.text, cache_headers
 
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, httpx.InvalidURL) as e:
             raise ValueError(f"Failed to fetch feed: {e}") from e

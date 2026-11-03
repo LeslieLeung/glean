@@ -35,7 +35,9 @@
       "folder": "Folder (Optional)",
       "selectFolder": "Select a folder",
       "add": "Add Feed",
-      "adding": "Adding..."
+      "adding": "Adding...",
+      "validate": "Validate feed",
+      "alreadySubscribed": "You are already subscribed to this feed."
     },
     "createFolder": {
       "title": "Create Folder",
@@ -68,7 +70,8 @@
       "folder": "Folder",
       "save": "Save",
       "saving": "Saving...",
-      "description": "Customize how this feed appears in your reader."
+      "description": "Customize how this feed appears in your reader.",
+      "urlReadOnly": "To change the URL, unsubscribe and add the new feed."
     },
     "unsubscribe": {
       "title": "Unsubscribe?",
@@ -206,5 +209,33 @@
     "feedUrlDescription": "Enter a feed URL or website URL — we'll try to discover the feed automatically",
     "folderOptional": "Folder (optional)",
     "adding": "Adding..."
+  },
+  "manager": {
+    "untitled": "Untitled feed",
+    "allFeeds": "All feeds",
+    "ungrouped": "Ungrouped",
+    "folders": "Feed folders",
+    "search": "Search feeds by title or URL",
+    "includesChildren": "Includes subfolders",
+    "folderLoadFailed": "Unable to load folders",
+    "loadFailed": "Unable to load subscriptions",
+    "retry": "Retry",
+    "emptyFolder": "No feeds in this folder",
+    "clearSearch": "Clear search",
+    "page": "Page {{page}} of {{total}}",
+    "lastAttempt": "Last attempt",
+    "lastSuccess": "Last success",
+    "awaitingFetch": "Awaiting first fetch",
+    "unknownTime": "Unknown time",
+    "autoFetchStopped": "Automatic fetching stopped",
+    "fetchFailed": "Last fetch failed",
+    "consecutiveErrors": "{{count}} consecutive failures",
+    "queued": "Queued…",
+    "newEntries": "{{count}} new entries",
+    "noUpdates": "No new entries",
+    "refreshFailed": "Refresh failed. Please retry.",
+    "refreshUnknown": "Refresh status unavailable. Please retry.",
+    "expandFolder": "Expand {{name}}",
+    "collapseFolder": "Collapse {{name}}"
   }
 }

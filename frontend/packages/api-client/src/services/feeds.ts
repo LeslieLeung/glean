@@ -1,5 +1,7 @@
 import type {
   Subscription,
+  FeedRefreshResponse,
+  ValidateFeedResponse,
   SubscriptionListResponse,
   SubscriptionSyncResponse,
   SubscriptionListParams,
@@ -28,6 +30,7 @@ export class FeedService {
     if (params?.per_page) searchParams.set('per_page', params.per_page.toString())
     if (params?.folder_id !== undefined) searchParams.set('folder_id', params.folder_id ?? '')
     if (params?.search) searchParams.set('search', params.search)
+    if (params?.include_descendants) searchParams.set('include_descendants', 'true')
 
     const query = searchParams.toString()
     const url = query ? `/feeds?${query}` : '/feeds'
@@ -69,11 +72,19 @@ export class FeedService {
     return this.client.get<Subscription>(`/feeds/${subscriptionId}`)
   }
 
+  async validateFeed(url: string): Promise<ValidateFeedResponse> {
+    return this.client.post<ValidateFeedResponse>('/feeds/validate', { url }, { timeout: 35000 })
+  }
+
+  async getRefreshStatus(subscriptionId: string): Promise<FeedRefreshResponse> {
+    return this.client.get<FeedRefreshResponse>(`/feeds/${subscriptionId}/refresh`)
+  }
+
   /**
    * Discover and subscribe to a feed from URL.
    */
   async discoverFeed(data: DiscoverFeedRequest): Promise<Subscription> {
-    return this.client.post<Subscription>('/feeds/discover', data)
+    return this.client.post<Subscription>('/feeds/discover', data, { timeout: 35000 })
   }
 
   /**
@@ -105,12 +116,8 @@ export class FeedService {
   /**
    * Manually refresh a feed.
    */
-  async refreshFeed(
-    subscriptionId: string
-  ): Promise<{ status: string; job_id: string; feed_id: string }> {
-    return this.client.post<{ status: string; job_id: string; feed_id: string }>(
-      `/feeds/${subscriptionId}/refresh`
-    )
+  async refreshFeed(subscriptionId: string): Promise<FeedRefreshResponse> {
+    return this.client.post<FeedRefreshResponse>(`/feeds/${subscriptionId}/refresh`)
   }
 
   /**
@@ -129,6 +136,7 @@ export class FeedService {
 
     return this.client.post<OPMLImportResponse>('/feeds/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0,
     })
   }
 

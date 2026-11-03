@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 from collections.abc import AsyncGenerator, Generator
+from types import SimpleNamespace
 from typing import Any, cast
 
 import dotenv
@@ -37,9 +38,10 @@ class MockArqRedis:
         self._ttl: dict[str, int] = {}
         self._incr_counts: dict[str, int] = {}
 
-    async def enqueue_job(self, func_name: str, *args: Any, **kwargs: Any) -> None:
+    async def enqueue_job(self, func_name: str, *args: Any, **kwargs: Any) -> SimpleNamespace:
         """Mock enqueue_job that records calls without actually queuing."""
         self.enqueued_jobs.append((func_name, args))
+        return SimpleNamespace(job_id=kwargs.get("_job_id", "test-job"))
 
     async def setex(self, key: str, ttl_seconds: int, value: Any) -> bool:
         self._store[key] = value

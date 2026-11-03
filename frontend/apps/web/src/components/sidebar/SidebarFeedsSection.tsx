@@ -19,15 +19,14 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogClose,
+  cn,
   Dialog,
   DialogPopup,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
   Input,
   Label,
-  cn,
 } from '@glean/ui'
 import {
   ChevronRight,
@@ -50,10 +49,11 @@ import {
 import type { FolderTreeNode, Subscription } from '@glean/types'
 import {
   useDeleteSubscription,
-  useRefreshFeed,
+  useFeedRefresh,
   useUpdateSubscription,
 } from '../../hooks/useSubscriptions'
 import { useMarkAllRead } from '../../hooks/useEntries'
+import { EditFeedDialog } from '../dialogs/AddFeedDialog'
 import { useFolderStore } from '../../stores/folderStore'
 import { SidebarItem } from './SidebarItem'
 
@@ -619,15 +619,12 @@ function SidebarFeedItem({
 }: SidebarFeedItemProps) {
   const { t } = useTranslation('feeds')
   const deleteMutation = useDeleteSubscription()
-  const refreshMutation = useRefreshFeed()
   const updateMutation = useUpdateSubscription()
   const markAllReadMutation = useMarkAllRead()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const refresh = useFeedRefresh(subscription.id, isMenuOpen)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
-  const [editTitle, setEditTitle] = useState(subscription.custom_title || '')
-  const [editUrl, setEditUrl] = useState(subscription.feed.url || '')
-  const [isSaving, setIsSaving] = useState(false)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -640,7 +637,7 @@ function SidebarFeedItem({
   }
 
   const handleRefresh = async () => {
-    await refreshMutation.mutateAsync(subscription.id)
+    await refresh.refresh().catch(() => {})
   }
 
   const handleFolderChange = async (folderId: string | null) => {
@@ -648,25 +645,6 @@ function SidebarFeedItem({
       subscriptionId: subscription.id,
       data: { folder_id: folderId },
     })
-  }
-
-  const handleSaveEdit = async () => {
-    setIsSaving(true)
-    try {
-      const updateData: { custom_title: string | null; feed_url?: string } = {
-        custom_title: editTitle || null,
-      }
-      if (editUrl && editUrl !== subscription.feed.url) {
-        updateData.feed_url = editUrl
-      }
-      await updateMutation.mutateAsync({
-        subscriptionId: subscription.id,
-        data: updateData,
-      })
-      setShowEditDialog(false)
-    } finally {
-      setIsSaving(false)
-    }
   }
 
   const flattenFolders = (
@@ -752,8 +730,8 @@ function SidebarFeedItem({
               <Pencil className="h-4 w-4" />
               <span>{t('common.edit')}</span>
             </MenuItem>
-            <MenuItem onClick={handleRefresh} disabled={refreshMutation.isPending}>
-              <RefreshCw className={cn('h-4 w-4', refreshMutation.isPending && 'animate-spin')} />
+            <MenuItem onClick={handleRefresh} disabled={refresh.busy || refresh.coolingDown}>
+              <RefreshCw className={cn('h-4 w-4', refresh.busy && 'animate-spin')} />
               <span>{t('common.refresh')}</span>
             </MenuItem>
             {allFolders.length > 0 && (
@@ -805,52 +783,9 @@ function SidebarFeedItem({
         </AlertDialogPopup>
       </AlertDialog>
 
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogPopup>
-          <DialogHeader>
-            <DialogTitle>{t('dialogs.editFeed.title')}</DialogTitle>
-            <DialogDescription>{t('dialogs.editFeed.description')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 px-6 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">{t('manageSubscriptions.customTitle')}</Label>
-              <Input
-                id="edit-title"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                placeholder={subscription.feed.title || subscription.feed.url}
-              />
-              <p className="text-muted-foreground text-xs">{t('manageSubscriptions.leaveEmpty')}</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-url">{t('manageSubscriptions.feedUrl')}</Label>
-              <Input
-                id="edit-url"
-                type="url"
-                value={editUrl}
-                onChange={(e) => setEditUrl(e.target.value)}
-                placeholder="https://example.com/feed.xml"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleSaveEdit()
-                  }
-                }}
-              />
-              <p className="text-muted-foreground text-xs">
-                {t('manageSubscriptions.rssUrlDescription')}
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowEditDialog(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isSaving}>
-              {isSaving ? t('common.saving') : t('common.save')}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
+      {showEditDialog && (
+        <EditFeedDialog subscription={subscription} onClose={() => setShowEditDialog(false)} />
+      )}
     </>
   )
 }

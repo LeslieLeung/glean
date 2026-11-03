@@ -28,7 +28,9 @@ describe('FeedService', () => {
 
     await service.getSubscriptions({ page: 2, per_page: 10, folder_id: 'f1', search: 'test' })
 
-    expect(mockClient.get).toHaveBeenCalledWith('/feeds?page=2&per_page=10&folder_id=f1&search=test')
+    expect(mockClient.get).toHaveBeenCalledWith(
+      '/feeds?page=2&per_page=10&folder_id=f1&search=test'
+    )
   })
 
   it('should get subscriptions with empty folder_id', async () => {
@@ -97,7 +99,11 @@ describe('FeedService', () => {
 
     const result = await service.discoverFeed({ url: 'https://example.com/feed' })
 
-    expect(mockClient.post).toHaveBeenCalledWith('/feeds/discover', { url: 'https://example.com/feed' })
+    expect(mockClient.post).toHaveBeenCalledWith(
+      '/feeds/discover',
+      { url: 'https://example.com/feed' },
+      { timeout: 35000 }
+    )
     expect(result).toEqual(sub)
   })
 
@@ -125,7 +131,9 @@ describe('FeedService', () => {
 
     const result = await service.batchDeleteSubscriptions({ subscription_ids: ['s1', 's2'] })
 
-    expect(mockClient.post).toHaveBeenCalledWith('/feeds/batch-delete', { subscription_ids: ['s1', 's2'] })
+    expect(mockClient.post).toHaveBeenCalledWith('/feeds/batch-delete', {
+      subscription_ids: ['s1', 's2'],
+    })
     expect(result).toEqual(response)
   })
 
@@ -158,6 +166,7 @@ describe('FeedService', () => {
 
     expect(mockClient.post).toHaveBeenCalledWith('/feeds/import', expect.any(FormData), {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0,
     })
     expect(result).toEqual(response)
   })

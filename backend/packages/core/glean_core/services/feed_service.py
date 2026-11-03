@@ -19,6 +19,7 @@ from glean_core.schemas import (
 from glean_database.models import (
     Entry,
     Feed,
+    Folder,
     Subscription,
     UserEntry,
     UserPreferenceStats,
@@ -150,7 +151,9 @@ class FeedService:
         for sub in sorted(subscriptions, key=lambda s: s.id):
             parts.append(
                 f"{sub.id}:{sub.feed.last_fetched_at or ''}:{sub.unread_count}:"
-                f"{sub.custom_title or ''}:{sub.folder_id or ''}"
+                f"{sub.custom_title or ''}:{sub.folder_id or ''}:"
+                f"{sub.feed.status}:{sub.feed.error_count}:{sub.feed.last_success_at or ''}:"
+                f"{sub.feed.fetch_error_message or ''}"
             )
         content = "|".join(parts)
         return hashlib.md5(content.encode()).hexdigest()
@@ -162,6 +165,7 @@ class FeedService:
         per_page: int = 20,
         folder_id: str | None = None,
         search: str | None = None,
+        include_descendants: bool = False,
     ) -> SubscriptionListResponse:
         """
         Get paginated subscriptions for a user.
@@ -185,7 +189,22 @@ class FeedService:
             # Empty string means get ungrouped subscriptions
             base_stmt = base_stmt.where(Subscription.folder_id.is_(None))
         elif folder_id is not None:
-            base_stmt = base_stmt.where(Subscription.folder_id == folder_id)
+            folder_ids = [folder_id]
+            if include_descendants:
+                folders = (
+                    await self.session.execute(
+                        select(Folder.id, Folder.parent_id).where(
+                            Folder.user_id == user_id, Folder.type == "feed"
+                        )
+                    )
+                ).all()
+                for current in folder_ids:
+                    folder_ids.extend(
+                        row.id
+                        for row in folders
+                        if row.parent_id == current and row.id not in folder_ids
+                    )
+            base_stmt = base_stmt.where(Subscription.folder_id.in_(folder_ids))
 
         # Apply search filter if provided
         if search:
@@ -281,12 +300,33 @@ class FeedService:
 
         return SubscriptionResponse.model_validate(subscription)
 
+    async def _validate_folder(self, user_id: str, folder_id: str | None) -> None:
+        if folder_id is None:
+            return
+        folder = await self.session.scalar(
+            select(Folder).where(
+                Folder.id == folder_id, Folder.user_id == user_id, Folder.type == "feed"
+            )
+        )
+        if folder is None:
+            raise ValueError("Feed folder not found")
+
+    async def find_subscription_by_url(self, user_id: str, url: str) -> SubscriptionResponse | None:
+        subscription = await self.session.scalar(
+            select(Subscription)
+            .join(Subscription.feed)
+            .where(Subscription.user_id == user_id, Feed.url == url)
+            .options(selectinload(Subscription.feed))
+        )
+        return SubscriptionResponse.model_validate(subscription) if subscription else None
+
     async def create_subscription(
         self,
         user_id: str,
         feed_url: str,
         feed_title: str | None = None,
         folder_id: str | None = None,
+        custom_title: str | None = None,
     ) -> SubscriptionResponse:
         """
         Create a new subscription.
@@ -303,6 +343,7 @@ class FeedService:
         Raises:
             ValueError: If subscription already exists.
         """
+        await self._validate_folder(user_id, folder_id)
         # Check if feed exists
         stmt = select(Feed).where(Feed.url == feed_url)
         result = await self.session.execute(stmt)
@@ -326,7 +367,9 @@ class FeedService:
             raise ValueError("Already subscribed to this feed")
 
         # Create subscription
-        subscription = Subscription(user_id=user_id, feed_id=feed.id, folder_id=folder_id)
+        subscription = Subscription(
+            user_id=user_id, feed_id=feed.id, folder_id=folder_id, custom_title=custom_title
+        )
         self.session.add(subscription)
         await self.session.flush()
 
@@ -473,9 +516,8 @@ class FeedService:
         self,
         subscription_id: str,
         user_id: str,
-        custom_title: str | None = None,
+        custom_title: str | None | object = UNSET,
         folder_id: str | None | object = UNSET,
-        feed_url: str | None = None,
     ) -> SubscriptionResponse:
         """
         Update subscription settings.
@@ -486,7 +528,6 @@ class FeedService:
             custom_title: Custom title override. None clears the title.
             folder_id: Folder to move subscription to. None removes from folder.
                        Use UNSET sentinel to keep unchanged.
-            feed_url: New URL for the feed. Updates the underlying feed.
 
         Returns:
             Updated subscription response.
@@ -505,16 +546,13 @@ class FeedService:
         if not subscription:
             raise ValueError("Subscription not found")
 
-        if custom_title is not None or custom_title is None:
-            subscription.custom_title = custom_title
+        if custom_title is not UNSET:
+            subscription.custom_title = custom_title  # type: ignore[assignment]
 
         # Only update folder_id if explicitly provided (not the sentinel)
         if folder_id is not UNSET:
+            await self._validate_folder(user_id, folder_id)  # type: ignore[arg-type]
             subscription.folder_id = folder_id  # type: ignore[assignment]
-
-        # Update feed URL if provided
-        if feed_url and subscription.feed:
-            subscription.feed.url = feed_url
 
         await self.session.commit()
 
