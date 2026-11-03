@@ -127,7 +127,7 @@ export default function ReaderPage() {
   const exitingEntryRef = useRef<EntryWithState | null>(null)
   const isMobile = useIsMobile()
   const entryListRef = useRef<HTMLDivElement>(null)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const [loadMoreElement, setLoadMoreElement] = useState<HTMLDivElement | null>(null)
 
   const updateMutation = useUpdateEntryState()
 
@@ -271,7 +271,6 @@ export default function ReaderPage() {
 
   // Infinite scroll: use Intersection Observer to detect when load-more element is visible
   useEffect(() => {
-    const loadMoreElement = loadMoreRef.current
     const container = entryListRef.current
 
     if (!loadMoreElement || !container || isLoading) return
@@ -296,10 +295,9 @@ export default function ReaderPage() {
     return () => {
       observer.disconnect()
     }
-    // Refs (loadMoreRef, entryListRef) are stable and don't need to be in dependencies
-    // Filter params (filterType, feedId, folderId, viewParam) are handled by React Query
-    // fetchNextPage is stable and always uses current query parameters
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, isLoading])
+    // The keyed list replaces this node on tab/feed changes, even when cached
+    // query state stays the same. Reconnect whenever the actual target changes.
+  }, [loadMoreElement, hasNextPage, isFetchingNextPage, fetchNextPage, isLoading])
 
   // Reset filter when switching to smart view (default to unread)
   useEffect(() => {
@@ -438,9 +436,7 @@ export default function ReaderPage() {
       const nextEntry = entries[nextIndex]
       if (nextEntry) {
         handleSelectEntry(nextEntry)
-        const entryEl = entryListRef.current?.querySelector(
-          `[data-entry-id="${nextEntry.id}"]`
-        )
+        const entryEl = entryListRef.current?.querySelector(`[data-entry-id="${nextEntry.id}"]`)
         if (entryEl) {
           entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
         }
@@ -669,7 +665,7 @@ export default function ReaderPage() {
 
                 {/* Intersection observer target for infinite scroll */}
                 {hasNextPage && !isFetchingNextPage && entries.length > 0 && (
-                  <div ref={loadMoreRef} className="h-4" />
+                  <div ref={setLoadMoreElement} className="h-4" />
                 )}
 
                 {/* Loading more indicator */}
