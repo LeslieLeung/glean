@@ -157,7 +157,7 @@ jobs:
     name: Build Electron App (${{ matrix.os }}) - Pre-release
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -213,15 +213,16 @@ jobs:
 
       - name: Build Electron app
         working-directory: frontend/apps/web
-        run: pnpm build:electron -- --${{ matrix.platform }} --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm build:electron --${{ matrix.platform }} --publish never
 
-      - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v7
         with:
-          prerelease: true
-          files: |
+          name: electron-${{ matrix.platform }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          path: |
             frontend/apps/web/release/*.dmg
             frontend/apps/web/release/*.zip
             frontend/apps/web/release/*.exe
@@ -229,9 +230,8 @@ jobs:
             frontend/apps/web/release/*.deb
             frontend/apps/web/release/*.rpm
             frontend/apps/web/release/*.yml
-            frontend/apps/web/release/*.yaml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            frontend/apps/web/release/*.blockmap
+            !frontend/apps/web/release/builder-debug.yml
 
   create-release:
     name: Create GitHub Pre-Release
@@ -262,11 +262,20 @@ jobs:
             echo "emoji=🔬" >> $GITHUB_OUTPUT
           fi
 
+      - name: Download Electron artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: electron-*
+          path: electron-release
+          merge-multiple: true
+
       - name: Create Pre-Release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: true
           generate_release_notes: true
+          files: electron-release/*
+          fail_on_unmatched_files: true
           name: "${{ steps.release_type.outputs.emoji }} ${{ github.ref_name }} (${{ steps.release_type.outputs.type }})"
           body: |
             ## ${{ steps.release_type.outputs.emoji }} This is a ${{ steps.release_type.outputs.type }}

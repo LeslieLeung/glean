@@ -35,11 +35,15 @@
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
   },
   "nsis": {
+    "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}",
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": "always",
     "createStartMenuShortcut": true,
     "shortcutName": "Glean"
+  },
+  "portable": {
+    "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
   },
   "mac": {
     "target": [
@@ -81,6 +85,7 @@
     }
   },
   "linux": {
+    "executableName": "glean",
     "target": ["AppImage", "deb", "rpm"],
     "icon": "build/icon.png",
     "category": "Utility",
