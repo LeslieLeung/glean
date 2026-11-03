@@ -10,6 +10,7 @@
 - [环境配置](#环境配置)
 - [管理员账号管理](#管理员账号管理)
 - [更新 Glean](#更新-glean)
+- [从 Milvus 迁移到 pgvector](MIGRATE_PGVECTOR.zh-CN.md)
 - [备份与恢复](#备份与恢复)
 - [监控与日志](#监控与日志)
 - [故障排查](#故障排查)
@@ -589,6 +590,10 @@ docker exec -it glean-postgres pg_isready -U glean
 更详细的管理员设置说明，请参阅 [docs/admin-setup.md](docs/admin-setup.md)。
 
 ## 更新 Glean
+
+将现有 Milvus 部署切换到 pgvector，需要准备数据库并重建向量。
+请使用 [pgvector 迁移指南](MIGRATE_PGVECTOR.zh-CN.md)中的脚本，
+不要直接套用下方的常规镜像更新或回滚命令。
 
 ### 更新到最新版本
 

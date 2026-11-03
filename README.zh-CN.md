@@ -174,6 +174,9 @@ IMAGE_TAG=v0.3.0-alpha.1 docker compose up -d
 
 详细的部署说明和配置请参见 [DEPLOY.zh-CN.md](DEPLOY.zh-CN.md)。
 
+已有 Milvus 部署？请按照 [pgvector 迁移指南](MIGRATE_PGVECTOR.zh-CN.md)
+使用迁移脚本完成备份、恢复和切换，支持中断后继续及回滚。
+
 ## 技术栈
 
 **后端：**

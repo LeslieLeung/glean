@@ -174,6 +174,9 @@ The difference is the vector backend: `docker-compose.pgvector.yml` uses Postgre
 
 For detailed deployment instructions and configuration, see [DEPLOY.md](DEPLOY.md).
 
+Already running Milvus? Follow the [pgvector migration guide](MIGRATE_PGVECTOR.md)
+to migrate with one script, including backup, restore, resumable execution, and rollback.
+
 ## Tech Stack
 
 **Backend:**

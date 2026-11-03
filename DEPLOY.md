@@ -10,6 +10,7 @@ This guide provides comprehensive instructions for deploying Glean in production
 - [Environment Configuration](#environment-configuration)
 - [Admin Account Management](#admin-account-management)
 - [Updating Glean](#updating-glean)
+- [Migrate from Milvus to pgvector](MIGRATE_PGVECTOR.md)
 - [Backup and Restore](#backup-and-restore)
 - [Monitoring and Logs](#monitoring-and-logs)
 - [Troubleshooting](#troubleshooting)
@@ -600,6 +601,10 @@ docker exec -it glean-postgres pg_isready -U glean
 For more detailed admin setup instructions, see [docs/admin-setup.md](docs/admin-setup.md).
 
 ## Updating Glean
+
+Switching an existing Milvus deployment to pgvector requires database preparation
+and vector rebuilding. Use the script in the [pgvector migration guide](MIGRATE_PGVECTOR.md)
+instead of the routine image-update or rollback commands below.
 
 ### Update to Latest Version
 

@@ -78,6 +78,9 @@ release/
 .env.local
 .env.*.local
 
+# Local migration snapshots contain credentials and database backups.
+.glean-pgvector-migration*/
+
 # OS
 .DS_Store
 Thumbs.db
