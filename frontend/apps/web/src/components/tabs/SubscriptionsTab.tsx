@@ -94,9 +94,13 @@ function FolderBranch({
               <span className="size-8 shrink-0" />
             )}
             <Button
-              variant={selected === node.id ? 'secondary' : 'ghost'}
+              variant="ghost"
               size="sm"
-              className="min-w-0 flex-1 justify-start"
+              className={cn(
+                'text-muted-foreground hover:text-foreground min-w-0 flex-1 justify-start',
+                selected === node.id &&
+                  'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
+              )}
               aria-current={selected === node.id ? 'page' : undefined}
               onClick={() => onSelect(node.id)}
               title={node.name}
@@ -269,8 +273,13 @@ export function SubscriptionsTab() {
             <Button
               key={item.value}
               size="sm"
-              variant={selected === item.value ? 'secondary' : 'ghost'}
-              className="justify-start"
+              variant="ghost"
+              className={cn(
+                'text-muted-foreground hover:text-foreground justify-start',
+                selected === item.value &&
+                  'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
+              )}
+              aria-current={selected === item.value ? 'page' : undefined}
               onClick={() => chooseFolder(item.value)}
             >
               {item.label}
