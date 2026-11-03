@@ -56,5 +56,12 @@
   "article": {
     "noContent": "没有可用内容",
     "viewOriginal": "查看原文"
+  },
+  "outline": {
+    "title": "文章目录",
+    "show": "显示文章目录",
+    "sections": "章节进度",
+    "readingProgress": "阅读进度：{{percent}}%",
+    "backToTop": "返回顶部"
   }
 }
