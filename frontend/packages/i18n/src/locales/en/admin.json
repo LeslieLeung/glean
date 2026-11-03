@@ -201,7 +201,9 @@
       "activeUsers": "Active Users",
       "totalFeeds": "Total Feeds",
       "totalEntries": "Total Entries",
+      "totalSubscriptions": "Total Subscriptions",
       "newUsers": "New Users",
+      "newUsersToday": "New Users Today",
       "newEntries": "New Entries",
       "last7Days": "Last 7 days"
     },

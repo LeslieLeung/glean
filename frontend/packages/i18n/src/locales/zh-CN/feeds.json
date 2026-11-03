@@ -89,6 +89,16 @@
       "delete": "删除",
       "deleting": "删除中...",
       "description": "确定要删除标签“{{name}}”吗？这将把它从所有关联的书签和文章中移除，且该操作无法撤销。"
+    },
+    "createTag": {
+      "errors": {
+        "nameRequired": "请输入标签名称"
+      }
+    },
+    "editTag": {
+      "errors": {
+        "nameRequired": "请输入标签名称"
+      }
     }
   },
   "contextMenu": {
@@ -161,8 +171,9 @@
     "allBookmarks": "全部收藏"
   },
   "manageSubscriptions": {
-    "subscriptionCount": "{{count}} 个订阅",
-    "subscriptionCount_plural": "{{count}} 个订阅",
+    "title": "管理订阅",
+    "subscriptionCount_one": "{{count}} 个订阅",
+    "subscriptionCount_other": "{{count}} 个订阅",
     "searchPlaceholder": "搜索订阅...",
     "selected": "已选择",
     "deleteSelected": "删除所选",

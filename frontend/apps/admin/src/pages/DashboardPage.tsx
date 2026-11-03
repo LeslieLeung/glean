@@ -41,14 +41,14 @@ export default function DashboardPage() {
       bgColor: 'bg-purple-50 dark:bg-purple-900/20',
     },
     {
-      title: 'Total Subscriptions',
+      title: t('dashboard.cards.totalSubscriptions'),
       value: stats?.total_subscriptions,
       icon: BookMarked,
       color: 'text-orange-500',
       bgColor: 'bg-orange-50 dark:bg-orange-900/20',
     },
     {
-      title: 'New Users Today',
+      title: t('dashboard.cards.newUsersToday'),
       value: stats?.new_users_today,
       icon: TrendingUp,
       color: 'text-teal-500',
