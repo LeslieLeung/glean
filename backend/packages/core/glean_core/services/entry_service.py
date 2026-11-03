@@ -5,7 +5,8 @@ Handles entry retrieval and user-specific entry state management.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from math import isfinite
+from typing import TYPE_CHECKING, Any, cast
 
 from arq.connections import ArqRedis
 from sqlalchemy import desc, func, select
@@ -23,7 +24,10 @@ from glean_database.models import (
     UserEntry,
 )
 
+from .preference_dirty_service import mark_preferences_dirty
+
 logger = get_logger(__name__)
+SMART_SCORE_BATCH_SIZE = 200
 
 if TYPE_CHECKING:
     from glean_core.services.simple_score_service import SimpleScoreService
@@ -172,31 +176,42 @@ class EntryService:
 
         # For smart view, we need to fetch more entries to score and sort
         if view == "smart" and score_service:
-            # Fetch more entries for scoring (we'll limit after sorting)
-            fetch_limit = min(total, per_page * 5)  # Fetch 5 pages worth for scoring
-            stmt_for_scoring = stmt.order_by(desc(Entry.published_at)).limit(fetch_limit)
+            # A globally sorted page cannot be produced from a fixed five-page
+            # prefix: page six would always be empty and high-scoring older
+            # entries could never surface. Fetch all matching candidates and
+            # score them in bounded batches to keep vector queries manageable.
+            stmt_for_scoring = stmt.order_by(desc(Entry.published_at))
 
             result = await self.session.execute(stmt_for_scoring)
             all_rows = result.all()
 
-            # Extract entries for batch scoring
-            entries_for_scoring = [row[0] for row in all_rows]
-
-            # Calculate scores in batch
+            # Calculate scores in bounded batches.
             # Both ScoreService and SimpleScoreService implement batch_calculate_scores
             # ScoreService returns dict[entry_id, float]
             # SimpleScoreService returns dict[entry_id, dict with 'score' key]
-            scores_result = await score_service.batch_calculate_scores(user_id, entries_for_scoring)
+            scores_result: dict[str, float | dict[str, object]] = {}
+            for offset in range(0, len(all_rows), SMART_SCORE_BATCH_SIZE):
+                entries_batch = [
+                    row[0] for row in all_rows[offset : offset + SMART_SCORE_BATCH_SIZE]
+                ]
+                scores_result.update(
+                    await score_service.batch_calculate_scores(user_id, entries_batch)
+                )
 
             # Normalize to dict[str, float]
             scores: dict[str, float] = {}
             for entry_id, score_data in scores_result.items():
                 if isinstance(score_data, dict):
                     # SimpleScoreService format
-                    scores[entry_id] = float(score_data.get("score", 50.0))
+                    raw_score = score_data.get("score", 50.0)
                 else:
                     # ScoreService format
-                    scores[entry_id] = float(score_data)
+                    raw_score = score_data
+                if isinstance(raw_score, (int, float)):
+                    numeric_score = float(raw_score)
+                    scores[entry_id] = numeric_score if isfinite(numeric_score) else 50.0
+                else:
+                    scores[entry_id] = 50.0
 
             # Build items with scores
             items_with_scores: list[tuple[EntryResponse, float]] = []
@@ -408,7 +423,7 @@ class EntryService:
         # Use model_dump(exclude_unset=True) to only update explicitly set fields
         now = datetime.now(UTC)
         update_data = update.model_dump(exclude_unset=True)
-        preference_signal_type: str | None = None
+        preference_changed = False
 
         if "is_read" in update_data and update.is_read is not None:
             user_entry.is_read = update.is_read
@@ -420,9 +435,8 @@ class EntryService:
             new_is_liked = update.is_liked
 
             # Only trigger preference update if value actually changed
-            if old_is_liked != new_is_liked and new_is_liked is not None:
-                # Map is_liked to signal type
-                preference_signal_type = "like" if new_is_liked else "dislike"
+            if old_is_liked != new_is_liked:
+                preference_changed = True
 
             user_entry.is_liked = new_is_liked
             # Update liked_at timestamp when like/dislike is set (not when cleared to null)
@@ -453,46 +467,28 @@ class EntryService:
                 # Clearing read_later, also clear read_later_until
                 user_entry.read_later_until = None
 
+        if preference_changed:
+            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
 
         # Queue preference update task if needed (M3)
-        if preference_signal_type and self.redis_pool:
+        if preference_changed and self.redis_pool:
             try:
-                # Debounce: Check if we recently queued this signal for this entry
-                debounce_key = RedisKeys.pref_update_debounce(
-                    user_id, entry_id, preference_signal_type
+                await cast(Any, self.redis_pool).sadd(
+                    RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                    user_id,
                 )
-
-                # Try to set the key only if it doesn't exist (NX)
-                was_set = await self.redis_pool.set(
-                    debounce_key,
-                    "1",
-                    ex=RedisKeys.PREF_UPDATE_DEBOUNCE_TTL,
-                    nx=True,  # SET if not exists
+                await self.redis_pool.enqueue_job(
+                    "rebuild_user_preference",
+                    user_id=user_id,
                 )
-
-                # Only queue if key was newly set (not debounced)
-                if was_set:
-                    await self.redis_pool.enqueue_job(
-                        "update_user_preference",
-                        user_id=user_id,
-                        entry_id=entry_id,
-                        signal_type=preference_signal_type,
-                    )
-                    logger.info(
-                        f"Queued preference update: user={user_id[:8]}... "
-                        f"entry={entry_id[:8]}... signal={preference_signal_type}"
-                    )
-                else:
-                    logger.debug(
-                        f"Preference update debounced: user={user_id[:8]}... "
-                        f"entry={entry_id[:8]}... signal={preference_signal_type}"
-                    )
+                logger.info(
+                    f"Queued preference sync: user={user_id[:8]}... entry={entry_id[:8]}..."
+                )
             except Exception as e:
                 # Don't fail the request if task queueing fails
                 # The user's like/dislike is already saved
                 logger.warning(f"Failed to queue preference update: {e}")
-                pass
 
         # Return updated entry
         return await self.get_entry(entry_id, user_id)

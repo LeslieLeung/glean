@@ -9,6 +9,7 @@ from typing import Any
 
 from arq import Retry
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import get_logger
@@ -17,18 +18,62 @@ from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
 from glean_database.session import get_session_context
 from glean_rss import fetch_and_extract_fulltext, fetch_feed, parse_feed, postprocess_html
+from glean_vector.config import is_active_embedding_model, is_active_vector_backend
+
+from ._vector_client import ensure_vector_client
 
 logger = get_logger(__name__)
+
+
+def _is_duplicate_feed_guid_error(error: IntegrityError) -> bool:
+    """Check whether IntegrityError is caused by uq_feed_guid violation."""
+    return "uq_feed_guid" in str(getattr(error, "orig", error))
 
 
 async def _is_vectorization_enabled(session: AsyncSession) -> bool:
     """Check if vectorization is enabled and healthy."""
     config_service = TypedConfigService(session)
     config = await config_service.get(EmbeddingConfig)
-    return config.enabled and config.status in (
-        VectorizationStatus.IDLE,
-        VectorizationStatus.REBUILDING,
+    return (
+        config.enabled
+        and is_active_vector_backend(
+            config.vector_backend,
+            config.vector_store_fingerprint,
+        )
+        and is_active_embedding_model(
+            config.model_fingerprint,
+            provider=config.provider,
+            model=config.model,
+            dimension=config.dimension,
+            base_url=config.base_url,
+        )
+        and config.status
+        in (
+            VectorizationStatus.IDLE,
+            VectorizationStatus.REBUILDING,
+        )
     )
+
+
+async def _should_embed_entries(ctx: dict[str, Any], session: AsyncSession) -> bool:
+    """Return whether new entries should enqueue embedding jobs.
+
+    A worker is intentionally allowed to start while the vector backend is
+    unavailable.  Recover the app-scoped client on demand here so a transient
+    startup failure does not disable embedding generation for the lifetime of
+    the worker process.
+    """
+    if not await _is_vectorization_enabled(session):
+        return False
+
+    vector_client, vector_error = ensure_vector_client(ctx)
+    if vector_client is None:
+        logger.warning(
+            "Vector backend unavailable while fetching feed; entries will remain pending",
+            extra={"error": vector_error},
+        )
+        return False
+    return True
 
 
 async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | int]:
@@ -43,6 +88,12 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
         Dictionary with fetch results.
     """
     logger.info("Starting feed fetch", extra={"feed_id": feed_id})
+
+    # Collect entry IDs for embedding; enqueue AFTER the transaction commits
+    # so the embedding worker can see the newly inserted entries.
+    pending_embedding_ids: list[str] = []
+    fetch_result_dict: dict[str, str | int] = {"status": "error", "message": "Unknown"}
+
     async with get_session_context() as session:
         try:
             # Get feed from database
@@ -110,11 +161,19 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             if cache_headers and "last-modified" in cache_headers:
                 feed.last_modified = cache_headers["last-modified"]
 
+            # Check vectorization once for the entire batch
+            should_embed = await _should_embed_entries(ctx, session)
+
             # Process entries
             new_entries = 0
             latest_entry_time = feed.last_entry_at
 
             for parsed_entry in parsed_feed.entries:
+                if parsed_entry.published_at and (
+                    latest_entry_time is None or parsed_entry.published_at > latest_entry_time
+                ):
+                    latest_entry_time = parsed_entry.published_at
+
                 # Check if entry already exists
                 stmt = select(Entry).where(
                     Entry.feed_id == feed.id, Entry.guid == parsed_entry.guid
@@ -171,23 +230,28 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     summary=parsed_entry.summary,
                     published_at=parsed_entry.published_at,
                 )
-                session.add(entry)
-                await session.flush()  # Get entry ID
+                try:
+                    # Use savepoint so one duplicate insert won't abort the whole feed fetch tx.
+                    async with session.begin_nested():
+                        session.add(entry)
+                        await session.flush()  # Get entry ID
+                except IntegrityError as e:
+                    if _is_duplicate_feed_guid_error(e):
+                        logger.info(
+                            "Skipping duplicate entry caused by concurrent fetch",
+                            extra={
+                                "feed_id": feed_id,
+                                "guid": parsed_entry.guid,
+                                "url": parsed_entry.url,
+                            },
+                        )
+                        continue
+                    raise
                 new_entries += 1
 
-                # M3: Queue embedding task for new entry (only if vectorization enabled)
-                if ctx.get("milvus_client") and await _is_vectorization_enabled(session):
-                    await ctx["redis"].enqueue_job("generate_entry_embedding", entry.id)
-                    logger.debug(
-                        "Queued embedding task for entry",
-                        extra={"feed_id": feed_id, "entry_id": entry.id},
-                    )
-
-                # Track latest entry time
-                if parsed_entry.published_at and (
-                    latest_entry_time is None or parsed_entry.published_at > latest_entry_time
-                ):
-                    latest_entry_time = parsed_entry.published_at
+                # M3: Collect entry ID for embedding (enqueued after commit)
+                if should_embed:
+                    pending_embedding_ids.append(entry.id)
 
             # Update last_entry_at and schedule next fetch
             if latest_entry_time:
@@ -205,7 +269,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     "total_entries": len(parsed_feed.entries),
                 },
             )
-            return {
+            fetch_result_dict = {
                 "status": "success",
                 "feed_id": feed_id,
                 "new_entries": new_entries,
@@ -248,9 +312,23 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     },
                 )
 
+            # Don't enqueue embedding tasks on error
+            pending_embedding_ids.clear()
+
             # Retry the task
             logger.info("Retrying task in 5 minutes", extra={"feed_id": feed_id})
             raise Retry(defer=timedelta(minutes=5)) from None
+
+    # Enqueue embedding tasks AFTER the session has committed so the worker can see the entries
+    for entry_id in pending_embedding_ids:
+        await ctx["redis"].enqueue_job("generate_entry_embedding", entry_id)
+    if pending_embedding_ids:
+        logger.debug(
+            "Queued embedding tasks after commit",
+            extra={"feed_id": feed_id, "count": len(pending_embedding_ids)},
+        )
+
+    return fetch_result_dict
 
 
 async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:

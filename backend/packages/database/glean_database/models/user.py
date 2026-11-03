@@ -7,7 +7,7 @@ This module defines the User model for storing user account information.
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import BigInteger, Boolean, DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +69,23 @@ class User(Base, TimestampMixin):
     # Settings (JSONB for flexible user preferences)
     settings: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, default=dict, server_default="{}"
+    )
+
+    # Durable preference outbox. Signal-producing transactions increment the
+    # revision; a successful history rebuild advances the synced revision.
+    # Redis remains an acceleration path, while maintenance can recover every
+    # committed signal after a queue outage or process crash.
+    preference_revision: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    preference_synced_revision: Mapped[int] = mapped_column(
+        BigInteger,
+        default=0,
+        server_default="0",
+        nullable=False,
     )
 
     # Relationships

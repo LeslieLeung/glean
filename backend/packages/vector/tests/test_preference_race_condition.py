@@ -8,7 +8,7 @@ import pytest
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_vector.clients.milvus_client import MilvusClient
+from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.services.preference_service import PreferenceService
 
 
@@ -19,9 +19,9 @@ def mock_db_session():
 
 
 @pytest.fixture
-def mock_milvus_client():
-    """Create a mock Milvus client."""
-    client = MagicMock(spec=MilvusClient)
+def mock_vector_client():
+    """Create a mock vector client."""
+    client = MagicMock(spec=VectorStoreClient)
 
     # Mock get_user_preferences to return initial state
     # This will be called multiple times during concurrent updates
@@ -86,7 +86,7 @@ async def mock_redis_client():
 
 @pytest.mark.asyncio
 async def test_concurrent_preference_updates_with_lock(
-    mock_db_session, mock_milvus_client, mock_redis_client
+    mock_db_session, mock_vector_client, mock_redis_client
 ):
     """
     Test that concurrent preference updates don't cause race conditions when using Redis locks.
@@ -99,7 +99,7 @@ async def test_concurrent_preference_updates_with_lock(
     """
     service = PreferenceService(
         db_session=mock_db_session,
-        milvus_client=mock_milvus_client,
+        vector_client=mock_vector_client,
         redis_client=mock_redis_client,
     )
 
@@ -122,11 +122,11 @@ async def test_concurrent_preference_updates_with_lock(
     await asyncio.gather(*tasks)
 
     # Verify both updates completed (called twice)
-    assert mock_milvus_client.upsert_user_preference.call_count == 2
+    assert mock_vector_client.upsert_user_preference.call_count == 2
 
     # Check the final call's sample_count
     # With proper locking, the second update should see the first update's result
-    calls = mock_milvus_client.upsert_user_preference.call_args_list
+    calls = mock_vector_client.upsert_user_preference.call_args_list
 
     # First call should have count around 6.0 (5.0 + 1.0)
     first_call_count = calls[0][1]["sample_count"]
@@ -143,11 +143,11 @@ async def test_concurrent_preference_updates_with_lock(
 
 
 @pytest.mark.asyncio
-async def test_preference_update_without_redis(mock_db_session, mock_milvus_client):
+async def test_preference_update_without_redis(mock_db_session, mock_vector_client):
     """Test that preference updates work even without Redis (degraded mode)."""
     service = PreferenceService(
         db_session=mock_db_session,
-        milvus_client=mock_milvus_client,
+        vector_client=mock_vector_client,
         redis_client=None,  # No Redis
     )
 
@@ -158,11 +158,11 @@ async def test_preference_update_without_redis(mock_db_session, mock_milvus_clie
     await service._update_preference_vector(user_id, embedding, 1.0)
 
     # Verify update completed
-    assert mock_milvus_client.upsert_user_preference.call_count == 1
+    assert mock_vector_client.upsert_user_preference.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_lock_timeout_handling(mock_db_session, mock_milvus_client):
+async def test_lock_timeout_handling(mock_db_session, mock_vector_client):
     """Test handling of lock acquisition timeout."""
     # Create a Redis mock that always fails to acquire lock
     redis = MagicMock(spec=Redis)
@@ -185,7 +185,7 @@ async def test_lock_timeout_handling(mock_db_session, mock_milvus_client):
 
     service = PreferenceService(
         db_session=mock_db_session,
-        milvus_client=mock_milvus_client,
+        vector_client=mock_vector_client,
         redis_client=redis,
     )
 
@@ -198,16 +198,16 @@ async def test_lock_timeout_handling(mock_db_session, mock_milvus_client):
 
 
 @pytest.mark.asyncio
-async def test_lock_release_on_exception(mock_db_session, mock_milvus_client, mock_redis_client):
+async def test_lock_release_on_exception(mock_db_session, mock_vector_client, mock_redis_client):
     """Test that locks are released even when exceptions occur."""
     service = PreferenceService(
         db_session=mock_db_session,
-        milvus_client=mock_milvus_client,
+        vector_client=mock_vector_client,
         redis_client=mock_redis_client,
     )
 
     # Make get_user_preferences raise an exception
-    mock_milvus_client.get_user_preferences = AsyncMock(side_effect=Exception("Milvus error"))
+    mock_vector_client.get_user_preferences = AsyncMock(side_effect=Exception("Milvus error"))
 
     user_id = "test-user-error"
     embedding = np.random.rand(384).tolist()
@@ -217,7 +217,7 @@ async def test_lock_release_on_exception(mock_db_session, mock_milvus_client, mo
         await service._update_preference_vector(user_id, embedding, 1.0)
 
     # Lock should have been released - verify by checking another update succeeds
-    mock_milvus_client.get_user_preferences = AsyncMock(
+    mock_vector_client.get_user_preferences = AsyncMock(
         return_value={
             "positive": {
                 "embedding": np.random.rand(384).tolist(),
@@ -228,17 +228,17 @@ async def test_lock_release_on_exception(mock_db_session, mock_milvus_client, mo
 
     # This should succeed (lock was released)
     await service._update_preference_vector(user_id, embedding, 1.0)
-    assert mock_milvus_client.upsert_user_preference.call_count == 1
+    assert mock_vector_client.upsert_user_preference.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_separate_locks_per_vector_type(
-    mock_db_session, mock_milvus_client, mock_redis_client
+    mock_db_session, mock_vector_client, mock_redis_client
 ):
     """Test that positive and negative preferences have separate locks."""
     service = PreferenceService(
         db_session=mock_db_session,
-        milvus_client=mock_milvus_client,
+        vector_client=mock_vector_client,
         redis_client=mock_redis_client,
     )
 
@@ -246,7 +246,7 @@ async def test_separate_locks_per_vector_type(
     embedding = np.random.rand(384).tolist()
 
     # Mock to return both positive and negative preferences
-    mock_milvus_client.get_user_preferences = AsyncMock(
+    mock_vector_client.get_user_preferences = AsyncMock(
         return_value={
             "positive": {
                 "embedding": np.random.rand(384).tolist(),
@@ -275,4 +275,4 @@ async def test_separate_locks_per_vector_type(
     assert duration < 1.0, f"Concurrent updates of different types took too long: {duration}s"
 
     # Both should complete
-    assert mock_milvus_client.upsert_user_preference.call_count == 2
+    assert mock_vector_client.upsert_user_preference.call_count == 2

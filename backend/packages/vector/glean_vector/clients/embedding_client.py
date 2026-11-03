@@ -33,6 +33,7 @@ class EmbeddingClient:
         self,
         provider: str | None = None,
         rate_limit: int | None = None,
+        redis: Any | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -40,14 +41,18 @@ class EmbeddingClient:
 
         Args:
             provider: Provider name (optional, uses config if None)
+            rate_limit: Shared provider RPM. ``0``/``None`` disables limiting.
+            redis: Optional Redis client so concurrent jobs share one RPM budget.
             **kwargs: Provider-specific configuration
         """
         self._provider: EmbeddingProvider = EmbeddingProviderFactory.create(
             provider=provider, **kwargs
         )
-        self._limiter = RateLimiter(rate_limit) if rate_limit else None
+        self._limiter = RateLimiter(rate_limit, redis=redis) if rate_limit else None
 
-    async def generate_embedding(self, text: str) -> tuple[list[float], dict[str, Any]]:
+    async def generate_embedding(
+        self, text: str, *, deadline: float | None = None
+    ) -> tuple[list[float], dict[str, Any]]:
         """
         Generate embedding for a single text.
 
@@ -63,12 +68,11 @@ class EmbeddingClient:
             >>> print(f"Dimension: {len(embedding)}")
             >>> print(f"Model: {metadata['model']}")
         """
-        if self._limiter:
-            await self._limiter.acquire()
+        await self.acquire_rate_limit(deadline=deadline)
         return await self._provider.generate_embedding(text)
 
     async def generate_embeddings_batch(
-        self, texts: list[str]
+        self, texts: list[str], *, deadline: float | None = None
     ) -> tuple[list[list[float]], dict[str, Any]]:
         """
         Generate embeddings for multiple texts.
@@ -85,8 +89,18 @@ class EmbeddingClient:
             >>> embeddings, metadata = await client.generate_embeddings_batch(texts)
             >>> print(f"Generated {len(embeddings)} embeddings")
         """
+        await self.acquire_rate_limit(deadline=deadline)
+        return await self._provider.generate_embeddings_batch(texts)
+
+    async def acquire_rate_limit(self, *, deadline: float | None = None) -> None:
+        """Reserve one provider request slot, honoring the optional job deadline."""
         if self._limiter:
-            await self._limiter.acquire()
+            await self._limiter.acquire(deadline=deadline)
+
+    async def generate_embeddings_batch_acquired(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], dict[str, Any]]:
+        """Generate a batch after ``acquire_rate_limit`` has already reserved the slot."""
         return await self._provider.generate_embeddings_batch(texts)
 
     async def close(self) -> None:
@@ -115,3 +129,11 @@ class EmbeddingClient:
     def provider_name(self) -> str:
         """Get provider name."""
         return self._provider.provider_name
+
+    @property
+    def batch_size(self) -> int:
+        """Max texts the provider accepts in one embedding request."""
+        value = getattr(self._provider, "batch_size", 20)
+        if isinstance(value, int) and value > 0:
+            return value
+        return 20

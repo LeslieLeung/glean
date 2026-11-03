@@ -5,6 +5,7 @@ Handles bookmark CRUD operations and folder/tag associations.
 """
 
 from math import ceil
+from typing import Any, cast
 
 from arq.connections import ArqRedis
 from sqlalchemy import func, select
@@ -29,6 +30,8 @@ from glean_database.models import (
     Tag,
 )
 from glean_rss import strip_html_tags
+
+from .preference_dirty_service import mark_preferences_dirty
 
 logger = get_logger(__name__)
 
@@ -296,43 +299,13 @@ class BookmarkService:
             if tag_result.scalar_one_or_none():
                 self.session.add(BookmarkTag(bookmark_id=bookmark.id, tag_id=tag_id))
 
+        if entry_id:
+            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
 
-        # Queue preference update task if this is an entry bookmark (M3)
-        if entry_id and self.redis_pool:
-            try:
-                # Debounce: Check if we recently queued bookmark signal for this entry
-                debounce_key = RedisKeys.pref_update_debounce(user_id, entry_id, "bookmark")
-
-                # Try to set the key only if it doesn't exist (NX)
-                was_set = await self.redis_pool.set(
-                    debounce_key,
-                    "1",
-                    ex=RedisKeys.PREF_UPDATE_DEBOUNCE_TTL,
-                    nx=True,  # SET if not exists
-                )
-
-                # Only queue if key was newly set (not debounced)
-                if was_set:
-                    await self.redis_pool.enqueue_job(
-                        "update_user_preference",
-                        user_id=user_id,
-                        entry_id=entry_id,
-                        signal_type="bookmark",
-                    )
-                    logger.info(
-                        f"Queued preference update: user={user_id[:8]}... "
-                        f"entry={entry_id[:8]}... signal=bookmark"
-                    )
-                else:
-                    logger.debug(
-                        f"Preference update debounced: user={user_id[:8]}... "
-                        f"entry={entry_id[:8]}... signal=bookmark"
-                    )
-            except Exception as e:
-                # Don't fail the request if task queueing fails
-                logger.warning(f"Failed to queue preference update: {e}")
-                pass
+        # Queue an idempotent current-state sync for entry-backed bookmarks.
+        if entry_id:
+            await self._queue_preference_sync(user_id)
 
         # Return with associations
         return await self.get_bookmark(bookmark.id, user_id), needs_metadata_fetch
@@ -376,8 +349,31 @@ class BookmarkService:
             ValueError: If bookmark not found or unauthorized.
         """
         bookmark = await self._get_bookmark_or_raise(bookmark_id, user_id)
+        entry_id = bookmark.entry_id
         await self.session.delete(bookmark)
+        if entry_id:
+            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
+        if entry_id:
+            await self._queue_preference_sync(user_id)
+
+    async def _queue_preference_sync(self, user_id: str) -> None:
+        """Best-effort enqueue of a current-state preference rebuild."""
+        if not self.redis_pool:
+            return
+        try:
+            await cast(Any, self.redis_pool).sadd(
+                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
+                user_id,
+            )
+            await self.redis_pool.enqueue_job(
+                "rebuild_user_preference",
+                user_id=user_id,
+            )
+        except Exception as error:
+            # The bookmark write has already committed and remains the source
+            # of truth; a later full rebuild can safely recover this signal.
+            logger.warning(f"Failed to queue preference sync: {error}")
 
     async def add_folder(self, bookmark_id: str, user_id: str, folder_id: str) -> BookmarkResponse:
         """

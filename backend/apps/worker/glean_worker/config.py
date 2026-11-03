@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
 
+# arq worker process settings. Embedding jobs size their claims against these.
+WORKER_MAX_JOBS = 20
+WORKER_JOB_TIMEOUT_SECONDS = 300
+WORKER_KEEP_RESULT_SECONDS = 3600
+# Leave headroom so a job can restore in-flight claims before arq cancels it.
+EMBEDDING_JOB_DEADLINE_MARGIN_SECONDS = 60
+# Hard cap on entries one embedding job will attempt, even at high RPM.
+MAX_EMBEDDING_JOB_ENTRIES = 200
+
+
 @lru_cache
 def get_settings() -> Settings:
     """

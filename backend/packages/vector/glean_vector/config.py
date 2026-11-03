@@ -1,9 +1,14 @@
 """Configuration for vector services."""
 
+import hashlib
+import json
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 # Find .env file in project root
 _env_file = Path(__file__).parent.parent.parent.parent.parent / ".env"
@@ -49,6 +54,55 @@ class MilvusConfig(BaseSettings):
     prefs_collection: str = "user_preferences"
 
 
+class VectorBackendConfig(BaseSettings):
+    """Vector backend selector configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="VECTOR_",
+        env_file=str(_env_file) if _env_file.exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    backend: Literal["milvus", "pgvector"] = "milvus"
+
+    @field_validator("backend", mode="before")
+    @classmethod
+    def validate_backend(cls, value: str) -> str:
+        backend = str(value).lower()
+        if backend not in {"milvus", "pgvector"}:
+            raise ValueError("VECTOR_BACKEND must be either 'milvus' or 'pgvector'")
+        return backend
+
+
+class PgVectorConfig(BaseSettings):
+    """pgvector backend configuration."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="PGVECTOR_",
+        env_file=str(_env_file) if _env_file.exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    database_url: str = ""
+    entries_table: str = "entry_embeddings"
+    prefs_table: str = "user_preference_vectors"
+    metadata_table: str = "vector_store_metadata"
+
+
+class DatabaseURLConfig(BaseSettings):
+    """Shared relational URL fallback loaded from the repository .env."""
+
+    model_config = SettingsConfigDict(
+        env_file=str(_env_file) if _env_file.exists() else None,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    database_url: str = "postgresql+asyncpg://glean:changeme@localhost:5432/glean"
+
+
 class PreferenceConfig(BaseSettings):
     """Preference calculation configuration."""
 
@@ -85,8 +139,107 @@ class ScoreConfig(BaseSettings):
 # Global config instances
 embedding_config = EmbeddingConfig()
 milvus_config = MilvusConfig()
+vector_backend_config = VectorBackendConfig()
+pgvector_config = PgVectorConfig()
+database_url_config = DatabaseURLConfig()
 preference_config = PreferenceConfig()
 score_config = ScoreConfig()
+
+
+def embedding_model_fingerprint(
+    provider: str,
+    model: str,
+    dimension: int,
+    base_url: str | None,
+) -> str:
+    """Return a stable identity for the embedding vector space."""
+    payload = {
+        "provider": provider.strip().lower(),
+        "model": model.strip(),
+        "dimension": dimension,
+        "base_url": (base_url or "").strip().rstrip("/"),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def vector_store_fingerprint() -> str:
+    """Return a non-secret fingerprint of the selected store location."""
+    backend = vector_backend_config.backend.lower()
+    if backend == "milvus":
+        payload: dict[str, Any] = {
+            "backend": backend,
+            "host": milvus_config.host.strip().lower(),
+            "port": milvus_config.port,
+            "entries": milvus_config.entries_collection,
+            "preferences": milvus_config.prefs_collection,
+        }
+    else:
+        # Hashing the URL keeps credentials out of system config and API
+        # responses while still detecting a deployment pointed at another DB.
+        database_url = resolve_pgvector_database_url()
+        try:
+            database_location = make_url(database_url).render_as_string(hide_password=True)
+        except Exception:
+            database_location = database_url
+        payload = {
+            "backend": backend,
+            "database_url_hash": hashlib.sha256(database_location.encode()).hexdigest(),
+            "entries": pgvector_config.entries_table,
+            "preferences": pgvector_config.prefs_table,
+            "metadata": pgvector_config.metadata_table,
+        }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def resolve_pgvector_database_url() -> str:
+    """Resolve pgvector's URL using the same .env fallback as API/worker."""
+    return (
+        pgvector_config.database_url
+        or os.getenv("DATABASE_URL", "")
+        or database_url_config.database_url
+    )
+
+
+def is_active_vector_backend(
+    stored_backend: str | None,
+    stored_store_fingerprint: str | None = None,
+) -> bool:
+    """Return whether persisted vector data belongs to this deployment.
+
+    Missing identity markers are deliberately *not* accepted by normal
+    readers/writers. API startup performs read-only validation and adopts
+    compatible legacy Milvus stores (or empty pgvector stores) first. This
+    keeps a worker that starts earlier during a rolling deployment from
+    provisioning or writing an unverified vector store.
+    """
+    runtime_backend = vector_backend_config.backend.lower()
+    return (
+        stored_backend is not None
+        and stored_store_fingerprint is not None
+        and stored_backend.lower() == runtime_backend
+        and stored_store_fingerprint == vector_store_fingerprint()
+    )
+
+
+def is_active_embedding_model(
+    stored_fingerprint: str | None,
+    *,
+    provider: str,
+    model: str,
+    dimension: int,
+    base_url: str | None,
+) -> bool:
+    """Require the persisted generation to match this embedding vector space."""
+    return stored_fingerprint is not None and stored_fingerprint == embedding_model_fingerprint(
+        provider,
+        model,
+        dimension,
+        base_url,
+    )
 
 
 def embedding_config_from_settings(data: dict[str, Any]) -> EmbeddingConfig:

@@ -1,7 +1,7 @@
 # Glean Docker Compose Configuration
 # Usage:
-#   Full deployment (with Milvus): docker compose up -d
-#   Lite deployment (without Milvus): docker compose -f docker-compose.lite.yml up -d
+#   pgvector deployment (recommended): docker compose -f docker-compose.pgvector.yml up -d
+#   Milvus deployment: docker compose up -d
 #   Local development: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 #
 # Environment variables can be set in .env file:
@@ -13,11 +13,11 @@
 #   - CREATE_ADMIN: Create admin account on startup (default: true)
 #   - ADMIN_USERNAME/PASSWORD: Admin credentials (default: admin/Admin123!)
 #   - DEBUG: Enable debug mode (default: false)
-#   - MILVUS_HOST/PORT: Milvus connection (for Phase 3 features)
+#   - MILVUS_HOST/PORT: Milvus connection
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: glean-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-glean}
@@ -58,6 +58,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
       CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-milvus}
       # Only backend runs migrations to avoid race conditions
       RUN_MIGRATIONS: "true"
       # Admin auto-creation (enabled by default, set to false to disable)
@@ -68,6 +69,10 @@ services:
       # Milvus configuration (for vector embeddings)
       MILVUS_HOST: milvus
       MILVUS_PORT: ${MILVUS_PORT:-19530}
+      PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
+      PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
+      PGVECTOR_PREFS_TABLE: ${PGVECTOR_PREFS_TABLE:-user_preference_vectors}
+      PGVECTOR_METADATA_TABLE: ${PGVECTOR_METADATA_TABLE:-vector_store_metadata}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-api.log}
@@ -102,9 +107,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-milvus}
       # Milvus configuration
       MILVUS_HOST: milvus
       MILVUS_PORT: ${MILVUS_PORT:-19530}
+      PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
+      PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
+      PGVECTOR_PREFS_TABLE: ${PGVECTOR_PREFS_TABLE:-user_preference_vectors}
+      PGVECTOR_METADATA_TABLE: ${PGVECTOR_METADATA_TABLE:-vector_store_metadata}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FILE: ${LOG_FILE:-/app/logs/glean-worker.log}
@@ -150,7 +160,7 @@ services:
       - glean-network
     restart: unless-stopped
 
-  # Milvus services (for Phase 3 features: smart recommendations, preference learning)
+  # Milvus services
   milvus-etcd:
     image: quay.io/coreos/etcd:v3.5.5
     container_name: glean-milvus-etcd
