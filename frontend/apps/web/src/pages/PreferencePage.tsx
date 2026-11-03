@@ -280,11 +280,9 @@ export default function PreferencePage() {
                 </div>
                 <div>
                   <h2 className="font-display text-foreground text-lg font-semibold">
-                    {t('preferences.topSources.title')}
+                    {t('preferences.topSources')}
                   </h2>
-                  <p className="text-muted-foreground text-sm">
-                    {t('preferences.topSources.description')}
-                  </p>
+                  <p className="text-muted-foreground text-sm">{t('preferences.topSourcesDesc')}</p>
                 </div>
               </div>
 
@@ -297,7 +295,7 @@ export default function PreferencePage() {
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <BarChart3 className="text-primary h-4 w-4 shrink-0" />
                       <span className="text-foreground truncate text-sm font-medium">
-                        {t('preferences.topSources.feed', { id: source.feed_id.slice(0, 8) })}
+                        {source.feed_title}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -328,11 +326,9 @@ export default function PreferencePage() {
                 </div>
                 <div>
                   <h2 className="font-display text-foreground text-lg font-semibold">
-                    {t('preferences.topAuthors.title')}
+                    {t('preferences.topAuthors')}
                   </h2>
-                  <p className="text-muted-foreground text-sm">
-                    {t('preferences.topAuthors.description')}
-                  </p>
+                  <p className="text-muted-foreground text-sm">{t('preferences.topAuthorsDesc')}</p>
                 </div>
               </div>
 

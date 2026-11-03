@@ -199,9 +199,11 @@
     "cards": {
       "totalUsers": "用户总数",
       "activeUsers": "活跃用户",
-      "totalFeeds": "订阅总数",
+      "totalFeeds": "订阅源总数",
       "totalEntries": "文章总数",
+      "totalSubscriptions": "订阅总数",
       "newUsers": "今日新增用户",
+      "newUsersToday": "今日新增用户",
       "newEntries": "今日新增文章",
       "last7Days": "过去 7 天"
     },
