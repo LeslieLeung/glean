@@ -161,7 +161,6 @@ export function ArticleReader({
   const updateMutation = useUpdateEntryState()
   const contentRef = useContentRenderer(entry.content || entry.summary || undefined)
   const [isBookmarking, setIsBookmarking] = useState(false)
-  const [hasOutline, setHasOutline] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
   const barsVisible = useScrollHide(scrollContainerRef)
@@ -172,9 +171,9 @@ export function ArticleReader({
   const shouldShowCloseButton = showCloseButton ?? isMobile
   const shouldShowFullscreenButton = showFullscreenButton ?? !isMobile
 
-  // Reset outline state when entry changes
+  // Each article starts at the top, including when the reader is reused.
   useEffect(() => {
-    setHasOutline(false)
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0
   }, [entry.id])
 
   // Animation triggers for action buttons
@@ -352,15 +351,13 @@ export function ArticleReader({
       )}
 
       {/* Content with Outline */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="article-reader-body relative flex min-h-0 flex-1 overflow-hidden">
         {/* Scrollable content area - hide scrollbar for cleaner reading */}
         <div
           ref={scrollContainerRef}
-          className={`hide-scrollbar flex-1 overflow-y-auto ${isMobile ? 'pt-14 pb-16' : ''}`}
+          className={`hide-scrollbar min-w-0 flex-1 overflow-y-auto ${isMobile ? 'pt-14 pb-16' : ''}`}
         >
-          <div
-            className={`px-4 py-6 sm:px-6 sm:py-8 ${!isMobile ? 'mx-auto max-w-3xl' : 'max-w-3xl'}`}
-          >
+          <div className="article-reader-copy mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
             {/* Mobile: Author and date at top of content */}
             {isMobile && (entry.author || entry.published_at) && (
               <div className="text-muted-foreground mb-4 flex items-center gap-2 text-xs">
@@ -403,27 +400,16 @@ export function ArticleReader({
           </div>
         </div>
 
-        {/* Desktop Outline - Sidebar that only takes space when there are headings */}
-        {!isMobile && (entry.content || entry.summary) && (
-          <div className={`hidden flex-col xl:flex ${hasOutline ? 'w-52 shrink-0' : 'w-0'}`}>
-            <ArticleOutline
-              contentRef={contentRef}
-              scrollContainerRef={scrollContainerRef}
-              isMobile={false}
-              onHasHeadings={setHasOutline}
-            />
-          </div>
+        {(entry.content || entry.summary) && (
+          <ArticleOutline
+            key={`${entry.id}-${isMobile}`}
+            contentRef={contentRef}
+            scrollContainerRef={scrollContainerRef}
+            contentKey={entry.content || entry.summary || ''}
+            isMobile={isMobile}
+          />
         )}
       </div>
-
-      {/* Mobile Outline */}
-      {isMobile && (entry.content || entry.summary) && (
-        <ArticleOutline
-          contentRef={contentRef}
-          scrollContainerRef={scrollContainerRef}
-          isMobile={true}
-        />
-      )}
 
       {/* Mobile Bottom Action Bar - auto-hide on scroll */}
       {isMobile && (

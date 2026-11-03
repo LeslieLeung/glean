@@ -56,5 +56,12 @@
   "article": {
     "noContent": "No content available",
     "viewOriginal": "View Original Article"
+  },
+  "outline": {
+    "title": "Table of contents",
+    "show": "Show table of contents",
+    "sections": "Section progress",
+    "readingProgress": "Reading progress: {{percent}}%",
+    "backToTop": "Back to top"
   }
 }
