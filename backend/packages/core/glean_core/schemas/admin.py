@@ -68,6 +68,25 @@ class ToggleUserStatusRequest(BaseModel):
     is_active: bool
 
 
+class ResetPasswordRequest(BaseModel):
+    """Reset user password request schema."""
+
+    password: str = Field(..., min_length=6)
+
+
+class ImportSubscriptionsRequest(BaseModel):
+    """Import subscriptions from another user request schema."""
+
+    source_user_id: str
+
+
+class ImportSubscriptionsResponse(BaseModel):
+    """Import subscriptions response schema."""
+
+    imported: int
+    skipped: int
+
+
 class DashboardStatsResponse(BaseModel):
     """Dashboard statistics response schema."""
 
