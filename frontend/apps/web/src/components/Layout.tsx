@@ -612,7 +612,7 @@ export function Layout() {
 
       {showAddFeedDialog && (
         <AddFeedDialog
-          defaultFolderId={currentFolderId}
+          defaultFolderId={isReaderPage ? currentFolderId : undefined}
           onClose={() => setShowAddFeedDialog(false)}
         />
       )}
