@@ -5,8 +5,9 @@ Parses RSS and Atom feeds using feedparser.
 """
 
 import html
+import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import feedparser
@@ -112,12 +113,105 @@ class ParsedEntry:
             self.published_at = None
 
 
+def _mapping(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    raw = cast(dict[object, object], value)
+    return {str(key): item for key, item in raw.items()}
+
+
+def _text(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _parsed_time(value: object) -> tuple[int, ...] | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    utc = parsed.astimezone(UTC)
+    return (utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second)
+
+
+def _author_name(value: object) -> str | None:
+    mapped = _mapping(value)
+    if mapped is None:
+        return None
+    name = mapped.get("name")
+    return name if isinstance(name, str) else None
+
+
+def _json_author(item: dict[str, object]) -> str | None:
+    authors = item.get("authors")
+    if isinstance(authors, list):
+        for author in cast(list[object], authors):
+            name = _author_name(author)
+            if name:
+                return name
+    return _author_name(item.get("author"))
+
+
+def _parse_json_feed(content: str) -> ParsedFeed | None:
+    """Parse a JSON Feed document. Returns None when the body is not one."""
+    if not content.lstrip().startswith("{"):
+        return None
+    try:
+        payload = _mapping(cast(object, json.loads(content)))
+    except json.JSONDecodeError:
+        return None
+    if payload is None:
+        return None
+    version = payload.get("version")
+    if not isinstance(version, str) or "jsonfeed.org" not in version:
+        return None
+
+    content_items: list[dict[str, Any]] = []
+    raw_items = payload.get("items")
+    if isinstance(raw_items, list):
+        for index, raw_item in enumerate(cast(list[object], raw_items)):
+            item = _mapping(raw_item)
+            if item is None:
+                continue
+            entry: dict[str, Any] = {
+                "id": _text(item.get("id")) or _text(item.get("url")) or f"item-{index}",
+                "link": _text(item.get("url")) or _text(item.get("external_url")),
+                "title": _text(item.get("title")),
+                "author": _json_author(item),
+                "summary": _text(item.get("summary")) or _text(item.get("content_text")),
+            }
+            html_content = _text(item.get("content_html"))
+            text_content = _text(item.get("content_text"))
+            body = html_content or text_content
+            if body:
+                entry["content"] = [{"value": body}]
+            published = _parsed_time(item.get("date_published")) or _parsed_time(
+                item.get("date_modified")
+            )
+            if published:
+                entry["published_parsed"] = published
+            content_items.append(entry)
+
+    feed_info: dict[str, Any] = {
+        "title": _text(payload.get("title")),
+        "description": _text(payload.get("description")),
+        "link": _text(payload.get("home_page_url")) or _text(payload.get("feed_url")),
+        "language": payload.get("language") if isinstance(payload.get("language"), str) else None,
+        "icon": _text(payload.get("icon")) or _text(payload.get("favicon")),
+    }
+    parsed: dict[str, Any] = {"feed": feed_info, "entries": content_items}
+    return ParsedFeed(parsed)  # type: ignore[arg-type]
+
+
 async def parse_feed(content: str, url: str) -> ParsedFeed:
     """
-    Parse RSS/Atom feed from content.
+    Parse RSS, Atom, or JSON Feed content.
 
     Args:
-        content: Feed XML content.
+        content: Feed document.
         url: Feed URL (used for relative link resolution).
 
     Returns:
@@ -126,6 +220,10 @@ async def parse_feed(content: str, url: str) -> ParsedFeed:
     Raises:
         ValueError: If feed parsing fails.
     """
+    json_feed = _parse_json_feed(content)
+    if json_feed is not None:
+        return json_feed
+
     data: FeedParserDict = feedparser.parse(content)  # type: ignore[reportUnknownMemberType]
 
     if not data.get("version"):  # type: ignore[reportUnknownMemberType]

@@ -62,3 +62,156 @@ async def test_rejects_broken_advertised_feed():
         pytest.raises(ValueError, match="No RSS feed"),
     ):
         await discover_feed("https://example.com/")
+
+
+@pytest.mark.asyncio
+async def test_discovers_icon_anchor_without_autodiscovery_link():
+    """Halo and similar sites only expose the feed as an RSS icon anchor."""
+
+    def respond(request):
+        if request.url.path == "/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html><body><a href='https://example.com/feed.xml'>"
+                    "<i class='i-ri-rss-fill'></i></a></body></html>"
+                ),
+            )
+        assert request.url.path == "/feed.xml"
+        return httpx.Response(200, text=RSS)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com") == (
+            "https://example.com/feed.xml",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_probes_conventional_feed_path_when_page_has_no_feed_link():
+    def respond(request):
+        if request.url.path == "/feed.xml":
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text="<html><a href='/sitemap.xml'>Sitemap</a></html>",
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/feed.xml",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_accepts_autodiscovery_type_with_charset_parameter():
+    def respond(request):
+        if request.url.path == "/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    '<link rel="alternate" type="application/rss+xml; charset=UTF-8" href="/rss">'
+                ),
+            )
+        assert request.url.path == "/rss"
+        return httpx.Response(200, text=RSS)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/rss",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_discovers_anchor_with_rss_class_and_nonstandard_href():
+    """RSSHub-Radar follows a link whose class contains an rss token."""
+
+    def respond(request):
+        if request.url.path == "/subscribe":
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text="<html><a class='button rss' href='/subscribe'>Subscribe</a></html>",
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/subscribe",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_discovers_anchor_whose_text_is_only_rss():
+    def respond(request):
+        if request.url.path == "/custom":
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text="<html><a href='/custom'>Subscribe via RSS</a></html>",
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/custom",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_discovers_feed_scheme_and_extension():
+    def respond(request):
+        if request.url.path == "/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text="<a href='feed://example.com/feed.atom'>RSS</a>",
+            )
+        assert request.url.scheme == "https"
+        assert request.url.path == "/feed.atom"
+        return httpx.Response(200, text=RSS)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/feed.atom",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_discovers_json_feed_link():
+    document = (
+        '{"version":"https://jsonfeed.org/version/1.1","title":"Valid",'
+        '"home_page_url":"https://example.com","items":[]}'
+    )
+
+    def respond(request):
+        if request.url.path == "/feed.json":
+            return httpx.Response(
+                200, text=document, headers={"content-type": "application/feed+json"}
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text='<link type="application/feed+json" href="/feed.json">',
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/feed.json",
+            "Valid",
+        )
