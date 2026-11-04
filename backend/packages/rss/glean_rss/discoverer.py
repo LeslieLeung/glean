@@ -15,8 +15,10 @@ from .parser import parse_feed
 from .safe_http import safe_async_client
 
 # MIME types accepted by RSSHub-Radar's getPageRSS. Charset parameters are
-# stripped before comparison. Generic application/xml is intentionally absent
-# so a sitemap link is not treated as a feed.
+# stripped before comparison. Generic XML is handled separately: Radar skips
+# it, but sites advertise real feeds as application/xml (for example
+# /updates.xml). Those links are fetched, and parsing rejects sitemaps.
+_GENERIC_XML_MIME_TYPES = frozenset({"application/xml", "text/xml"})
 _FEED_MIME_TYPES = frozenset(
     {
         "application/rss+xml",
@@ -204,9 +206,14 @@ def _candidate_feed_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
 
 
 def _link_advertises_feed(link: Tag, base_url: str, href: str) -> bool:
-    """Return whether a link element is an RSS, Atom, or JSON Feed autodiscovery tag."""
+    """Return whether a link element is an RSS, Atom, JSON Feed, or generic XML link."""
     mime = _attr_text(link, "type").lower().split(";", 1)[0].strip()
-    if mime in _FEED_MIME_TYPES or "rss" in mime or "atom" in mime:
+    if (
+        mime in _FEED_MIME_TYPES
+        or mime in _GENERIC_XML_MIME_TYPES
+        or "rss" in mime
+        or "atom" in mime
+    ):
         return True
     rel = _attr_text(link, "rel").lower()
     absolute = _absolute_http_url(base_url, href)
@@ -255,8 +262,12 @@ def _absolute_http_url(base_url: str, href: str) -> str | None:
     stripped = _without_feed_scheme(href.strip())
     if not stripped or stripped.startswith(("#", "mailto:", "javascript:")):
         return None
-    absolute = urljoin(base_url, stripped).split("#", 1)[0]
-    parsed = urlparse(absolute)
+    try:
+        absolute = urljoin(base_url, stripped).split("#", 1)[0]
+        parsed = urlparse(absolute)
+    except ValueError:
+        # urljoin rejects malformed targets such as "http://[broken".
+        return None
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
     return absolute

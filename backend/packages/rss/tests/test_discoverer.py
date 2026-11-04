@@ -248,6 +248,57 @@ async def test_keeps_external_feed_when_same_origin_anchor_is_not_a_feed():
 
 
 @pytest.mark.asyncio
+async def test_discovers_generic_xml_autodiscovery_link():
+    """application/xml alternate links are feeds until parsing says otherwise."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    '<link rel="alternate" type="application/xml" href="/sitemap.xml">'
+                    '<link rel="alternate" type="application/xml" href="/updates.xml">'
+                ),
+            )
+        if request.url.path == "/updates.xml":
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(200, text="<urlset></urlset>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/updates.xml",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_skips_malformed_anchor_and_keeps_autodiscovery():
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html>"
+                    '<link rel="alternate" type="application/rss+xml" href="/feed.xml">'
+                    "<a href='http://[broken'>Broken</a>"
+                    "</html>"
+                ),
+            )
+        assert request.url.path == "/feed.xml"
+        return httpx.Response(200, text=RSS)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (
+            "https://example.com/feed.xml",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
 async def test_discovers_json_feed_link():
     document = (
         '{"version":"https://jsonfeed.org/version/1.1","title":"Valid",'
