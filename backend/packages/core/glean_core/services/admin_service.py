@@ -12,6 +12,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.published_at import effective_published_at
 from glean_database.models.admin import AdminRole, AdminUser
 from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
@@ -527,7 +528,7 @@ class AdminService:
         result = await self.session.execute(count_query)
         total = result.scalar_one()
 
-        # Apply sorting
+        # Apply sorting. Abnormal feed dates are already stored in published_at.
         sort_column = getattr(Entry, sort, Entry.created_at)
         if order == "desc":
             query = query.order_by(sort_column.desc())
@@ -548,7 +549,9 @@ class AdminService:
                 "url": row.Entry.url,
                 "title": row.Entry.title,
                 "author": row.Entry.author,
-                "published_at": row.Entry.published_at,
+                "published_at": effective_published_at(
+                    row.Entry.published_at, row.Entry.created_at
+                ),
                 "created_at": row.Entry.created_at,
             }
             for row in rows
@@ -585,7 +588,7 @@ class AdminService:
             "author": row.Entry.author,
             "content": row.Entry.content,
             "summary": row.Entry.summary,
-            "published_at": row.Entry.published_at,
+            "published_at": effective_published_at(row.Entry.published_at, row.Entry.created_at),
             "created_at": row.Entry.created_at,
         }
 

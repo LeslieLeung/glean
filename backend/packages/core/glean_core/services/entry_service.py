@@ -13,6 +13,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys, get_logger
+from glean_core.published_at import effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from glean_database.models import (
     Bookmark,
@@ -225,7 +226,7 @@ class EntryService:
                     author=entry.author,
                     content=entry.content,
                     summary=entry.summary,
-                    published_at=entry.published_at,
+                    published_at=effective_published_at(entry.published_at, entry.created_at),
                     created_at=entry.created_at,
                     is_read=bool(user_entry.is_read) if user_entry else False,
                     is_liked=user_entry.is_liked if user_entry else None,
@@ -248,7 +249,9 @@ class EntryService:
             end_idx = start_idx + per_page
             items = [item for item, _ in items_with_scores[start_idx:end_idx]]
         else:
-            # Timeline view - standard pagination with time ordering
+            # Timeline view. published_at already stores the fetch time when the
+            # feed date was missing or far in the future, so this order can use
+            # ix_entries_published_at instead of sorting a CASE expression.
             stmt = (
                 stmt.order_by(desc(Entry.published_at))
                 .limit(per_page)
@@ -270,7 +273,7 @@ class EntryService:
                         author=entry.author,
                         content=entry.content,
                         summary=entry.summary,
-                        published_at=entry.published_at,
+                        published_at=effective_published_at(entry.published_at, entry.created_at),
                         created_at=entry.created_at,
                         is_read=bool(user_entry.is_read) if user_entry else False,
                         is_liked=user_entry.is_liked if user_entry else None,
@@ -359,7 +362,7 @@ class EntryService:
             author=entry.author,
             content=entry.content,
             summary=entry.summary,
-            published_at=entry.published_at,
+            published_at=effective_published_at(entry.published_at, entry.created_at),
             created_at=entry.created_at,
             is_read=bool(user_entry.is_read) if user_entry else False,
             is_liked=user_entry.is_liked if user_entry else None,

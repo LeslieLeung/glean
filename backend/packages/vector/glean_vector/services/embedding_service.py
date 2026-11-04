@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from glean_core import RedisKeys, get_logger
+from glean_core.published_at import effective_published_at
 from glean_core.services.preference_dirty_service import mark_preferences_dirty
 from glean_database.models import Bookmark, Entry, UserEntry
 from glean_vector.clients.embedding_client import EmbeddingClient
@@ -34,9 +35,18 @@ class _EmbeddingInput:
     id: str
     feed_id: str
     published_at: datetime | None
+    created_at: datetime | None
     author: str | None
     embedding_status: str
     text: str
+
+
+def _vector_published_at(entry: Entry | _EmbeddingInput) -> datetime | None:
+    """Feed date, or the fetch time when that date is missing or still far ahead."""
+    created_at = entry.created_at
+    if isinstance(created_at, datetime):
+        return effective_published_at(entry.published_at, created_at)
+    return entry.published_at
 
 
 class EmbeddingService:
@@ -220,7 +230,7 @@ class EmbeddingService:
         """Fence the vector write against collection recreation."""
         entry_id = entry.id
         feed_id = entry.feed_id
-        published_at = entry.published_at
+        published_at = _vector_published_at(entry)
         author = entry.author or ""
         lock = None
         acquired = False
@@ -575,6 +585,7 @@ class EmbeddingService:
                 id=entry.id,
                 feed_id=entry.feed_id,
                 published_at=entry.published_at,
+                created_at=entry.created_at,
                 author=entry.author,
                 embedding_status=entry.embedding_status,
                 text=self._extract_text(entry),
