@@ -71,3 +71,60 @@ class TestFeedValidation:
             feed = await parse_feed(content, "https://example.com/feed")
             assert feed.title.startswith("Empty")
             assert feed.entries == []
+
+    async def test_parses_json_feed_item(self):
+        import json
+
+        from glean_rss import parse_feed
+
+        content = json.dumps(
+            {
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "JSON",
+                "home_page_url": "https://example.com",
+                "items": [
+                    {
+                        "id": "1",
+                        "url": "https://example.com/hello",
+                        "title": "Hello",
+                        "content_html": "<p>Hi</p>",
+                        "date_published": "2026-01-02T03:04:05Z",
+                        "authors": [{"name": "Ada"}],
+                    }
+                ],
+            }
+        )
+        feed = await parse_feed(content, "https://example.com/feed.json")
+        assert feed.title == "JSON"
+        assert feed.site_url == "https://example.com"
+        entry = feed.entries[0]
+        assert entry.title == "Hello"
+        assert entry.url == "https://example.com/hello"
+        assert entry.author == "Ada"
+        assert entry.has_full_content is True
+        assert entry.content == "<p>Hi</p>"
+        assert entry.published_at is not None
+        assert entry.published_at.year == 2026
+
+    async def test_escapes_json_feed_plain_text_content(self):
+        import json
+
+        from glean_rss import parse_feed
+
+        content = json.dumps(
+            {
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "JSON",
+                "items": [
+                    {
+                        "id": "1",
+                        "title": "Tags",
+                        "content_text": "Use <b> for bold and <i> for italics.\nNext line",
+                    }
+                ],
+            }
+        )
+        feed = await parse_feed(content, "https://example.com/feed.json")
+        entry = feed.entries[0]
+        assert entry.content == ("Use &lt;b&gt; for bold and &lt;i&gt; for italics.<br>\nNext line")
+        assert entry.summary == "Use <b> for bold and <i> for italics.\nNext line"
