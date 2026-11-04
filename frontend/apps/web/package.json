@@ -41,7 +41,7 @@
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",
     "highlight.js": "^11.11.1",
-    "lightgallery": "^2.9.0",
+    "lightgallery": "^3.0.0",
     "lucide-react": "^0.577.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
