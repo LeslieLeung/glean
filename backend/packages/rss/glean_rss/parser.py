@@ -124,6 +124,12 @@ def _text(value: object) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _plain_text_as_html(text: str) -> str:
+    """Escape plain text so it can be stored and rendered as HTML."""
+    escaped = html.escape(text, quote=False)
+    return escaped.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>\n")
+
+
 def _parsed_time(value: object) -> tuple[int, ...] | None:
     if not isinstance(value, str) or not value:
         return None
@@ -185,9 +191,10 @@ def _parse_json_feed(content: str) -> ParsedFeed | None:
             }
             html_content = _text(item.get("content_html"))
             text_content = _text(item.get("content_text"))
-            body = html_content or text_content
-            if body:
-                entry["content"] = [{"value": body}]
+            if html_content:
+                entry["content"] = [{"value": html_content}]
+            elif text_content:
+                entry["content"] = [{"value": _plain_text_as_html(text_content)}]
             published = _parsed_time(item.get("date_published")) or _parsed_time(
                 item.get("date_modified")
             )

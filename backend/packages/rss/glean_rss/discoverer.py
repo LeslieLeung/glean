@@ -168,8 +168,10 @@ def _candidate_feed_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
     """
     Build an ordered, de-duplicated list of feed URLs to try.
 
-    Explicit autodiscovery comes first, then same-site anchors, conventional
-    paths, and finally feed links that point at another host.
+    Explicit autodiscovery comes first, then same-site anchors, then feed
+    links that point at another host. Conventional paths are last: a page
+    such as ``/blog/`` has fourteen of them, and appending external anchors
+    after that list would drop the advertised feed once the list is capped.
     """
     autodiscovery: list[str] = []
     same_origin: list[str] = []
@@ -198,7 +200,7 @@ def _candidate_feed_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
         for candidate in _conventional_urls(base_url, suffix)
         if not _same_document(candidate, base_url)
     ]
-    return _dedupe([*page_candidates, *conventional, *external])[:_MAX_CANDIDATES]
+    return _dedupe([*page_candidates, *external, *conventional])[:_MAX_CANDIDATES]
 
 
 def _link_advertises_feed(link: Tag, base_url: str, href: str) -> bool:

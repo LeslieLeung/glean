@@ -105,3 +105,26 @@ class TestFeedValidation:
         assert entry.content == "<p>Hi</p>"
         assert entry.published_at is not None
         assert entry.published_at.year == 2026
+
+    async def test_escapes_json_feed_plain_text_content(self):
+        import json
+
+        from glean_rss import parse_feed
+
+        content = json.dumps(
+            {
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "JSON",
+                "items": [
+                    {
+                        "id": "1",
+                        "title": "Tags",
+                        "content_text": "Use <b> for bold and <i> for italics.\nNext line",
+                    }
+                ],
+            }
+        )
+        feed = await parse_feed(content, "https://example.com/feed.json")
+        entry = feed.entries[0]
+        assert entry.content == ("Use &lt;b&gt; for bold and &lt;i&gt; for italics.<br>\nNext line")
+        assert entry.summary == "Use <b> for bold and <i> for italics.\nNext line"

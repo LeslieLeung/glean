@@ -192,6 +192,62 @@ async def test_discovers_feed_scheme_and_extension():
 
 
 @pytest.mark.asyncio
+async def test_discovers_external_feed_before_conventional_paths():
+    """An advertised off-site feed must not lose its slot to guessed paths."""
+    external = "https://feeds.example.net/all.xml"
+    requested: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if str(request.url) == "https://example.com/blog/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=f"<html><a href='{external}'>RSS</a></html>",
+            )
+        if str(request.url) == external:
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(404, text="missing")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/blog/") == (external, "Valid")
+    assert requested == ["https://example.com/blog/", external]
+
+
+@pytest.mark.asyncio
+async def test_keeps_external_feed_when_same_origin_anchor_is_not_a_feed():
+    external = "https://feeds.example.net/all.xml"
+    requested: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        if str(request.url) == "https://example.com/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text=(
+                    "<html>"
+                    "<a class='rss' href='/not-a-feed'>Site feed</a>"
+                    f"<a href='{external}'>RSS</a>"
+                    "</html>"
+                ),
+            )
+        if str(request.url) == external:
+            return httpx.Response(200, text=RSS)
+        return httpx.Response(404, text="missing")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/") == (external, "Valid")
+    assert requested == [
+        "https://example.com/",
+        "https://example.com/not-a-feed",
+        external,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_discovers_json_feed_link():
     document = (
         '{"version":"https://jsonfeed.org/version/1.1","title":"Valid",'
