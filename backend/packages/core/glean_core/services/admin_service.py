@@ -12,7 +12,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core.published_at import effective_published_at, effective_published_at_column
+from glean_core.published_at import effective_published_at
 from glean_database.models.admin import AdminRole, AdminUser
 from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
@@ -528,16 +528,12 @@ class AdminService:
         result = await self.session.execute(count_query)
         total = result.scalar_one()
 
-        # Apply sorting. Publication time uses the fetch time when the feed
-        # date is missing or still far in the future.
-        if sort == "published_at":
-            sort_value = effective_published_at_column()
-        else:
-            sort_value = getattr(Entry, sort, Entry.created_at)
+        # Apply sorting. Abnormal feed dates are already stored in published_at.
+        sort_column = getattr(Entry, sort, Entry.created_at)
         if order == "desc":
-            query = query.order_by(sort_value.desc())
+            query = query.order_by(sort_column.desc())
         else:
-            query = query.order_by(sort_value.asc())
+            query = query.order_by(sort_column.asc())
 
         # Apply pagination
         query = query.offset((page - 1) * per_page).limit(per_page)

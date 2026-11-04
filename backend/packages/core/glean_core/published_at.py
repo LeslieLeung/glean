@@ -8,11 +8,6 @@ and far-future timestamps from sorting above every real article.
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, case, func
-from sqlalchemy.sql.elements import ColumnElement
-
-from glean_database.models import Entry
-
 # Clock skew of a few minutes should not rewrite a genuine timestamp.
 # Anything further ahead is treated as an abnormal feed date.
 FUTURE_PUBLISHED_AT_TOLERANCE = timedelta(minutes=15)
@@ -55,15 +50,3 @@ def publication_time_was_replaced(published_at: datetime | None, resolved: datet
     if published_at is None:
         return True
     return _as_utc(published_at) != resolved
-
-
-def effective_published_at_column() -> ColumnElement[datetime]:
-    """SQL match for :func:`effective_published_at` using ``created_at`` as the fetch time."""
-    horizon = func.now() + FUTURE_PUBLISHED_AT_TOLERANCE
-    return case(
-        (
-            and_(Entry.published_at.is_not(None), Entry.published_at <= horizon),
-            Entry.published_at,
-        ),
-        else_=Entry.created_at,
-    )

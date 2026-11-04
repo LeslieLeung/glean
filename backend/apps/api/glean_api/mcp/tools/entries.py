@@ -12,7 +12,7 @@ from mcp.server.session import ServerSession
 from sqlalchemy import desc, func, select
 
 from glean_core import get_logger
-from glean_core.published_at import effective_published_at, effective_published_at_column
+from glean_core.published_at import effective_published_at
 from glean_database.models import Entry, Feed, Subscription, UserEntry
 from glean_database.session import get_session_context
 
@@ -109,7 +109,7 @@ async def search_entries(
             stmt = stmt.where(Entry.feed_id == feed_id)
 
         # Order and limit
-        stmt = stmt.order_by(desc(effective_published_at_column())).limit(limit)
+        stmt = stmt.order_by(desc(Entry.published_at)).limit(limit)
 
         result = await session.execute(stmt)
         rows = result.all()
@@ -280,8 +280,8 @@ async def list_entries_by_date(
                 (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
             )
             .where(Entry.feed_id.in_(feed_ids))
-            .where(effective_published_at_column() >= start_dt)
-            .where(effective_published_at_column() <= end_dt)
+            .where(Entry.published_at >= start_dt)
+            .where(Entry.published_at <= end_dt)
         )
 
         # Filter by feed_id if provided
@@ -296,7 +296,7 @@ async def list_entries_by_date(
                 stmt = stmt.where((UserEntry.is_read.is_(False)) | (UserEntry.is_read.is_(None)))
 
         # Order and limit
-        stmt = stmt.order_by(desc(effective_published_at_column())).limit(limit)
+        stmt = stmt.order_by(desc(Entry.published_at)).limit(limit)
 
         result = await session.execute(stmt)
         rows = result.all()

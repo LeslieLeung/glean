@@ -13,7 +13,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys, get_logger
-from glean_core.published_at import effective_published_at, effective_published_at_column
+from glean_core.published_at import effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from glean_database.models import (
     Bookmark,
@@ -181,7 +181,7 @@ class EntryService:
             # prefix: page six would always be empty and high-scoring older
             # entries could never surface. Fetch all matching candidates and
             # score them in bounded batches to keep vector queries manageable.
-            stmt_for_scoring = stmt.order_by(desc(effective_published_at_column()))
+            stmt_for_scoring = stmt.order_by(desc(Entry.published_at))
 
             result = await self.session.execute(stmt_for_scoring)
             all_rows = result.all()
@@ -249,9 +249,11 @@ class EntryService:
             end_idx = start_idx + per_page
             items = [item for item, _ in items_with_scores[start_idx:end_idx]]
         else:
-            # Timeline view - standard pagination with time ordering
+            # Timeline view. published_at already stores the fetch time when the
+            # feed date was missing or far in the future, so this order can use
+            # ix_entries_published_at instead of sorting a CASE expression.
             stmt = (
-                stmt.order_by(desc(effective_published_at_column()))
+                stmt.order_by(desc(Entry.published_at))
                 .limit(per_page)
                 .offset((page - 1) * per_page)
             )
