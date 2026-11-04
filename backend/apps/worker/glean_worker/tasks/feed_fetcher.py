@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import get_logger
 from glean_core.feed_jobs import FEED_QUEUE_EXPIRY_SECONDS, feed_job_id
+from glean_core.published_at import effective_published_at, publication_time_was_replaced
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
@@ -158,8 +159,9 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             feed.status = FeedStatus.ACTIVE
             feed.error_count = 0
             feed.fetch_error_message = None
-            feed.last_fetched_at = datetime.now(UTC)
-            feed.last_success_at = feed.last_fetched_at
+            fetched_at = datetime.now(UTC)
+            feed.last_fetched_at = fetched_at
+            feed.last_success_at = fetched_at
 
             # Update cache headers
             if cache_headers and "etag" in cache_headers:
@@ -173,13 +175,15 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             # Process entries
             new_entries = 0
             latest_entry_time = feed.last_entry_at
+            # A previously stored future date would otherwise stay ahead of every later fetch.
+            if latest_entry_time is not None and publication_time_was_replaced(
+                latest_entry_time,
+                effective_published_at(latest_entry_time, fetched_at),
+            ):
+                latest_entry_time = None
+                feed.last_entry_at = None
 
             for parsed_entry in parsed_feed.entries:
-                if parsed_entry.published_at and (
-                    latest_entry_time is None or parsed_entry.published_at > latest_entry_time
-                ):
-                    latest_entry_time = parsed_entry.published_at
-
                 # Check if entry already exists
                 stmt = select(Entry).where(
                     Entry.feed_id == feed.id, Entry.guid == parsed_entry.guid
@@ -188,7 +192,38 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 existing_entry = result.scalar_one_or_none()
 
                 if existing_entry:
+                    # Keep the original fetch time. Using "now" would pin an old
+                    # undated or future-dated article to the top on the next refresh.
+                    published_at = effective_published_at(
+                        existing_entry.published_at,
+                        existing_entry.created_at,
+                    )
+                    if publication_time_was_replaced(existing_entry.published_at, published_at):
+                        logger.debug(
+                            "Replaced abnormal publication time with fetch time",
+                            extra={
+                                "feed_id": feed_id,
+                                "guid": parsed_entry.guid,
+                                "published_at": published_at.isoformat(),
+                            },
+                        )
+                        existing_entry.published_at = published_at
+                    if latest_entry_time is None or published_at > latest_entry_time:
+                        latest_entry_time = published_at
                     continue
+
+                published_at = effective_published_at(parsed_entry.published_at, fetched_at)
+                if publication_time_was_replaced(parsed_entry.published_at, published_at):
+                    logger.debug(
+                        "Replaced abnormal publication time with fetch time",
+                        extra={
+                            "feed_id": feed_id,
+                            "guid": parsed_entry.guid,
+                            "published_at": published_at.isoformat(),
+                        },
+                    )
+                if latest_entry_time is None or published_at > latest_entry_time:
+                    latest_entry_time = published_at
 
                 # Determine content: fetch full text if feed only provides summary
                 entry_content = parsed_entry.content
@@ -234,7 +269,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     author=parsed_entry.author,
                     content=entry_content,
                     summary=parsed_entry.summary,
-                    published_at=parsed_entry.published_at,
+                    published_at=published_at,
                 )
                 try:
                     # Use savepoint so one duplicate insert won't abort the whole feed fetch tx.

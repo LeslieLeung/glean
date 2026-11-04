@@ -12,6 +12,7 @@ from mcp.server.session import ServerSession
 from sqlalchemy import desc, func, select
 
 from glean_core import get_logger
+from glean_core.published_at import effective_published_at, effective_published_at_column
 from glean_database.models import Entry, Feed, Subscription, UserEntry
 from glean_database.session import get_session_context
 
@@ -33,6 +34,11 @@ def escape_like_pattern(pattern: str) -> str:
     """
     # Escape % and _ characters to prevent LIKE injection
     return pattern.replace("%", r"\%").replace("_", r"\_")
+
+
+def _published_at_iso(entry: Entry) -> str:
+    """ISO timestamp used for display, with fetch time filling abnormal feed dates."""
+    return effective_published_at(entry.published_at, entry.created_at).isoformat()
 
 
 async def search_entries(
@@ -103,7 +109,7 @@ async def search_entries(
             stmt = stmt.where(Entry.feed_id == feed_id)
 
         # Order and limit
-        stmt = stmt.order_by(desc(Entry.published_at)).limit(limit)
+        stmt = stmt.order_by(desc(effective_published_at_column())).limit(limit)
 
         result = await session.execute(stmt)
         rows = result.all()
@@ -116,7 +122,7 @@ async def search_entries(
                     "title": str(entry.title),
                     "url": str(entry.url),
                     "summary": entry.summary[:500] if entry.summary else None,
-                    "published_at": entry.published_at.isoformat() if entry.published_at else None,
+                    "published_at": _published_at_iso(entry),
                     "feed_title": feed_title,
                     "is_read": bool(user_entry.is_read) if user_entry else False,
                 }
@@ -198,7 +204,7 @@ async def get_entry(
             "content": entry.content,
             "summary": entry.summary,
             "author": entry.author,
-            "published_at": entry.published_at.isoformat() if entry.published_at else None,
+            "published_at": _published_at_iso(entry),
             "feed_title": feed_title,
             "is_read": bool(user_entry.is_read) if user_entry else False,
         }
@@ -274,8 +280,8 @@ async def list_entries_by_date(
                 (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
             )
             .where(Entry.feed_id.in_(feed_ids))
-            .where(Entry.published_at >= start_dt)
-            .where(Entry.published_at <= end_dt)
+            .where(effective_published_at_column() >= start_dt)
+            .where(effective_published_at_column() <= end_dt)
         )
 
         # Filter by feed_id if provided
@@ -290,7 +296,7 @@ async def list_entries_by_date(
                 stmt = stmt.where((UserEntry.is_read.is_(False)) | (UserEntry.is_read.is_(None)))
 
         # Order and limit
-        stmt = stmt.order_by(desc(Entry.published_at)).limit(limit)
+        stmt = stmt.order_by(desc(effective_published_at_column())).limit(limit)
 
         result = await session.execute(stmt)
         rows = result.all()
@@ -303,7 +309,7 @@ async def list_entries_by_date(
                     "title": str(entry.title),
                     "url": str(entry.url),
                     "summary": entry.summary[:500] if entry.summary else None,
-                    "published_at": entry.published_at.isoformat() if entry.published_at else None,
+                    "published_at": _published_at_iso(entry),
                     "feed_title": feed_title,
                     "is_read": bool(user_entry.is_read) if user_entry else False,
                 }

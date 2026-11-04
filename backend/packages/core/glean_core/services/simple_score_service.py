@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.published_at import effective_published_at
 from glean_database.models import Entry, UserPreferenceStats
 
 
@@ -62,7 +63,8 @@ class SimpleScoreService:
             age_hours = (now - published_at).total_seconds() / 3600
 
         if age_hours < 0:
-            # Future date (scheduled post?)
+            # Within the small clock-skew allowance. Far-future dates are
+            # replaced with the fetch time before this method is called.
             return 1.0
         elif age_hours <= 24:
             return 1.0
@@ -136,7 +138,8 @@ class SimpleScoreService:
         stats = await self._get_user_stats(user_id)
 
         # Calculate individual factors
-        recency = self._calculate_recency_factor(entry.published_at)
+        published_at = effective_published_at(entry.published_at, entry.created_at)
+        recency = self._calculate_recency_factor(published_at)
         source_affinity = self._get_source_affinity(stats, entry.feed_id)
         author_affinity = self._get_author_affinity(stats, entry.author)
 

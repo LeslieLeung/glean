@@ -70,6 +70,12 @@ function useIsMobile(breakpoint = 768) {
   return isMobile
 }
 
+function timelineDate(publishedAt: string | null | undefined, createdAt?: string | null): Date {
+  // Missing feed dates sort by when the article was fetched.
+  const value = publishedAt || createdAt
+  return value ? new Date(value) : new Date(0)
+}
+
 /**
  * Reader page.
  *
@@ -240,9 +246,9 @@ export default function ReaderPage() {
       // For timeline view, insert based on ORIGINAL published_at to maintain chronological order
       const publishedAt =
         originalData?.id === selectedEntryId ? originalData.publishedAt : selectedEntry.published_at
-      const selectedDate = publishedAt ? new Date(publishedAt) : new Date(0)
+      const selectedDate = timelineDate(publishedAt, selectedEntry.created_at)
       let insertIdx = rawEntries.findIndex((e) => {
-        const entryDate = e.published_at ? new Date(e.published_at) : new Date(0)
+        const entryDate = timelineDate(e.published_at, e.created_at)
         return entryDate < selectedDate
       })
       if (insertIdx === -1) insertIdx = rawEntries.length

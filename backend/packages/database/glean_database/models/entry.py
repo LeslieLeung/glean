@@ -28,7 +28,8 @@ class Entry(Base, TimestampMixin):
         content: Full entry content (HTML).
         summary: Entry summary or excerpt.
         guid: Original entry GUID for deduplication.
-        published_at: Original publication timestamp.
+        published_at: Publication timestamp used for ordering and display.
+            Missing or far-future feed dates are stored as the fetch time.
     """
 
     __tablename__ = "entries"

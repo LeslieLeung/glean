@@ -12,6 +12,7 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.published_at import effective_published_at, effective_published_at_column
 from glean_database.models.admin import AdminRole, AdminUser
 from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
@@ -527,12 +528,16 @@ class AdminService:
         result = await self.session.execute(count_query)
         total = result.scalar_one()
 
-        # Apply sorting
-        sort_column = getattr(Entry, sort, Entry.created_at)
-        if order == "desc":
-            query = query.order_by(sort_column.desc())
+        # Apply sorting. Publication time uses the fetch time when the feed
+        # date is missing or still far in the future.
+        if sort == "published_at":
+            sort_value = effective_published_at_column()
         else:
-            query = query.order_by(sort_column.asc())
+            sort_value = getattr(Entry, sort, Entry.created_at)
+        if order == "desc":
+            query = query.order_by(sort_value.desc())
+        else:
+            query = query.order_by(sort_value.asc())
 
         # Apply pagination
         query = query.offset((page - 1) * per_page).limit(per_page)
@@ -548,7 +553,9 @@ class AdminService:
                 "url": row.Entry.url,
                 "title": row.Entry.title,
                 "author": row.Entry.author,
-                "published_at": row.Entry.published_at,
+                "published_at": effective_published_at(
+                    row.Entry.published_at, row.Entry.created_at
+                ),
                 "created_at": row.Entry.created_at,
             }
             for row in rows
@@ -585,7 +592,7 @@ class AdminService:
             "author": row.Entry.author,
             "content": row.Entry.content,
             "summary": row.Entry.summary,
-            "published_at": row.Entry.published_at,
+            "published_at": effective_published_at(row.Entry.published_at, row.Entry.created_at),
             "created_at": row.Entry.created_at,
         }
 

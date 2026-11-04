@@ -13,6 +13,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys, get_logger
+from glean_core.published_at import effective_published_at, effective_published_at_column
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from glean_database.models import (
     Bookmark,
@@ -180,7 +181,7 @@ class EntryService:
             # prefix: page six would always be empty and high-scoring older
             # entries could never surface. Fetch all matching candidates and
             # score them in bounded batches to keep vector queries manageable.
-            stmt_for_scoring = stmt.order_by(desc(Entry.published_at))
+            stmt_for_scoring = stmt.order_by(desc(effective_published_at_column()))
 
             result = await self.session.execute(stmt_for_scoring)
             all_rows = result.all()
@@ -225,7 +226,7 @@ class EntryService:
                     author=entry.author,
                     content=entry.content,
                     summary=entry.summary,
-                    published_at=entry.published_at,
+                    published_at=effective_published_at(entry.published_at, entry.created_at),
                     created_at=entry.created_at,
                     is_read=bool(user_entry.is_read) if user_entry else False,
                     is_liked=user_entry.is_liked if user_entry else None,
@@ -250,7 +251,7 @@ class EntryService:
         else:
             # Timeline view - standard pagination with time ordering
             stmt = (
-                stmt.order_by(desc(Entry.published_at))
+                stmt.order_by(desc(effective_published_at_column()))
                 .limit(per_page)
                 .offset((page - 1) * per_page)
             )
@@ -270,7 +271,7 @@ class EntryService:
                         author=entry.author,
                         content=entry.content,
                         summary=entry.summary,
-                        published_at=entry.published_at,
+                        published_at=effective_published_at(entry.published_at, entry.created_at),
                         created_at=entry.created_at,
                         is_read=bool(user_entry.is_read) if user_entry else False,
                         is_liked=user_entry.is_liked if user_entry else None,
@@ -359,7 +360,7 @@ class EntryService:
             author=entry.author,
             content=entry.content,
             summary=entry.summary,
-            published_at=entry.published_at,
+            published_at=effective_published_at(entry.published_at, entry.created_at),
             created_at=entry.created_at,
             is_read=bool(user_entry.is_read) if user_entry else False,
             is_liked=user_entry.is_liked if user_entry else None,
