@@ -46,9 +46,13 @@ _FEED_TEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _FEED_QUERY_RE = re.compile(r"(?:^|&)(?:feed|format)=(rss2?|atom|rdf|xml)(?:&|$)", re.IGNORECASE)
-_COMMON_FEED_SUFFIXES = ("feed.xml", "rss.xml", "atom.xml", "index.xml", "feed", "rss", "atom")
+# Extensionless names sit next to feed.xml. A nested page produces two URLs
+# per suffix, and the old XML-first order filled the probe cap before /feed,
+# /rss, or /atom were reached.
+_COMMON_FEED_SUFFIXES = ("feed.xml", "feed", "rss", "atom", "index.xml", "rss.xml", "atom.xml")
 _MAX_PAGE_CANDIDATES = 6
-_MAX_CANDIDATES = 8
+# Seven suffixes at both the page path and the origin.
+_MAX_CANDIDATES = 14
 
 
 async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
@@ -171,9 +175,9 @@ def _candidate_feed_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
     Build an ordered, de-duplicated list of feed URLs to try.
 
     Explicit autodiscovery comes first, then same-site anchors, then feed
-    links that point at another host. Conventional paths are last: a page
-    such as ``/blog/`` has fourteen of them, and appending external anchors
-    after that list would drop the advertised feed once the list is capped.
+    links that point at another host. Conventional paths are last. The cap
+    is large enough for every suffix on a nested page, including extensionless
+    ``/feed``, ``/rss``, and ``/atom`` after the ``.xml`` guesses.
     """
     autodiscovery: list[str] = []
     same_origin: list[str] = []

@@ -109,6 +109,50 @@ async def test_probes_conventional_feed_path_when_page_has_no_feed_link():
 
 
 @pytest.mark.asyncio
+async def test_probes_extensionless_feed_below_origin():
+    """A nested page must still try /blog/feed after the .xml guesses miss."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/blog/feed":
+            return httpx.Response(200, text=RSS)
+        if request.url.path == "/blog/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text="<html><body>No feed here</body></html>",
+            )
+        return httpx.Response(404, text="missing")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/blog/") == (
+            "https://example.com/blog/feed",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_probes_origin_extensionless_atom_from_nested_page():
+    def respond(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://example.com/atom":
+            return httpx.Response(200, text=RSS)
+        if request.url.path == "/blog/":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                text="<html><body>No feed here</body></html>",
+            )
+        return httpx.Response(404, text="missing")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    with patch("glean_rss.discoverer.safe_async_client", return_value=client):
+        assert await discover_feed("https://example.com/blog/") == (
+            "https://example.com/atom",
+            "Valid",
+        )
+
+
+@pytest.mark.asyncio
 async def test_accepts_autodiscovery_type_with_charset_parameter():
     def respond(request):
         if request.url.path == "/":
