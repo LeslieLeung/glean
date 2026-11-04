@@ -38,7 +38,7 @@
     "clsx": "^2.1.0",
     "date-fns": "^4.0.0",
     "dompurify": "^3.3.1",
-    "electron-store": "^11.0.2",
+    "electron-store": "^12.0.0",
     "electron-updater": "^6.3.9",
     "highlight.js": "^11.11.1",
     "lightgallery": "^2.9.0",
