@@ -9,7 +9,7 @@ import { Input } from './Input'
 import { ScrollArea } from './scroll-area'
 
 const ComboboxContext = React.createContext<{
-  chipsRef: React.RefObject<HTMLDivElement> | null
+  chipsRef: React.RefObject<HTMLDivElement | null> | null
   multiple: boolean
 }>({
   chipsRef: null,

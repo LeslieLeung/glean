@@ -74,8 +74,10 @@ export default [
       // React recommended rules
       ...react.configs.recommended.rules,
 
-      // React Hooks recommended rules
-      ...reactHooks.configs.recommended.rules,
+      // Classic Hooks rules. The React Compiler rules bundled into
+      // eslint-plugin-react-hooks v7 recommended are not adopted yet.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
 
       // Custom rules
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
@@ -84,7 +86,9 @@ export default [
     },
     settings: {
       react: {
-        version: 'detect',
+        // Pin the version. eslint-plugin-react 7.37 still calls context.getFilename()
+        // when version is "detect", and ESLint 10 removed that API.
+        version: '19.0',
       },
     },
   },
