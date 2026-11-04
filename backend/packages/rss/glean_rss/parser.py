@@ -128,6 +128,9 @@ async def parse_feed(content: str, url: str) -> ParsedFeed:
     """
     data: FeedParserDict = feedparser.parse(content)  # type: ignore[reportUnknownMemberType]
 
+    if not data.get("version"):  # type: ignore[reportUnknownMemberType]
+        raise ValueError("The URL does not contain an RSS or Atom feed")
+
     bozo: bool = bool(data.get("bozo", False))  # type: ignore[reportUnknownMemberType]
     entries: Any = data.get("entries")  # type: ignore[reportUnknownMemberType]
     if bozo and not entries:

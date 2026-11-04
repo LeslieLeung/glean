@@ -4,6 +4,7 @@ Feeds and subscriptions router.
 Provides endpoints for feed discovery, subscription management, and OPML import/export.
 """
 
+import asyncio
 from typing import Annotated, Any, cast
 from uuid import UUID
 
@@ -23,11 +24,18 @@ from glean_core.schemas import (
     UpdateSubscriptionRequest,
     UserResponse,
 )
+from glean_core.schemas.feed import (
+    FeedRefreshResponse,
+    OPMLImportFailure,
+    OPMLImportResponse,
+    ValidateFeedResponse,
+)
 from glean_core.services import FeedService, FolderService
 from glean_core.services.feed_service import UNSET
 from glean_rss import discover_feed, generate_opml, parse_opml_with_folders
 
 from ..dependencies import get_current_user, get_feed_service, get_folder_service, get_redis_pool
+from ..feed_refresh import enqueue_feed_refresh, get_feed_refresh_status
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -41,6 +49,7 @@ async def list_subscriptions(
     page: int = 1,
     per_page: int = 20,
     search: str | None = None,
+    include_descendants: bool = False,
 ) -> SubscriptionListResponse:
     """
     Get paginated user subscriptions.
@@ -61,7 +70,7 @@ async def list_subscriptions(
     page = max(1, page)
 
     return await feed_service.get_user_subscriptions_paginated(
-        current_user.id, page, per_page, folder_id, search
+        current_user.id, page, per_page, folder_id, search, include_descendants
     )
 
 
@@ -105,30 +114,25 @@ async def sync_all_subscriptions(
     return sync_response
 
 
-@router.get("/{subscription_id}")
-async def get_subscription(
-    subscription_id: UUID,
+@router.post("/validate")
+async def validate_feed_url(
+    data: DiscoverFeedRequest,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
-) -> SubscriptionResponse:
-    """
-    Get a specific subscription.
-
-    Args:
-        subscription_id: Subscription identifier.
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-
-    Returns:
-        Subscription details.
-
-    Raises:
-        HTTPException: If subscription not found or unauthorized.
-    """
+) -> ValidateFeedResponse:
     try:
-        return await feed_service.get_subscription(str(subscription_id), current_user.id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
+        url, title = await asyncio.wait_for(discover_feed(str(data.url)), timeout=30)
+    except (ValueError, TimeoutError) as error:
+        raise HTTPException(
+            status_code=400, detail=str(error) or "Feed validation timed out"
+        ) from None
+    existing = await feed_service.find_subscription_by_url(current_user.id, url)
+    return ValidateFeedResponse(
+        url=url,
+        title=title,
+        existing_subscription_id=existing.id if existing else None,
+        existing_folder_id=existing.folder_id if existing else None,
+    )
 
 
 @router.post("/discover", status_code=status.HTTP_201_CREATED)
@@ -138,47 +142,23 @@ async def discover_feed_url(
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> SubscriptionResponse:
-    """
-    Discover and subscribe to a feed from URL.
-
-    This endpoint performs feed discovery (tries to fetch and parse the URL).
-    For direct subscription without discovery, the feed service will create
-    a basic feed if discovery fails.
-
-    Args:
-        data: Feed discovery request with URL and optional folder_id.
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-        redis: Redis connection pool for task queue.
-
-    Returns:
-        Created subscription.
-
-    Raises:
-        HTTPException: If feed discovery fails or already subscribed.
-    """
-    feed_url = str(data.url)
-    feed_title = None
-
-    import contextlib
-
-    with contextlib.suppress(ValueError):
-        # Try to discover feed (fetch and parse)
-        feed_url, feed_title = await discover_feed(feed_url)
-
+    # Validate again at the write boundary, including callers bypassing the preview.
+    preview = await validate_feed_url(data, current_user, feed_service)
+    if preview.existing_subscription_id:
+        raise HTTPException(status_code=409, detail="Already subscribed to this feed")
     try:
-        # Create subscription (will create feed if needed)
         subscription = await feed_service.create_subscription(
-            current_user.id, feed_url, feed_title, data.folder_id
+            current_user.id, preview.url, preview.title, data.folder_id
         )
-
-        # Immediately enqueue feed fetch task only if feed has never been fetched
-        if subscription.feed.last_fetched_at is None:
-            await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
-
-        return subscription
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    if subscription.feed.last_fetched_at is None:
+        try:
+            await enqueue_feed_refresh(redis, subscription.feed.id)
+        except Exception:
+            # The committed subscription remains valid; the scheduler will fetch it.
+            logger.exception("Initial feed enqueue failed", extra={"feed_id": subscription.feed.id})
+    return subscription
 
 
 @router.patch("/{subscription_id}")
@@ -193,7 +173,7 @@ async def update_subscription(
 
     Args:
         subscription_id: Subscription identifier.
-        data: Update data (custom_title, folder_id, feed_url).
+        data: Update data (custom_title, folder_id).
         current_user: Current authenticated user.
         feed_service: Feed service.
 
@@ -213,9 +193,8 @@ async def update_subscription(
         return await feed_service.update_subscription(
             str(subscription_id),
             current_user.id,
-            data.custom_title,
+            data.custom_title if "custom_title" in data.model_fields_set else UNSET,
             data.folder_id if should_update_folder else UNSET,
-            str(data.feed_url) if data.feed_url else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
@@ -344,36 +323,32 @@ async def batch_delete_subscriptions(
     return BatchDeleteSubscriptionsResponse(deleted_count=deleted_count, failed_count=failed_count)
 
 
+@router.get("/{subscription_id}/refresh")
+async def feed_refresh_status(
+    subscription_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    feed_service: Annotated[FeedService, Depends(get_feed_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+) -> FeedRefreshResponse:
+    try:
+        subscription = await feed_service.get_subscription(str(subscription_id), current_user.id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    return await get_feed_refresh_status(redis, subscription.feed_id)
+
+
 @router.post("/{subscription_id}/refresh", status_code=status.HTTP_202_ACCEPTED)
 async def refresh_feed(
     subscription_id: UUID,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
-) -> dict[str, str]:
-    """
-    Manually trigger a feed refresh.
-
-    Args:
-        subscription_id: Subscription identifier.
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-        redis: Redis connection pool for task queue.
-
-    Returns:
-        Job status message.
-
-    Raises:
-        HTTPException: If subscription not found or unauthorized.
-    """
+) -> FeedRefreshResponse:
     try:
         subscription = await feed_service.get_subscription(str(subscription_id), current_user.id)
-        # Enqueue feed fetch task
-        job = await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
-        job_id = job.job_id if job else "unknown"
-        return {"status": "queued", "job_id": job_id, "feed_id": subscription.feed.id}
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from None
+    return await enqueue_feed_refresh(redis, subscription.feed_id)
 
 
 @router.post("/refresh-all", status_code=status.HTTP_202_ACCEPTED)
@@ -382,25 +357,10 @@ async def refresh_all_feeds(
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, int | str]:
-    """
-    Manually trigger a refresh for all user's subscribed feeds.
-
-    Args:
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-        redis: Redis connection pool for task queue.
-
-    Returns:
-        Job status with count of queued feeds.
-    """
     subscriptions = await feed_service.get_user_subscriptions(current_user.id)
-    queued_count = 0
-
     for subscription in subscriptions:
-        await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
-        queued_count += 1
-
-    return {"status": "queued", "queued_count": queued_count}
+        await enqueue_feed_refresh(redis, subscription.feed_id)
+    return {"status": "queued", "queued_count": len(subscriptions)}
 
 
 @router.post("/import")
@@ -410,77 +370,84 @@ async def import_opml(
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
-) -> dict[str, int]:
-    """
-    Import subscriptions from OPML file with folder structure.
-
-    Args:
-        file: OPML file upload.
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-        folder_service: Folder service.
-        redis: Redis connection pool for task queue.
-
-    Returns:
-        Import statistics (success, failed, and folder counts).
-
-    Raises:
-        HTTPException: If file is invalid.
-    """
+) -> OPMLImportResponse:
     try:
         content = await file.read()
-        opml_result = parse_opml_with_folders(content.decode("utf-8"))
+        parsed = parse_opml_with_folders(content.decode("utf-8-sig"))
+    except (ValueError, UnicodeError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
 
-        success_count = 0
-        failed_count = 0
-        folder_count = 0
+    # Validate network content concurrently, without sharing the database session.
+    semaphore = asyncio.Semaphore(5)
 
-        # Create folders first and build a mapping of folder name -> folder id
-        folder_id_map: dict[str, str] = {}
-        for folder_name in opml_result.folders:
+    async def validate(url: str) -> tuple[str, str] | str:
+        async with semaphore:
             try:
-                folder = await folder_service.create_folder(
-                    current_user.id,
-                    FolderCreate(name=folder_name, type="feed"),
-                )
-                folder_id_map[folder_name] = folder.id
-                folder_count += 1
-            except ValueError:
-                # Folder might already exist, try to find it
-                existing_folders = await folder_service.get_folders_tree(current_user.id, "feed")
-                for existing_folder in existing_folders.folders:
-                    if existing_folder.name == folder_name:
-                        folder_id_map[folder_name] = existing_folder.id
-                        break
+                return await asyncio.wait_for(discover_feed(url), timeout=30)
+            except (ValueError, TimeoutError) as error:
+                return str(error) or "Feed validation timed out"
 
-        # Import feeds with folder assignment
-        for opml_feed in opml_result.feeds:
+    previews = await asyncio.gather(*(validate(feed.xml_url) for feed in parsed.feeds))
+    tree = await folder_service.get_folders_tree(current_user.id, "feed")
+    folder_ids: dict[tuple[str, ...], str] = {}
+
+    def collect(nodes: list[FolderTreeNode], parent: tuple[str, ...] = ()) -> None:
+        for node in nodes:
+            path = (*parent, node.name)
+            folder_ids[path] = node.id
+            collect(node.children, path)
+
+    collect(tree.folders)
+    folders_created = 0
+    for path in parsed.folder_paths:
+        if path not in folder_ids:
+            folder = await folder_service.create_folder(
+                current_user.id,
+                FolderCreate(name=path[-1], type="feed", parent_id=folder_ids.get(path[:-1])),
+            )
+            folder_ids[path] = folder.id
+            folders_created += 1
+
+    failures: list[OPMLImportFailure] = []
+    success = 0
+    for feed, preview in zip(parsed.feeds, previews, strict=True):
+        reason = preview if isinstance(preview, str) else None
+        if reason is None:
+            assert isinstance(preview, tuple)
             try:
-                # Get folder_id if feed has a folder
-                folder_id = folder_id_map.get(opml_feed.folder) if opml_feed.folder else None
-
                 subscription = await feed_service.create_subscription(
                     current_user.id,
-                    opml_feed.xml_url,
-                    opml_feed.title,
-                    folder_id,
+                    preview[0],
+                    preview[1],
+                    folder_ids.get(feed.folder_path),
+                    custom_title=feed.title if feed.title and feed.title != preview[1] else None,
                 )
-                # Immediately enqueue feed fetch task only if feed has never been fetched
+            except ValueError as error:
+                reason = str(error)
+            else:
+                success += 1
                 if subscription.feed.last_fetched_at is None:
-                    await redis.enqueue_job("fetch_feed_task", subscription.feed.id)
-                success_count += 1
-            except ValueError:
-                # Already subscribed or invalid feed
-                failed_count += 1
+                    try:
+                        await enqueue_feed_refresh(redis, subscription.feed_id)
+                    except Exception:
+                        logger.exception("Imported feed enqueue failed")
+        if reason is not None:
+            failures.append(
+                OPMLImportFailure(
+                    url=feed.xml_url,
+                    title=feed.title,
+                    folder_path=list(feed.folder_path),
+                    reason=reason,
+                )
+            )
 
-        return {
-            "success": success_count,
-            "failed": failed_count,
-            "total": len(opml_result.feeds),
-            "folders_created": folder_count,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from None
+    return OPMLImportResponse(
+        success=success,
+        failed=len(failures),
+        total=len(parsed.feeds),
+        folders_created=folders_created,
+        failures=failures,
+    )
 
 
 @router.get("/export")
@@ -489,45 +456,57 @@ async def export_opml(
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
 ) -> Response:
-    """
-    Export subscriptions as OPML file with folder structure.
-
-    Args:
-        current_user: Current authenticated user.
-        feed_service: Feed service.
-        folder_service: Folder service.
-
-    Returns:
-        OPML file download.
-    """
     subscriptions = await feed_service.get_user_subscriptions(current_user.id)
+    tree = await folder_service.get_folders_tree(current_user.id, "feed")
+    folder_paths: dict[str, tuple[str, ...]] = {}
 
-    # Build folder_id -> folder_name mapping
-    folder_tree = await folder_service.get_folders_tree(current_user.id, "feed")
-    folder_id_to_name: dict[str, str] = {}
+    def collect(nodes: list[FolderTreeNode], parent: tuple[str, ...] = ()) -> None:
+        for node in nodes:
+            path = (*parent, node.name)
+            folder_paths[node.id] = path
+            collect(node.children, path)
 
-    def collect_folders(folders: list[FolderTreeNode]) -> None:
-        for folder in folders:
-            folder_id_to_name[folder.id] = folder.name
-            if folder.children:
-                collect_folders(folder.children)
-
-    collect_folders(folder_tree.folders)
-
-    feeds = [
-        {
-            "title": sub.custom_title or sub.feed.title,
-            "url": sub.feed.url,
-            "site_url": sub.feed.site_url,
-            "folder": folder_id_to_name.get(sub.folder_id) if sub.folder_id else None,
-        }
-        for sub in subscriptions
-    ]
-
-    opml_content = generate_opml(feeds)
-
+    collect(tree.folders)
+    content = generate_opml(
+        [
+            {
+                "title": sub.custom_title or sub.feed.title,
+                "url": sub.feed.url,
+                "site_url": sub.feed.site_url,
+                "folder_path": folder_paths.get(sub.folder_id, ()) if sub.folder_id else (),
+            }
+            for sub in subscriptions
+        ],
+        folder_paths=list(folder_paths.values()),
+    )
     return Response(
-        content=opml_content,
+        content=content,
         media_type="application/xml",
         headers={"Content-Disposition": "attachment; filename=glean-subscriptions.opml"},
     )
+
+
+@router.get("/{subscription_id}")
+async def get_subscription(
+    subscription_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    feed_service: Annotated[FeedService, Depends(get_feed_service)],
+) -> SubscriptionResponse:
+    """
+    Get a specific subscription.
+
+    Args:
+        subscription_id: Subscription identifier.
+        current_user: Current authenticated user.
+        feed_service: Feed service.
+
+    Returns:
+        Subscription details.
+
+    Raises:
+        HTTPException: If subscription not found or unauthorized.
+    """
+    try:
+        return await feed_service.get_subscription(str(subscription_id), current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None

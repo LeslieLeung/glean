@@ -31,7 +31,9 @@ class FeedResponse(BaseModel):
     language: str | None
     status: str
     error_count: int
+    fetch_error_message: str | None
     last_fetched_at: datetime | None
+    last_success_at: datetime | None
     last_entry_at: datetime | None
     created_at: datetime
 
@@ -65,11 +67,46 @@ class UpdateSubscriptionRequest(BaseModel):
     "not provided" and "explicitly set to null".
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     custom_title: str | None = None
     # Use __unset__ sentinel to detect if folder_id was explicitly provided
     folder_id: str | None = "__unset__"
-    # Feed URL update (updates the underlying feed)
-    feed_url: HttpUrl | None = None
+
+
+class ValidateFeedResponse(BaseModel):
+    """Validated feed preview. Validation never creates a subscription."""
+
+    url: str
+    title: str
+    existing_subscription_id: str | None = None
+    existing_folder_id: str | None = None
+
+
+class FeedRefreshResponse(BaseModel):
+    """State of the shared fetch job for a subscribed feed."""
+
+    status: str
+    job_id: str
+    feed_id: str
+    new_entries: int | None = None
+    finished_at: datetime | None = None
+    message: str | None = None
+
+
+class OPMLImportFailure(BaseModel):
+    url: str
+    title: str
+    folder_path: list[str]
+    reason: str
+
+
+class OPMLImportResponse(BaseModel):
+    success: int
+    failed: int
+    total: int
+    folders_created: int
+    failures: list[OPMLImportFailure]
 
 
 class BatchDeleteSubscriptionsRequest(BaseModel):

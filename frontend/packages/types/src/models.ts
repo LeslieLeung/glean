@@ -36,9 +36,9 @@ export interface UserUpdateRequest {
 
 /** RSS feed status */
 export enum FeedStatus {
-  ACTIVE = 'ACTIVE',
-  ERROR = 'ERROR',
-  PAUSED = 'PAUSED',
+  ACTIVE = 'active',
+  ERROR = 'error',
+  DISABLED = 'disabled',
 }
 
 /** RSS feed */
@@ -53,6 +53,7 @@ export interface Feed {
   status: FeedStatus
   error_count: number
   fetch_error_message: string | null
+  last_success_at: string | null
   last_fetched_at: string | null
   last_entry_at: string | null
   created_at: string

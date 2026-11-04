@@ -200,3 +200,27 @@ class TestGenerateOPML:
 
         root_feeds = [f for f in result.feeds if f.folder is None]
         assert len(root_feeds) == 1
+
+
+class TestNestedOPML:
+    def test_roundtrip_preserves_paths_same_leaf_names_and_empty_folders(self):
+        paths = [("Tech",), ("Tech", "News"), ("Life",), ("Life", "News"), ("Empty / Folder",)]
+        feeds = [
+            {"title": "Tech", "url": "https://example.com/tech", "folder_path": ("Tech", "News")},
+            {"title": "Life", "url": "https://example.com/life", "folder_path": ("Life", "News")},
+        ]
+        parsed = parse_opml_with_folders(generate_opml(feeds, folder_paths=paths))
+        assert parsed.folder_paths == paths
+        assert [(feed.xml_url, feed.folder_path) for feed in parsed.feeds] == [
+            ("https://example.com/tech", ("Tech", "News")),
+            ("https://example.com/life", ("Life", "News")),
+        ]
+
+    def test_rejects_non_opml_and_excessive_depth(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid OPML"):
+            parse_opml_with_folders("<rss><channel/></rss>")
+        deep = '<outline text="Nested">' * 6 + "</outline>" * 6
+        with pytest.raises(ValueError, match="depth"):
+            parse_opml_with_folders(f"<opml><body>{deep}</body></opml>")

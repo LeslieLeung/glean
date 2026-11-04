@@ -7,12 +7,12 @@ Background tasks for fetching and parsing RSS feeds.
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from arq import Retry
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import get_logger
+from glean_core.feed_jobs import FEED_QUEUE_EXPIRY_SECONDS, feed_job_id
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_core.services import TypedConfigService
 from glean_database.models import Entry, Feed, FeedStatus
@@ -115,6 +115,11 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 # Not modified (304)
                 logger.info("Feed not modified (304)", extra={"feed_id": feed_id, "url": feed.url})
                 feed.last_fetched_at = datetime.now(UTC)
+                feed.last_success_at = feed.last_fetched_at
+                feed.status = FeedStatus.ACTIVE
+                feed.error_count = 0
+                feed.fetch_error_message = None
+                feed.next_fetch_at = datetime.now(UTC) + timedelta(minutes=15)
                 return {"status": "not_modified", "new_entries": 0}
 
             logger.debug("Feed content received, parsing...", extra={"feed_id": feed_id})
@@ -154,6 +159,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             feed.error_count = 0
             feed.fetch_error_message = None
             feed.last_fetched_at = datetime.now(UTC)
+            feed.last_success_at = feed.last_fetched_at
 
             # Update cache headers
             if cache_headers and "etag" in cache_headers:
@@ -281,6 +287,8 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 "Failed to fetch feed",
                 extra={"feed_id": feed_id},
             )
+            # Discard partial entries/metadata before recording a durable failure.
+            await session.rollback()
             # Update feed error status
             stmt = select(Feed).where(Feed.id == feed_id)
             result = await session.execute(stmt)
@@ -288,7 +296,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
 
             if feed:
                 feed.error_count += 1
-                feed.fetch_error_message = str(e)
+                feed.fetch_error_message = str(e)[:1000]
                 feed.last_fetched_at = datetime.now(UTC)
 
                 # Disable feed after 10 consecutive errors
@@ -315,9 +323,9 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             # Don't enqueue embedding tasks on error
             pending_embedding_ids.clear()
 
-            # Retry the task
-            logger.info("Retrying task in 5 minutes", extra={"feed_id": feed_id})
-            raise Retry(defer=timedelta(minutes=5)) from None
+            # Commit health records through the context manager. Scheduled fetches
+            # respect next_fetch_at; manual retries remain immediately available.
+            fetch_result_dict = {"status": "error", "feed_id": feed_id, "message": str(e)}
 
     # Enqueue embedding tasks AFTER the session has committed so the worker can see the entries
     for entry_id in pending_embedding_ids:
@@ -357,7 +365,12 @@ async def fetch_all_feeds(ctx: dict[str, Any]) -> dict[str, int]:
         # Queue fetch tasks for each feed
         for feed in feeds:
             logger.debug("Queueing feed", extra={"feed_id": feed.id, "url": feed.url})
-            await ctx["redis"].enqueue_job("fetch_feed_task", feed.id)
+            await ctx["redis"].enqueue_job(
+                "fetch_feed_task",
+                feed.id,
+                _job_id=feed_job_id(feed.id),
+                _expires=FEED_QUEUE_EXPIRY_SECONDS,
+            )
 
         logger.info("Queued feeds for fetching", extra={"count": len(feeds)})
         return {"feeds_queued": len(feeds)}

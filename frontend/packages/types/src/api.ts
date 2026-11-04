@@ -69,7 +69,6 @@ export interface DiscoverFeedRequest {
 export interface UpdateSubscriptionRequest {
   custom_title?: string | null
   folder_id?: string | null
-  feed_url?: string | null
 }
 
 /** Update entry state request */
@@ -103,6 +102,7 @@ export interface SubscriptionListParams {
   per_page?: number
   folder_id?: string | null
   search?: string
+  include_descendants?: boolean
 }
 
 /** OPML import response */
@@ -111,6 +111,30 @@ export interface OPMLImportResponse {
   failed: number
   total: number
   folders_created: number
+  failures?: OPMLImportFailure[]
+}
+
+export interface OPMLImportFailure {
+  url: string
+  title: string
+  folder_path: string[]
+  reason: string
+}
+
+export interface ValidateFeedResponse {
+  url: string
+  title: string
+  existing_subscription_id: string | null
+  existing_folder_id?: string | null
+}
+
+export interface FeedRefreshResponse {
+  status: 'idle' | 'queued' | 'in_progress' | 'success' | 'error' | 'unknown'
+  job_id: string
+  feed_id: string
+  new_entries?: number | null
+  finished_at?: string | null
+  message?: string | null
 }
 
 /** Batch delete subscriptions request */

@@ -29,6 +29,8 @@ import { SidebarFeedsSection } from './sidebar/SidebarFeedsSection'
 import { SidebarBookmarksSection } from './sidebar/SidebarBookmarksSection'
 import { SidebarTagsSection } from './sidebar/SidebarTagsSection'
 import { SidebarUserSection } from './sidebar/SidebarUserSection'
+import { OPMLImportResultDialog } from './dialogs/OPMLImportResultDialog'
+import type { OPMLImportResponse } from '@glean/types'
 import { AddFeedDialog } from './dialogs/AddFeedDialog'
 import { CreateFolderDialog } from './dialogs/CreateFolderDialog'
 import { CreateTagDialog } from './dialogs/CreateTagDialog'
@@ -127,12 +129,7 @@ export function Layout() {
   const refreshAllMutation = useRefreshAllFeeds()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [fileInputKey, setFileInputKey] = useState(0)
-  const [importResult, setImportResult] = useState<{
-    success: number
-    failed: number
-    total: number
-    folders_created: number
-  } | null>(null)
+  const [importResult, setImportResult] = useState<OPMLImportResponse | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
@@ -310,6 +307,7 @@ export function Layout() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    e.target.value = ''
 
     try {
       const result = await importMutation.mutateAsync(file)
@@ -612,7 +610,12 @@ export function Layout() {
         }}
       />
 
-      {showAddFeedDialog && <AddFeedDialog onClose={() => setShowAddFeedDialog(false)} />}
+      {showAddFeedDialog && (
+        <AddFeedDialog
+          defaultFolderId={isReaderPage ? currentFolderId : undefined}
+          onClose={() => setShowAddFeedDialog(false)}
+        />
+      )}
 
       {/* Hidden file input for OPML import */}
       <input
@@ -625,21 +628,7 @@ export function Layout() {
       />
 
       {/* Import result dialog */}
-      <AlertDialog open={!!importResult} onOpenChange={() => setImportResult(null)}>
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('opml.importCompleted')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('opml.feedsImported')}: {importResult?.success} · {t('opml.foldersCreated')}:{' '}
-              {importResult?.folders_created} · {t('opml.failed')}: {importResult?.failed} ·{' '}
-              {t('opml.total')}: {importResult?.total}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose className={buttonVariants()}>{t('common.ok')}</AlertDialogClose>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
+      <OPMLImportResultDialog result={importResult} onClose={() => setImportResult(null)} />
 
       {/* Import error dialog */}
       <AlertDialog open={!!importError} onOpenChange={() => setImportError(null)}>
