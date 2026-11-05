@@ -12,6 +12,6 @@
     "sync-version": "node scripts/sync-version.js"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.0"
   }
 }
