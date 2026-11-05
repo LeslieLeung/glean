@@ -17,7 +17,7 @@
     "@glean/logger": "workspace:*",
     "@glean/types": "workspace:*",
     "@glean/ui": "workspace:*",
-    "@hookform/resolvers": "^5.0.0",
+    "@hookform/resolvers": "^7.0.0",
     "@tanstack/react-query": "^5.24.0",
     "axios": "^1.6.0",
     "clsx": "^2.1.0",
