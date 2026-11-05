@@ -5,8 +5,9 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm@10.26.0
+# Match packageManager in package.json. A mismatch makes pnpm download a
+# glibc binary that cannot execute on Alpine (ENOEXEC).
+RUN npm install -g pnpm@12.16.1
 
 # Copy workspace configuration
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./

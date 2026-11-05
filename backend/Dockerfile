@@ -1,7 +1,8 @@
 # Backend Dockerfile for Glean API and Worker
 # Supports both API server and background worker modes
 
-FROM python:3.15-slim
+# Locked native wheels (torch 2.9.1, numpy, and friends) stop at CPython 3.14.
+FROM python:3.14-slim
 
 # Build arguments
 ARG TARGETPLATFORM
