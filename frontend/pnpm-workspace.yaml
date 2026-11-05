@@ -2,5 +2,8 @@ packages:
   - apps/*
   - packages/*
 
-onlyBuiltDependencies:
-  - electron
+allowBuilds:
+  '@swc/core': true
+  electron: true
+  electron-winstaller: true
+  esbuild: true

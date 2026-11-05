@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import hljs from 'highlight.js'
-import lightGallery from 'lightgallery'
-import type { LightGallery } from 'lightgallery/lightgallery'
+import lightGallery, { type LightGallery } from 'lightgallery'
 
 // Configure highlight.js to ignore unescaped HTML warnings.
 // RSS feed content often contains pre-formatted code blocks with HTML entities.
