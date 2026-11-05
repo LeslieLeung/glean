@@ -8,6 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from .jev import EntryClassification
+
 
 class EntryBase(BaseModel):
     """Base entry fields."""
@@ -43,6 +45,8 @@ class EntryResponse(BaseModel):
     # Feed info for display in aggregated views
     feed_title: str | None = None
     feed_icon_url: str | None = None
+    classification: EntryClassification | None = None
+    classification_status: str | None = None
 
 
 class EntryListResponse(BaseModel):

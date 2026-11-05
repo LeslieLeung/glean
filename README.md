@@ -123,6 +123,11 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 For all configuration options, see [.env.example](.env.example).
 
+Configure article AI detection and custom content categories under **Jev Classification**
+in the admin panel. After applying `make db-upgrade` and restarting the API and worker,
+enter your Jev server and API key, test the connection, and enable detection.
+Results appear on reader list cards.
+
 ## Docker Images
 
 Pre-built images are available on GitHub Container Registry:
