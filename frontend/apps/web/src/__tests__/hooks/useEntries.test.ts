@@ -45,7 +45,13 @@ describe('useEntries', () => {
   })
 
   it('should fetch entries', async () => {
-    const response = { items: [createMockEntry({ id: 'e1', title: 'Test' })], total: 1, page: 1, total_pages: 1, per_page: 20 }
+    const response = {
+      items: [createMockEntry({ id: 'e1', title: 'Test' })],
+      total: 1,
+      page: 1,
+      total_pages: 1,
+      per_page: 20,
+    }
     vi.mocked(entryService.getEntries).mockResolvedValue(response)
     const { wrapper } = createQueryWrapper()
 
@@ -123,6 +129,94 @@ describe('useUpdateEntryState', () => {
     expect(queryClient.setQueryData).toHaveBeenCalled()
     // Should invalidate subscriptions for unread counts
     expect(queryClient.invalidateQueries).toHaveBeenCalled()
+  })
+
+  it('keeps the smart-list preference score when the state update returns null', async () => {
+    const updatedEntry = createMockEntry({ id: 'e1', is_read: true, preference_score: null })
+    vi.mocked(entryService.updateEntryState).mockResolvedValue(updatedEntry)
+    const { wrapper, queryClient } = createQueryWrapper()
+    const smartListKey = entryKeys.list({ feed_id: 'feed-1', is_read: false, view: 'smart' })
+    const timelineListKey = entryKeys.list({ feed_id: 'feed-1', is_read: false, view: 'timeline' })
+
+    queryClient.setQueryData(smartListKey, {
+      pages: [
+        {
+          items: [
+            createMockEntry({ id: 'e1', is_read: false, preference_score: 59 }),
+            createMockEntry({ id: 'e2', preference_score: 57 }),
+          ],
+          page: 1,
+          per_page: 20,
+          total: 2,
+          total_pages: 1,
+        },
+      ],
+      pageParams: [1],
+    })
+    queryClient.setQueryData(timelineListKey, {
+      pages: [
+        {
+          items: [createMockEntry({ id: 'e1', is_read: false, preference_score: null })],
+          page: 1,
+          per_page: 20,
+          total: 1,
+          total_pages: 1,
+        },
+      ],
+      pageParams: [1],
+    })
+
+    const { result } = renderHook(() => useUpdateEntryState(), { wrapper })
+
+    await result.current.mutateAsync({ entryId: 'e1', data: { is_read: true } })
+
+    const smartList = queryClient.getQueryData<{
+      pages: { items: { id: string; is_read: boolean; preference_score: number | null }[] }[]
+    }>(smartListKey)
+    const timelineList = queryClient.getQueryData<{
+      pages: { items: { is_read: boolean; preference_score: number | null }[] }[]
+    }>(timelineListKey)
+
+    expect(smartList?.pages[0]?.items[0]).toMatchObject({
+      id: 'e1',
+      is_read: true,
+      preference_score: 59,
+    })
+    expect(smartList?.pages[0]?.items[1]?.preference_score).toBe(57)
+    expect(timelineList?.pages[0]?.items[0]).toMatchObject({
+      is_read: true,
+      preference_score: null,
+    })
+  })
+
+  it('uses a preference score returned by the state update', async () => {
+    const updatedEntry = createMockEntry({ id: 'e1', is_read: true, preference_score: 80 })
+    vi.mocked(entryService.updateEntryState).mockResolvedValue(updatedEntry)
+    const { wrapper, queryClient } = createQueryWrapper()
+    const listKey = entryKeys.list({ view: 'smart' })
+
+    queryClient.setQueryData(listKey, {
+      pages: [
+        {
+          items: [createMockEntry({ id: 'e1', preference_score: 59 })],
+          page: 1,
+          per_page: 20,
+          total: 1,
+          total_pages: 1,
+        },
+      ],
+      pageParams: [1],
+    })
+
+    const { result } = renderHook(() => useUpdateEntryState(), { wrapper })
+
+    await result.current.mutateAsync({ entryId: 'e1', data: { is_read: true } })
+
+    const list = queryClient.getQueryData<{
+      pages: { items: { preference_score: number | null }[] }[]
+    }>(listKey)
+
+    expect(list?.pages[0]?.items[0]?.preference_score).toBe(80)
   })
 })
 
