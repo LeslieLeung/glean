@@ -12,14 +12,19 @@ import importlib.util
 import io
 import json
 import os
+import re
 import secrets
+import shutil
 import subprocess
+import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / "migrate-to-pgvector.py"
+TEMPLATE = SCRIPT.parents[1] / "docker-compose.pgvector.yml"
 spec = importlib.util.spec_from_file_location("migration", SCRIPT)
 assert spec and spec.loader
 migration = importlib.util.module_from_spec(spec)
@@ -30,7 +35,7 @@ def source_config(project: str = "glean_migration_test") -> dict:
     app_env = {
         "DATABASE_URL": "postgresql+asyncpg://glean:test@postgres:5432/glean_test",
         "REDIS_URL": "redis://redis:6379/0",
-        "SECRET_KEY": "literal-$SECRET-$(do-not-execute)-'quoted'",
+        "SECRET_KEY": "literal-$SECRET-$(do-not-execute)-'quoted'-\"double\"-\\path\nline\t#雪\\",
         "VECTOR_BACKEND": "milvus",
         "CUSTOM_SETTING": "keep me",
     }
@@ -314,6 +319,411 @@ class MigrationTests(unittest.TestCase):
             value.rollback()
             self.assertEqual(compose.call_count, 1)
             self.assertFalse(compose.call_args.args[0])
+
+    def finalizable_migration(self) -> tuple[migration.Migration, Path, dict[str, bytes]]:
+        value = self.saved_migration("complete")
+        deployment = Path(self.temporary.name) / "deployment"
+        deployment.mkdir()
+        originals = {
+            "docker-compose.yml": b"# original deployment\n",
+            "compose.yaml": b"# higher precedence file\n",
+            "docker-compose.override.yml": b"# old override with old volumes\n",
+            ".env": b"# Keep this comment\nUNRELATED_OPTION=keep\nIMAGE_TAG=old\nSECRET_KEY='literal-$value\nCOMPOSE_FILE=inside-value'\nCOMPOSE_FILE=compose.yaml\nIMAGE_TAG=duplicate\n",
+            "production.yml": b"# custom deployment input\n",
+            ".env.production": b"CUSTOM_SETTING=original\n",
+        }
+        for name, content in originals.items():
+            (deployment / name).write_bytes(content)
+        (deployment / ".env").chmod(0o640)
+        value.state["deployment_directory"] = str(deployment)
+        value.state["source_files"] = [str(deployment / "production.yml")]
+        value.state["env_files"] = [str(deployment / ".env.production")]
+        migration.save_json(value.state_path, value.state)
+        source = copy.deepcopy(self.source)
+        source["services"]["web"]["ports"] = [{"target": 80, "published": "8088"}]
+        migration.save_json(
+            self.directory / "pgvector.compose.json",
+            migration.compose_dollars(
+                migration.make_target(source, "1.2.3", self.volume_names), escape=True
+            ),
+        )
+        return value, deployment, originals
+
+    def finalize(self, value: migration.Migration) -> None:
+        def stage(args):
+            migration.save_bytes(value.directory / "deployment.compose.yml", TEMPLATE.read_bytes())
+            migration.save_bytes(
+                value.directory / "deployment.env", b'COMPOSE_FILE="docker-compose.yml"\n'
+            )
+
+        with (
+            mock.patch.object(value, "compose"),
+            mock.patch.object(value, "prepare_deployment", side_effect=stage),
+            mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}),
+        ):
+            value.finalize(migration.parser().parse_args(["finalize"]))
+
+    def test_finalize_archives_originals_and_installs_new_volume_mapping(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        self.finalize(value)
+        archive = self.directory / "deployment-backup.tar.gz"
+        self.assertEqual(archive.stat().st_mode & 0o777, 0o600)
+        with tarfile.open(archive, "r:gz") as bundle:
+            for name, content in originals.items():
+                self.assertEqual(bundle.extractfile(f"deployment/{name}").read(), content)
+        self.assertEqual((deployment / "docker-compose.yml").read_bytes(), TEMPLATE.read_bytes())
+        self.assertFalse((deployment / "compose.yaml").exists())
+        self.assertFalse((deployment / "docker-compose.override.yml").exists())
+        self.assertIn('COMPOSE_FILE="docker-compose.yml"', (deployment / ".env").read_text())
+        self.assertEqual((deployment / "production.yml").read_bytes(), originals["production.yml"])
+        for name in ("docker-compose.yml", ".env"):
+            self.assertEqual((deployment / name).stat().st_mode & 0o777, 0o600)
+        self.assertTrue(migration.Migration(self.directory).state["finalized"])
+
+    def test_finalize_retries_without_replacing_backup_and_preserves_later_edits(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        save_bytes = migration.save_bytes
+
+        def interrupted(path, content, mode=0o600):
+            if path.name == ".env":
+                raise OSError("simulated write interruption")
+            save_bytes(path, content, mode)
+
+        with (
+            mock.patch.object(migration, "save_bytes", side_effect=interrupted),
+            self.assertRaises(OSError),
+        ):
+            self.finalize(value)
+        self.assertEqual((deployment / ".env").read_bytes(), originals[".env"])
+        archive = (self.directory / "deployment-backup.tar.gz").read_bytes()
+        resumed = migration.Migration(self.directory)
+        self.finalize(resumed)
+        self.assertEqual((self.directory / "deployment-backup.tar.gz").read_bytes(), archive)
+        (deployment / "docker-compose.yml").write_text("# later intentional edit\n")
+        self.finalize(migration.Migration(self.directory))
+        self.assertEqual(
+            (deployment / "docker-compose.yml").read_text(), "# later intentional edit\n"
+        )
+
+    def test_finalize_requires_complete_migration_and_valid_compose_before_backup(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        value.state["phase"] = "restored"
+        with self.assertRaises(migration.MigrationError):
+            self.finalize(value)
+        value.state["phase"] = "complete"
+        with (
+            mock.patch.object(value, "compose", side_effect=subprocess.CalledProcessError(1, [])),
+            self.assertRaises(subprocess.CalledProcessError),
+            mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}),
+        ):
+            value.finalize(migration.parser().parse_args(["finalize"]))
+        self.assertFalse((self.directory / "deployment-backup.tar.gz").exists())
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+
+    def test_finalize_backup_failure_does_not_change_original_files(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        with (
+            mock.patch.object(tarfile.TarFile, "add", side_effect=OSError("disk full")),
+            self.assertRaises(OSError),
+        ):
+            self.finalize(value)
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+        self.assertFalse((self.directory / "deployment-backup.tar.gz").exists())
+
+    def test_finalize_refuses_symlinks_and_shell_compose_overrides(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        (deployment / "compose.yml").symlink_to(deployment / "production.yml")
+        with self.assertRaises(migration.MigrationError):
+            self.finalize(value)
+        self.assertEqual((deployment / "production.yml").read_bytes(), originals["production.yml"])
+        (deployment / "compose.yml").unlink()
+        with (
+            mock.patch.dict(os.environ, {"COMPOSE_FILE": "old.yml"}),
+            self.assertRaises(migration.MigrationError),
+        ):
+            value.finalize(migration.parser().parse_args(["finalize"]))
+
+    def test_finalize_supports_older_state_with_custom_external_input_files(self) -> None:
+        value, _, _ = self.finalizable_migration()
+        value.state.pop("source_files")
+        value.state.pop("env_files")
+        external = Path(self.temporary.name) / "external.yml"
+        external.write_bytes(b"# external original\n")
+        migration.save_bytes(value.directory / "deployment.compose.yml", TEMPLATE.read_bytes())
+        migration.save_bytes(
+            value.directory / "deployment.env", b'COMPOSE_FILE="docker-compose.yml"\n'
+        )
+        migration.save_json(
+            value.directory / "deployment-files.json",
+            {
+                "compose": migration.file_digest(value.directory / "deployment.compose.yml"),
+                "env": migration.file_digest(value.directory / "deployment.env"),
+            },
+        )
+        with (
+            mock.patch.object(value, "compose"),
+            mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}),
+        ):
+            value.finalize(migration.parser().parse_args(["finalize", "--compose", str(external)]))
+        with tarfile.open(self.directory / "deployment-backup.tar.gz", "r:gz") as bundle:
+            manifest = json.load(bundle.extractfile("manifest.json"))
+            item = next(item for item in manifest["files"] if item["path"] == str(external))
+            self.assertEqual(bundle.extractfile(item["member"]).read(), external.read_bytes())
+
+    def test_rollback_restores_original_files_and_permissions_after_finalize(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        self.finalize(value)
+        with mock.patch.object(value, "compose"):
+            value.rollback()
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+        self.assertEqual((deployment / ".env").stat().st_mode & 0o777, 0o640)
+        self.assertFalse((deployment / "compose.yml").exists())
+        self.assertTrue(value.state["deployment_files_restored"])
+
+    def test_rollback_does_not_clobber_edits_or_use_missing_backup(self) -> None:
+        value, deployment, _ = self.finalizable_migration()
+        self.finalize(value)
+        (deployment / ".env").write_bytes(b"# new edits\n")
+        with mock.patch.object(value, "compose") as compose:
+            with self.assertRaises(migration.MigrationError):
+                value.rollback()
+            compose.assert_not_called()
+        (self.directory / "deployment-backup.tar.gz").unlink()
+        with mock.patch.object(value, "compose") as compose:
+            with self.assertRaises(migration.MigrationError):
+                value.rollback()
+            compose.assert_not_called()
+
+    def test_rollback_can_resume_partial_finalize(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        save_bytes = migration.save_bytes
+
+        def interrupted(path, content, mode=0o600):
+            if path.name == "docker-compose.yml":
+                raise OSError("interrupted")
+            save_bytes(path, content, mode)
+
+        with (
+            mock.patch.object(migration, "save_bytes", side_effect=interrupted),
+            self.assertRaises(OSError),
+        ):
+            self.finalize(value)
+        resumed = migration.Migration(self.directory)
+        with mock.patch.object(resumed, "compose"):
+            resumed.rollback()
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+
+    def test_rollback_removes_generated_entry_points_if_originals_were_absent(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        for name in (*migration.DEFAULT_COMPOSE_FILES, ".env"):
+            (deployment / name).unlink(missing_ok=True)
+        self.finalize(value)
+        with mock.patch.object(value, "compose"):
+            value.rollback()
+        self.assertFalse((deployment / "docker-compose.yml").exists())
+        self.assertFalse((deployment / ".env").exists())
+        self.assertEqual((deployment / "production.yml").read_bytes(), originals["production.yml"])
+
+    def test_finalize_refuses_corrupt_archive_without_changing_files(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        (self.directory / "deployment-backup.tar.gz").write_bytes(b"corrupt archive")
+        with self.assertRaises(tarfile.TarError):
+            self.finalize(value)
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+
+    def test_ordinary_compose_resolves_installed_files_without_script(self) -> None:
+        if not shutil.which("docker"):
+            self.skipTest("Docker Compose CLI unavailable")
+        version = subprocess.run(["docker", "compose", "version"], capture_output=True)
+        if version.returncode:
+            self.skipTest("Docker Compose CLI unavailable")
+        value, deployment, _ = self.finalizable_migration()
+        environment = {
+            key: value for key, value in os.environ.items() if not key.startswith("COMPOSE_")
+        }
+        finalized = subprocess.run(
+            [sys.executable, str(SCRIPT), "--state-dir", str(self.directory), "finalize"],
+            cwd=self.temporary.name,
+            env={
+                **environment,
+                "IMAGE_TAG": "unrelated-shell-tag",
+                "SECRET_KEY": "unrelated-shell-secret",
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(finalized.returncode, 0, finalized.stderr)
+        installed = (deployment / "docker-compose.yml").read_text()
+        self.assertTrue(
+            installed.startswith("# Glean Docker Compose Configuration (pgvector backend)\n")
+        )
+        self.assertIn("${IMAGE_TAG:-latest}", installed)
+        self.assertIn("${POSTGRES_PASSWORD:-glean}", installed)
+        self.assertIn('"${WEB_PORT:-80}:80"', installed)
+        self.assertIn("\nservices:\n", installed)
+        self.assertIn("\nvolumes:\n", installed)
+        self.assertIn(
+            "# Keep this comment\nUNRELATED_OPTION=keep", (deployment / ".env").read_text()
+        )
+        result = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=deployment,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        target = migration.compose_dollars(json.loads(result.stdout), escape=False)
+        self.assertEqual(target["name"], value.state["project"])
+        self.assertEqual(set(target["services"]), migration.CORE_SERVICES)
+        self.assertEqual(target["volumes"]["postgres_data"]["name"], "new_postgres")
+        self.assertEqual(target["volumes"]["redis_data"]["name"], "new_redis")
+        self.assertTrue(target["volumes"]["postgres_data"]["external"])
+        self.assertTrue(target["volumes"]["redis_data"]["external"])
+        self.assertEqual(target["services"]["web"]["ports"][0]["published"], "8088")
+        for name in ("backend", "worker"):
+            self.assertEqual(
+                target["services"][name]["environment"]["SECRET_KEY"],
+                self.source["services"][name]["environment"]["SECRET_KEY"],
+            )
+            self.assertEqual(target["services"][name]["environment"]["VECTOR_BACKEND"], "pgvector")
+            self.assertEqual(target["services"][name]["environment"]["CUSTOM_SETTING"], "keep me")
+            self.assertEqual(
+                target["services"][name]["image"],
+                "ghcr.io/leslieleung/glean-backend:1.2.3",
+            )
+        env_text = (deployment / ".env").read_text()
+        for key, value in {
+            "IMAGE_TAG": "2.0.0",
+            "WEB_PORT": "9090",
+            "SECRET_KEY": '"updated-$$literal"',
+        }.items():
+            self.assertEqual(len(re.findall(rf"(?m)^{key}=", env_text)), 1)
+            env_text = re.sub(rf"(?m)^{key}=.*$", f"{key}={value}", env_text)
+        (deployment / ".env").write_text(env_text)
+        updated = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=deployment,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed = migration.compose_dollars(json.loads(updated.stdout), escape=False)
+        self.assertEqual(
+            changed["services"]["backend"]["image"], "ghcr.io/leslieleung/glean-backend:2.0.0"
+        )
+        self.assertEqual(
+            changed["services"]["worker"]["environment"]["SECRET_KEY"], "updated-$literal"
+        )
+        self.assertEqual(changed["services"]["web"]["ports"][0]["published"], "9090")
+        self.assertEqual(changed["volumes"]["postgres_data"]["name"], "new_postgres")
+
+    def test_finalize_requires_release_template_before_changing_deployment(self) -> None:
+        value, deployment, originals = self.finalizable_migration()
+        args = migration.parser().parse_args(
+            ["finalize", "--template", str(deployment / "missing.yml")]
+        )
+        with self.assertRaises(migration.MigrationError):
+            value.prepare_deployment(args)
+        self.assertFalse((self.directory / "deployment-backup.tar.gz").exists())
+        for name, content in originals.items():
+            self.assertEqual((deployment / name).read_bytes(), content)
+
+    def test_release_template_preserves_standard_variables_and_custom_overrides(self) -> None:
+        if (
+            not shutil.which("docker")
+            or subprocess.run(["docker", "compose", "version"], capture_output=True).returncode
+        ):
+            self.skipTest("Docker Compose CLI unavailable")
+        value, deployment, _ = self.finalizable_migration()
+        source_env = self.directory / "source.env"
+        source_env.write_text(
+            migration.update_dotenv(
+                "# Production settings\n",
+                {
+                    "IMAGE_TAG": "old",
+                    "POSTGRES_PASSWORD": "test-password",
+                    "SECRET_KEY": self.source["services"]["backend"]["environment"]["SECRET_KEY"],
+                    "WEB_PORT": "8088",
+                },
+            )
+        )
+        environment = {
+            key: item for key, item in os.environ.items() if not key.startswith("COMPOSE_")
+        }
+        command = ["docker", "compose", "--project-directory", str(deployment), "-p", "test"]
+        original = subprocess.run(
+            [
+                *command,
+                "--env-file",
+                str(source_env),
+                "-f",
+                str(TEMPLATE.with_name("docker-compose.yml")),
+                "config",
+                "--format",
+                "json",
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        source = migration.compose_dollars(json.loads(original.stdout), escape=False)
+        source["services"]["worker"]["environment"]["LOG_LEVEL"] = "WARNING"
+        source["services"]["web"]["labels"] = {"migration-test": "literal-$keep"}
+        migration.save_json(
+            self.directory / "pgvector.compose.json",
+            migration.compose_dollars(
+                migration.make_target(source, "1.2.3", self.volume_names),
+                escape=True,
+            ),
+        )
+        custom_template = self.directory / "release-template.yml"
+        custom_template.write_text("# Release template marker\n" + TEMPLATE.read_text())
+        with mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}):
+            value.finalize(
+                migration.parser().parse_args(
+                    [
+                        "finalize",
+                        "--template",
+                        str(custom_template),
+                        "--env-file",
+                        str(source_env),
+                    ]
+                )
+            )
+        installed = (deployment / "docker-compose.yml").read_text()
+        self.assertTrue(installed.startswith("# Release template marker\n"))
+        for reference in (
+            "${IMAGE_TAG:-latest}",
+            "${SECRET_KEY:-",
+            "${POSTGRES_PASSWORD:-glean}",
+            "${LOG_FILE:-/app/logs/glean-api.log}",
+            "${LOG_FILE:-/app/logs/glean-worker.log}",
+        ):
+            self.assertIn(reference, installed)
+        self.assertIn("      - postgres_data:/var/lib/postgresql/data", installed)
+        resolved = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=deployment,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        result = migration.compose_dollars(json.loads(resolved.stdout), escape=False)
+        self.assertEqual(result["services"]["worker"]["environment"]["LOG_LEVEL"], "WARNING")
+        self.assertEqual(result["services"]["backend"]["environment"]["LOG_LEVEL"], "INFO")
+        self.assertEqual(result["services"]["web"]["labels"]["migration-test"], "literal-$keep")
+        self.assertEqual(
+            result["volumes"]["postgres_data"], {"name": "new_postgres", "external": True}
+        )
 
 
 @unittest.skipUnless(
