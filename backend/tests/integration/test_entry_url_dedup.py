@@ -195,3 +195,173 @@ async def test_exact_url_identity_not_title_or_guid(db_session, test_user, dupli
     result = await EntryService(db_session).get_entries(test_user.id)
     assert result.total == 3
     assert len({item.url for item in result.items}) == 3
+
+
+@pytest.mark.parametrize("mode", ["single", "batch", "batch_two_sources"])
+@pytest.mark.parametrize("keep_source_feed", [False, True])
+async def test_unsubscribe_preserves_shared_state(
+    db_session, test_user, duplicate_articles, mode, keep_source_feed
+):
+    from sqlalchemy import select
+
+    feeds, entries, _ = duplicate_articles
+    now = datetime.now(UTC)
+    # A legacy row on B must be replaced by the authoritative state on A.
+    db_session.add_all(
+        [
+            UserEntry(
+                user_id=test_user.id,
+                entry_id=entries[1].id,
+                is_liked=False,
+                updated_at=now - timedelta(days=2),
+            ),
+            UserEntry(
+                user_id=test_user.id,
+                entry_id=entries[0].id,
+                is_read=True,
+                is_liked=True,
+                read_later=True,
+                read_at=now,
+                liked_at=now,
+                read_later_until=now + timedelta(days=5),
+                updated_at=now,
+            ),
+            Subscription(
+                user_id=test_user.id,
+                feed_id=feeds[2].id,
+                # Explicit ordering: server now() is the transaction timestamp and
+                # would sort this subscription ahead of the fixture's feeds.
+                created_at=now + timedelta(days=1),
+            ),
+        ]
+    )
+    if keep_source_feed:
+        other = User(email="keep-source@example.com")
+        db_session.add(other)
+        await db_session.flush()
+        db_session.add(Subscription(user_id=other.id, feed_id=feeds[0].id))
+    await db_session.commit()
+    service = EntryService(db_session)
+    # Interacting with B still writes to A's authoritative row.
+    await service.update_entry_state(
+        entries[1].id, test_user.id, UpdateEntryStateRequest(is_read=True)
+    )
+    subscription_ids = list(
+        (
+            await db_session.scalars(
+                select(Subscription.id)
+                .where(Subscription.user_id == test_user.id)
+                .order_by(Subscription.created_at)
+            )
+        ).all()
+    )
+    feed_service = FeedService(db_session)
+    if mode == "single":
+        await feed_service.delete_subscription(subscription_ids[0], test_user.id)
+    else:
+        await feed_service.batch_delete_subscriptions(
+            subscription_ids[:2] if mode == "batch_two_sources" else subscription_ids[:1],
+            test_user.id,
+        )
+    surviving_entry = entries[2] if mode == "batch_two_sources" else entries[1]
+    current = await service.get_entry(surviving_entry.id, test_user.id)
+    assert current.is_read and current.is_liked and current.read_later
+    assert current.read_at is not None and current.read_later_until == now + timedelta(days=5)
+    unread = await service.get_entries(test_user.id, is_read=False)
+    assert all(item.url != entries[0].url for item in unread.items)
+
+
+@pytest.mark.parametrize("latest_expired", [False, True])
+async def test_expiration_cannot_promote_obsolete_state(
+    db_session, test_user, duplicate_articles, latest_expired
+):
+    from contextlib import asynccontextmanager
+    from unittest.mock import patch
+
+    from glean_worker.tasks.cleanup import cleanup_read_later
+
+    _, entries, _ = duplicate_articles
+    now = datetime.now(UTC)
+    old = UserEntry(
+        user_id=test_user.id,
+        entry_id=entries[0].id,
+        is_read=False,
+        is_liked=True,
+        read_later=True,
+        read_later_until=now - timedelta(days=2),
+        updated_at=now - timedelta(days=3),
+    )
+    current = UserEntry(
+        user_id=test_user.id,
+        entry_id=entries[1].id,
+        is_read=True,
+        is_liked=False,
+        read_later=True,
+        read_later_until=now + timedelta(days=-1 if latest_expired else 1),
+        updated_at=now - timedelta(days=1),
+    )
+    db_session.add_all([old, current])
+    await db_session.commit()
+    old_timestamp, current_timestamp = old.updated_at, current.updated_at
+
+    @asynccontextmanager
+    async def session_context():
+        yield db_session
+
+    with patch("glean_worker.tasks.cleanup.get_session_context", session_context):
+        result = await cleanup_read_later({})
+    assert result["cleaned_count"] == (2 if latest_expired else 1)
+    await db_session.refresh(old)
+    await db_session.refresh(current)
+    assert old.updated_at == old_timestamp
+    assert current.updated_at == current_timestamp
+    article = await EntryService(db_session).get_entry(entries[0].id, test_user.id)
+    assert article.is_read and article.is_liked is False
+    assert article.read_later is (not latest_expired)
+
+
+@pytest.mark.parametrize("reaction", [None, False, True])
+async def test_preference_rebuild_uses_authoritative_url_reaction(
+    db_session, test_user, duplicate_articles, reaction
+):
+    from glean_core.services.preference_service import PreferenceService as CorePreferences
+    from glean_vector.services.preference_service import PreferenceService as VectorPreferences
+
+    _, entries, _ = duplicate_articles
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            UserEntry(
+                user_id=test_user.id,
+                entry_id=entries[0].id,
+                is_liked=True,
+                updated_at=now - timedelta(days=2),
+            ),
+            UserEntry(
+                user_id=test_user.id,
+                entry_id=entries[1].id,
+                is_liked=True,
+                updated_at=now - timedelta(days=1),
+            ),
+        ]
+    )
+    await db_session.commit()
+    await EntryService(db_session).update_entry_state(
+        entries[0].id, test_user.id, UpdateEntryStateRequest(is_liked=reaction)
+    )
+    vector_client = AsyncMock()
+    vector_client.batch_get_entry_embeddings.return_value = {entries[1].id: [1.0, 0.0]}
+    await VectorPreferences(db_session, vector_client).rebuild_from_history(test_user.id)
+    vector_client.delete_user_preferences.assert_awaited_once_with(test_user.id)
+    if reaction is None:
+        vector_client.batch_get_entry_embeddings.assert_not_awaited()
+        vector_client.upsert_user_preference.assert_not_awaited()
+    else:
+        vector_client.batch_get_entry_embeddings.assert_awaited_once_with([entries[1].id])
+        vector_client.upsert_user_preference.assert_awaited_once()
+        call = vector_client.upsert_user_preference.call_args.kwargs
+        assert call["vector_type"] == ("positive" if reaction else "negative")
+        assert call["sample_count"] == 1.0
+    stats = await CorePreferences(db_session, AsyncMock()).get_stats(test_user.id)
+    assert stats["total_likes"] == int(reaction is True)
+    assert stats["total_dislikes"] == int(reaction is False)
