@@ -635,6 +635,70 @@ class MigrationTests(unittest.TestCase):
         for name, content in originals.items():
             self.assertEqual((deployment / name).read_bytes(), content)
 
+    def test_finalize_regression_keeps_reverse_proxy_services_private(self) -> None:
+        if (
+            not shutil.which("docker")
+            or subprocess.run(["docker", "compose", "version"], capture_output=True).returncode
+        ):
+            self.skipTest("Docker Compose CLI unavailable")
+        value, deployment, _ = self.finalizable_migration()
+        snapshot = self.directory / "pgvector.compose.json"
+        target = json.loads(snapshot.read_text())
+        for service in ("web", "admin"):
+            target["services"][service].pop("ports", None)
+        migration.save_json(snapshot, target)
+        with mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}):
+            value.finalize(migration.parser().parse_args(["finalize"]))
+        resolved = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=deployment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        installed = json.loads(resolved.stdout)
+        for service in ("web", "admin"):
+            self.assertNotIn("ports", installed["services"][service])
+            self.assertNotIn("container_name", installed["services"][service])
+            self.assertNotIn("restart", installed["services"][service])
+        self.assertNotIn("volumes", installed["services"]["backend"])
+        self.assertNotIn("glean_logs", installed["volumes"])
+        self.assertNotIn("ADMIN_PASSWORD", installed["services"]["backend"]["environment"])
+
+    def test_finalize_regression_creates_missing_environment_parents(self) -> None:
+        if (
+            not shutil.which("docker")
+            or subprocess.run(["docker", "compose", "version"], capture_output=True).returncode
+        ):
+            self.skipTest("Docker Compose CLI unavailable")
+        value, deployment, _ = self.finalizable_migration()
+        snapshot = self.directory / "pgvector.compose.json"
+        target = json.loads(snapshot.read_text())
+        for service in ("redis", "web", "admin"):
+            target["services"][service]["environment"] = {
+                "TZ": "UTC",
+                "CUSTOM_LITERAL": "literal-$$value",
+            }
+        migration.save_json(snapshot, target)
+        with mock.patch.dict(os.environ, {"COMPOSE_FILE": "", "COMPOSE_PROJECT_NAME": ""}):
+            value.finalize(migration.parser().parse_args(["finalize"]))
+        resolved = subprocess.run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=deployment,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        installed = migration.compose_dollars(json.loads(resolved.stdout), escape=False)
+        for service in ("redis", "web", "admin"):
+            self.assertEqual(
+                installed["services"][service]["environment"],
+                {
+                    "TZ": "UTC",
+                    "CUSTOM_LITERAL": "literal-$value",
+                },
+            )
+
     def test_release_template_preserves_standard_variables_and_custom_overrides(self) -> None:
         if (
             not shutil.which("docker")

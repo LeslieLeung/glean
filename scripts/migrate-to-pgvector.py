@@ -137,6 +137,13 @@ def patch_yaml(
     return "".join(lines)
 
 
+def remove_yaml_field(document: str, path: tuple[str, ...]) -> str:
+    lines = document.splitlines(keepends=True)
+    start, end = yaml_block(lines, path)
+    del lines[start:end]
+    return "".join(lines)
+
+
 def update_dotenv(document: str, values: dict[str, str]) -> str:
     """Update assignments without leaving stale duplicates or losing other settings."""
     pending = dict(values)
@@ -678,10 +685,18 @@ class Migration:
             "docker compose -f docker-compose.pgvector.yml", "docker compose"
         )
         for service, config in target["services"].items():
+            original_service: dict[str, Any] = base["services"][service]
+            for key in original_service.keys() - config.keys():
+                document = remove_yaml_field(document, ("services", service, key))
             for key, value in config.items():
-                original: Any = base["services"][service].get(key)
+                original: Any = original_service.get(key)
                 if key == "environment":
                     original_environment: dict[str, Any] = original or {}
+                    if not original_environment:
+                        document = patch_yaml(document, rendered, ("services", service, key))
+                        continue
+                    for setting in original_environment.keys() - value.keys():
+                        document = remove_yaml_field(document, ("services", service, key, setting))
                     for setting, actual in value.items():
                         if actual != original_environment.get(setting):
                             document = patch_yaml(
@@ -695,6 +710,8 @@ class Migration:
                         remove_if_missing=value is None or value in ({}, []),
                     )
         for key in ("volumes", "networks", "configs", "secrets"):
+            for name in base.get(key, {}).keys() - target.get(key, {}).keys():
+                document = remove_yaml_field(document, (key, name))
             for name, value in target.get(key, {}).items():
                 if value != base.get(key, {}).get(name):
                     path = (key, name) if key in base else (key,)
@@ -708,25 +725,14 @@ class Migration:
             escape=False,
         )
         for service, config in target["services"].items():
-            for key, value in config.items():
-                actual = installed["services"][service].get(key)
-                if key == "environment":
-                    installed_environment: dict[str, Any] = actual or {}
-                    matches = all(
-                        installed_environment.get(setting) == expected
-                        for setting, expected in value.items()
-                    )
-                else:
-                    matches = actual == value
-                if not matches:
+            actual_service: dict[str, Any] = installed["services"][service]
+            for key in config.keys() | actual_service.keys():
+                if config.get(key) != actual_service.get(key):
                     raise MigrationError(
                         f"Template did not preserve migrated setting: {service}.{key}"
                     )
         for key in ("volumes", "networks", "configs", "secrets"):
-            if any(
-                installed.get(key, {}).get(name) != value
-                for name, value in target.get(key, {}).items()
-            ):
+            if installed.get(key, {}) != target.get(key, {}):
                 raise MigrationError(f"Template did not preserve migrated {key}.")
         save_bytes(output, document.encode())
         save_json(prepared, {"compose": file_digest(output), "env": file_digest(env_path)})
