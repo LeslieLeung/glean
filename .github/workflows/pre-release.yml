@@ -181,7 +181,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 12.16.1
+          version: 12.18.0
 
       - name: Get pnpm store directory
         shell: bash
