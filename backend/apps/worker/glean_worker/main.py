@@ -32,6 +32,7 @@ from .tasks import (
     embedding_rebuild,
     embedding_worker,
     feed_fetcher,
+    jev_classification,
     preference_worker,
     subscription_cleanup,
 )
@@ -131,6 +132,8 @@ def get_oss_functions() -> list[TaskFunction | Function]:
     return [
         func(feed_fetcher.fetch_feed_task, keep_result=FEED_RESULT_SECONDS),
         feed_fetcher.fetch_all_feeds,
+        func(jev_classification.classify_entry, keep_result=0, max_tries=3),
+        jev_classification.enqueue_jev_classifications,
         cleanup.cleanup_read_later,
         bookmark_metadata.fetch_bookmark_metadata_task,
         # M3: Embedding tasks (triggered immediately after feed fetch)
@@ -154,6 +157,7 @@ def get_oss_cron_jobs() -> list[CronJob]:
     return [
         # Feed fetch (every 15 minutes)
         cron(feed_fetcher.scheduled_fetch, minute={0, 15, 30, 45}),
+        cron(jev_classification.enqueue_jev_classifications, minute=set(range(60))),
         # Read-later cleanup (hourly at minute 0)
         cron(cleanup.scheduled_cleanup, minute=0),
         # Embedding maintenance: recover stuck entries + auto-complete rebuild (every 5 min)

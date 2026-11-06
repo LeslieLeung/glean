@@ -8,6 +8,7 @@ import {
 } from '../hooks/useEntries'
 import { useVectorizationStatus } from '../hooks/useVectorizationStatus'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
+import { ClassificationBadge } from '../components/ClassificationBadge'
 import { useAuthStore } from '../stores/authStore'
 import { useUIStore } from '../stores/uiStore'
 import { useTranslation } from '@glean/i18n'
@@ -926,7 +927,7 @@ function EntryListItem({
               )}
             </div>
 
-            <div className="text-muted-foreground/80 flex items-center gap-2 text-xs">
+            <div className="text-muted-foreground/80 flex flex-wrap items-center gap-2 text-xs">
               {entry.author && <span className="max-w-[120px] truncate">{entry.author}</span>}
               {entry.author && entry.published_at && (
                 <span className="text-muted-foreground/40">·</span>
@@ -937,7 +938,7 @@ function EntryListItem({
                 </span>
               )}
 
-              <div className="ml-auto flex items-center gap-1.5">
+              <div className="ml-auto flex max-w-full min-w-0 items-center gap-1.5">
                 {/* M3: Preference score badge */}
                 {showPreferenceScore &&
                   entry.preference_score !== null &&
@@ -976,6 +977,7 @@ function EntryListItem({
                     {remainingTime}
                   </span>
                 )}
+                <ClassificationBadge result={entry.classification} />
               </div>
             </div>
           </div>
