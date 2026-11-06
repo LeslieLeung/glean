@@ -48,7 +48,9 @@ async def cleanup_read_later(_ctx: dict[str, Any]) -> dict[str, int]:
                     UserEntry.read_later_until < now,
                 )
             )
-            .values(read_later=False, read_later_until=None)
+            # Expiration is maintenance, not a new user interaction. Preserve
+            # authority ordering among legacy states for the same article URL.
+            .values(read_later=False, read_later_until=None, updated_at=UserEntry.updated_at)
         )
         result: CursorResult[Any] = await session.execute(stmt)  # type: ignore[assignment]
 
