@@ -75,7 +75,7 @@ export function stripFeedMetadataText(text: string): string {
   return result.replace(/\s+/g, ' ').trim()
 }
 
-function removeMetadataRanges(root: HTMLElement): void {
+function removeMetadataRanges(root: Element): void {
   const ranges = [...metadataRanges(root.textContent || '')].sort((a, b) => b.start - a.start)
   if (ranges.length === 0) return
 
