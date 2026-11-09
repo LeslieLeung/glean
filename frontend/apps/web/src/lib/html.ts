@@ -60,6 +60,48 @@ function hasPreservedContent(root: Element): boolean {
   return root.querySelector(PRESERVED_CONTENT) !== null
 }
 
+const BOUNDARY_TAG = /^(P|DIV|LI|UL|OL|H[1-6]|BLOCKQUOTE|TR|TABLE|PRE|HR|SECTION|ARTICLE)$/
+
+/**
+ * Text used for metadata matching. `<br>` and block boundaries become newlines so a
+ * URL cannot swallow the article text that follows them. Inline nodes such as links stay
+ * adjacent, which is how Hacker News puts the label and the URL together.
+ */
+function readWithBoundaries(root: Element): {
+  text: string
+  nodes: Array<{ node: Text; start: number }>
+} {
+  const nodes: Array<{ node: Text; start: number }> = []
+  let text = ''
+
+  const appendBoundary = () => {
+    if (text.length > 0 && !/\s$/.test(text)) text += '\n'
+  }
+
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue ?? ''
+      if (!value) return
+      nodes.push({ node: node as Text, start: text.length })
+      text += value
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    const element = node as Element
+    if (element.tagName === 'BR') {
+      appendBoundary()
+      return
+    }
+    const boundary = BOUNDARY_TAG.test(element.tagName)
+    if (boundary) appendBoundary()
+    for (const child of element.childNodes) visit(child)
+    if (boundary) appendBoundary()
+  }
+
+  for (const child of root.childNodes) visit(child)
+  return { text, nodes }
+}
+
 /**
  * Remove Hacker News-style feed boilerplate from plain text.
  *
@@ -76,19 +118,9 @@ export function stripFeedMetadataText(text: string): string {
 }
 
 function removeMetadataRanges(root: Element): void {
-  const ranges = [...metadataRanges(root.textContent || '')].sort((a, b) => b.start - a.start)
+  const { text, nodes } = readWithBoundaries(root)
+  const ranges = [...metadataRanges(text)].sort((a, b) => b.start - a.start)
   if (ranges.length === 0) return
-
-  const nodes: Array<{ node: Text; start: number }> = []
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-  let offset = 0
-  let current = walker.nextNode()
-  while (current) {
-    const node = current as Text
-    nodes.push({ node, start: offset })
-    offset += node.data.length
-    current = walker.nextNode()
-  }
 
   for (const range of ranges) {
     for (const item of nodes) {
@@ -118,26 +150,28 @@ export function stripFeedMetadataHtml(html: string): string {
   const temp = document.createElement('div')
   temp.innerHTML = html
   const blocks = [...temp.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6')]
-  // Match inside each block. Concatenating the whole article would let a URL
-  // swallow the first word of the next paragraph.
+  // Match inside each block. Structural boundaries keep a URL from consuming the next line.
   const targets = blocks.length > 0 ? blocks : [temp]
   const hasMetadata = targets.some(
-    (element) => metadataRanges(element.textContent || '').length > 0
+    (element) => metadataRanges(readWithBoundaries(element).text).length > 0
   )
   if (!hasMetadata) return html
 
   for (const block of targets) {
-    if (metadataRanges(block.textContent || '').length === 0) continue
-    const cleaned = stripFeedMetadataText(block.textContent || '')
+    const source = readWithBoundaries(block).text
+    if (metadataRanges(source).length === 0) continue
+    const cleaned = stripFeedMetadataText(source)
     if (!cleaned && !hasPreservedContent(block)) {
       if (block === temp) temp.replaceChildren()
       else block.remove()
       continue
     }
     removeMetadataRanges(block)
-    if (block !== temp && !(block.textContent || '').trim() && !hasPreservedContent(block)) {
-      block.remove()
-    }
+  }
+
+  for (const block of [...targets].reverse()) {
+    if (block === temp || !block.isConnected) continue
+    if (!(block.textContent || '').trim() && !hasPreservedContent(block)) block.remove()
   }
 
   if (!(temp.textContent || '').trim() && !hasPreservedContent(temp)) return ''

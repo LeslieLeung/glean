@@ -177,4 +177,21 @@ describe('stripFeedMetadataHtml', () => {
     const html = '<p>Hit Points: 100</p><p>Rewards Points: 1,000</p>'
     expect(stripFeedMetadataHtml(html)).toBe(html)
   })
+
+  it('keeps article text that follows metadata after a line break', () => {
+    const html =
+      '<p>Article URL: <a href="https://example.com">https://example.com</a><br>Introduction</p>'
+    const result = stripFeedMetadataHtml(html)
+    expect(result).toContain('Introduction')
+    expect(result).not.toContain('Article URL')
+    expect(result).not.toContain('https://example.com')
+  })
+
+  it('keeps a paragraph that follows metadata inside a list item', () => {
+    const html =
+      '<li><p>Article URL: <a href="https://example.com">https://example.com</a></p><p>Introduction</p></li>'
+    const result = stripFeedMetadataHtml(html)
+    expect(result).toContain('Introduction')
+    expect(result).not.toContain('Article URL')
+  })
 })
