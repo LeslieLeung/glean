@@ -45,7 +45,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
       })
     } catch (error) {
-      set({ error: apiErrorMessage(error), isLoading: false })
+      const message = error instanceof Error ? apiErrorMessage(error) : 'Login failed'
+      set({ error: message, isLoading: false })
       throw error
     }
   },
