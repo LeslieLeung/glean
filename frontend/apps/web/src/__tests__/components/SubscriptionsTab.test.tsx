@@ -84,7 +84,18 @@ describe('Manage Feeds', () => {
   it('filters a parent folder including descendants and defaults additions to that folder', async () => {
     renderTab()
     await screen.findByText('My Feed')
-    fireEvent.click(screen.getByRole('button', { name: 'Tech' }))
+    const allFeeds = screen.getByRole('button', { name: 'manager.allFeeds' })
+    expect(allFeeds).toHaveAttribute('aria-current', 'page')
+    expect(allFeeds.className).toContain('bg-primary/10')
+    expect(allFeeds.className).toContain('text-primary')
+
+    const tech = screen.getByRole('button', { name: 'Tech' })
+    expect(tech).not.toHaveAttribute('aria-current')
+    fireEvent.click(tech)
+    expect(tech).toHaveAttribute('aria-current', 'page')
+    expect(tech.className).toContain('bg-primary/10')
+    expect(tech.className).toContain('text-primary')
+    expect(allFeeds).not.toHaveAttribute('aria-current')
     await waitFor(() =>
       expect(feedService.getSubscriptions).toHaveBeenLastCalledWith(
         expect.objectContaining({ folder_id: 'parent', include_descendants: true, page: 1 })

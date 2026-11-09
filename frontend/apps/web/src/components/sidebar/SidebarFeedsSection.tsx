@@ -414,8 +414,7 @@ function SidebarFolderItem({
 
   return (
     <div>
-      <button
-        type="button"
+      <div
         className={cn(
           'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200',
           getContainerClasses()
@@ -424,9 +423,12 @@ function SidebarFolderItem({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => onSelect(folder.id)}
       >
-        <button onClick={onToggle} className="touch-target-none flex h-5 items-center gap-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="touch-target-none flex h-5 items-center gap-2.5"
+        >
           <ChevronRight
             className={cn(
               'h-3 w-3 shrink-0 transition-transform duration-200',
@@ -449,6 +451,7 @@ function SidebarFolderItem({
           </span>
         </button>
         <button
+          type="button"
           onClick={() => onSelect(folder.id)}
           className="touch-target-none h-5 min-w-0 flex-1 truncate text-left"
         >
@@ -461,7 +464,10 @@ function SidebarFolderItem({
         )}
 
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <MenuTrigger
+            aria-label={t('contextMenu.moreActions')}
+            className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          >
             <MoreIcon className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -492,7 +498,7 @@ function SidebarFolderItem({
             </MenuItem>
           </MenuPopup>
         </Menu>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="border-border mt-0.5 ml-4 space-y-0.5 border-l pl-2">
@@ -670,8 +676,7 @@ function SidebarFeedItem({
 
   return (
     <>
-      <button
-        type="button"
+      <div
         className={cn(
           'group flex w-full cursor-grab items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 active:cursor-grabbing',
           getFeedItemClasses()
@@ -683,9 +688,9 @@ function SidebarFeedItem({
         }}
         onDragEnd={onDragEnd}
         onContextMenu={handleContextMenu}
-        onClick={onClick}
       >
         <button
+          type="button"
           onClick={onClick}
           className="touch-target-none flex h-5 min-w-0 flex-1 items-center gap-3"
         >
@@ -710,7 +715,11 @@ function SidebarFeedItem({
         )}
 
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <MenuTrigger
+            aria-label={t('contextMenu.moreActions')}
+            onClick={(event) => event.stopPropagation()}
+            className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          >
             <MoreIcon className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">
@@ -760,7 +769,7 @@ function SidebarFeedItem({
             </MenuItem>
           </MenuPopup>
         </Menu>
-      </button>
+      </div>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogPopup>

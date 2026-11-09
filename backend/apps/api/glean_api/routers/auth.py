@@ -259,6 +259,23 @@ async def logout() -> dict[str, str]:
     return {"message": "Logged out successfully"}
 
 
+class AuthProvidersResponse(BaseModel):
+    """Public authentication methods available on this server."""
+
+    oidc_enabled: bool
+
+
+@router.get("/providers", response_model=AuthProvidersResponse)
+async def get_auth_providers() -> AuthProvidersResponse:
+    """Return which external sign-in methods are enabled.
+
+    The login page uses this to hide SSO when OIDC is not configured.
+    """
+    from glean_core.config import auth_provider_config
+
+    return AuthProvidersResponse(oidc_enabled=auth_provider_config.oidc_enabled)
+
+
 @router.get("/me")
 async def get_me(
     current_user: Annotated[UserResponse, Depends(get_current_user)],

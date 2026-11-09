@@ -28,6 +28,165 @@ export function stripHtmlTags(html: string | null | undefined): string {
   return temp.textContent?.trim().replace(/\s+/g, ' ') || ''
 }
 
+const EXACT_POINTS = /^\s*Points:\s*\d+\s*$/i
+const PRESERVED_CONTENT = 'img, picture, video, audio, svg, canvas, table, pre, iframe'
+
+function strongMetadataPattern(): RegExp {
+  return /(?:^|(?<=\s))(?:Article URL|Comments URL|#\s*Comments):\s*(?:https?:\/\/\S+|\d+)/gi
+}
+
+function pointsMetadataPattern(): RegExp {
+  // "Points" must be its own label. "Hit Points" and "Rewards Points" are prose.
+  return /(?:^|(?<=\s))(?<![A-Za-z]\s)Points:\s*\d+/gi
+}
+
+function metadataRanges(text: string): Array<{ start: number; end: number }> {
+  const ranges = [...text.matchAll(strongMetadataPattern())].map((match) => ({
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }))
+  if (ranges.length > 0 || EXACT_POINTS.test(text)) {
+    for (const match of text.matchAll(pointsMetadataPattern())) {
+      ranges.push({
+        start: match.index ?? 0,
+        end: (match.index ?? 0) + match[0].length,
+      })
+    }
+  }
+  return ranges
+}
+
+function hasPreservedContent(root: Element): boolean {
+  return root.querySelector(PRESERVED_CONTENT) !== null
+}
+
+const BOUNDARY_TAG = /^(P|DIV|LI|UL|OL|H[1-6]|BLOCKQUOTE|TR|TABLE|PRE|HR|SECTION|ARTICLE)$/
+
+/**
+ * Text used for metadata matching. `<br>` and block boundaries become newlines so a
+ * URL cannot swallow the article text that follows them. Inline nodes such as links stay
+ * adjacent, which is how Hacker News puts the label and the URL together.
+ */
+function readWithBoundaries(root: Element): {
+  text: string
+  nodes: Array<{ node: Text; start: number }>
+} {
+  const nodes: Array<{ node: Text; start: number }> = []
+  let text = ''
+
+  const appendBoundary = () => {
+    if (text.length > 0 && !/\s$/.test(text)) text += '\n'
+  }
+
+  const visit = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue ?? ''
+      if (!value) return
+      nodes.push({ node: node as Text, start: text.length })
+      text += value
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    const element = node as Element
+    if (element.tagName === 'BR') {
+      appendBoundary()
+      return
+    }
+    const boundary = BOUNDARY_TAG.test(element.tagName)
+    if (boundary) appendBoundary()
+    for (const child of element.childNodes) visit(child)
+    if (boundary) appendBoundary()
+  }
+
+  for (const child of root.childNodes) visit(child)
+  return { text, nodes }
+}
+
+/**
+ * Remove Hacker News-style feed boilerplate from plain text.
+ *
+ * Leaves any real summary that shared the same string, such as an Ask HN prompt.
+ * Ordinary prose that merely contains "Points" is left alone.
+ */
+export function stripFeedMetadataText(text: string): string {
+  const ranges = [...metadataRanges(text)].sort((a, b) => b.start - a.start)
+  let result = text
+  for (const range of ranges) {
+    result = result.slice(0, range.start) + result.slice(range.end)
+  }
+  return result.replace(/\s+/g, ' ').trim()
+}
+
+function removeMetadataRanges(root: Element): void {
+  const { text, nodes } = readWithBoundaries(root)
+  const ranges = [...metadataRanges(text)].sort((a, b) => b.start - a.start)
+  if (ranges.length === 0) return
+
+  for (const range of ranges) {
+    for (const item of nodes) {
+      const nodeEnd = item.start + item.node.data.length
+      if (nodeEnd <= range.start || item.start >= range.end) continue
+      const localStart = Math.max(0, range.start - item.start)
+      const localEnd = Math.min(item.node.data.length, range.end - item.start)
+      item.node.data = item.node.data.slice(0, localStart) + item.node.data.slice(localEnd)
+    }
+  }
+
+  for (const anchor of [...root.querySelectorAll('a')]) {
+    if (!(anchor.textContent || '').trim() && !anchor.querySelector('img, picture, svg')) {
+      anchor.remove()
+    }
+  }
+}
+
+/**
+ * Remove feed-metadata phrases from HTML.
+ * Returns an empty string when nothing readable remains.
+ * Markup with no metadata is returned unchanged, including images, links, and tables.
+ */
+export function stripFeedMetadataHtml(html: string): string {
+  if (!html) return ''
+
+  const temp = document.createElement('div')
+  temp.innerHTML = html
+  const blocks = [...temp.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6')]
+  // Match inside each block. Structural boundaries keep a URL from consuming the next line.
+  const targets = blocks.length > 0 ? blocks : [temp]
+  const hasMetadata = targets.some(
+    (element) => metadataRanges(readWithBoundaries(element).text).length > 0
+  )
+  if (!hasMetadata) return html
+
+  for (const block of targets) {
+    const source = readWithBoundaries(block).text
+    if (metadataRanges(source).length === 0) continue
+    const cleaned = stripFeedMetadataText(source)
+    if (!cleaned && !hasPreservedContent(block)) {
+      if (block === temp) temp.replaceChildren()
+      else block.remove()
+      continue
+    }
+    removeMetadataRanges(block)
+  }
+
+  for (const block of [...targets].reverse()) {
+    if (block === temp || !block.isConnected) continue
+    if (!(block.textContent || '').trim() && !hasPreservedContent(block)) block.remove()
+  }
+
+  if (!(temp.textContent || '').trim() && !hasPreservedContent(temp)) return ''
+  return temp.innerHTML
+}
+
+/** True when sanitized article HTML still has text or non-text content such as an image. */
+export function articleHtmlHasContent(html: string): boolean {
+  if (!html) return false
+  if (stripHtmlTags(html)) return true
+  const temp = document.createElement('div')
+  temp.innerHTML = html
+  return hasPreservedContent(temp)
+}
+
 /**
  * Process HTML content for safe rendering.
  * Sanitizes HTML to prevent XSS attacks while preserving safe formatting.

@@ -1183,7 +1183,7 @@ function CreateBookmarkDialog({ open, onOpenChange }: CreateBookmarkDialogProps)
 
             <div>
               <label className="text-foreground mb-1.5 block text-sm font-medium">
-                {t('dialogs.createBookmark.title')}
+                {t('dialogs.createBookmark.bookmarkTitle')}
               </label>
               <Input
                 type="text"
@@ -1475,7 +1475,7 @@ function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBookmarkDi
           {/* Title */}
           <div>
             <label className="text-foreground mb-1.5 block text-sm font-medium">
-              {t('dialogs.editBookmark.title')}
+              {t('dialogs.editBookmark.bookmarkTitle')}
             </label>
             <Input
               type="text"

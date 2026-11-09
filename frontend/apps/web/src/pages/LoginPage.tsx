@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Rss, AlertCircle, Sparkles, Server } from 'lucide-react'
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const { t } = useTranslation('auth')
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, isLoading, error, clearError } = useAuthStore()
+  const { login, isLoading, error, clearError, isAuthenticated, user } = useAuthStore()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,6 +25,12 @@ export default function LoginPage() {
   const from =
     (location.state as { from?: { pathname: string } })?.from?.pathname ||
     '/reader?view=smart&tab=unread'
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate(from, { replace: true })
+    }
+  }, [from, isAuthenticated, navigate, user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,10 +50,8 @@ export default function LoginPage() {
     }
   }
 
-  const displayError = validationError || error
-
   return (
-    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-hidden px-4">
+    <div className="bg-background relative flex min-h-screen items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-8">
       {/* Background decorations */}
       <div className="bg-pattern absolute inset-0" />
       <div className="bg-primary/10 absolute -top-48 -left-48 h-96 w-96 rounded-full blur-3xl" />
@@ -87,11 +91,17 @@ export default function LoginPage() {
         <div className="glass rounded-2xl p-8 shadow-xl">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Error message */}
-            {displayError && (
+            {validationError && (
+              <Alert variant="error">
+                <AlertCircle />
+                <AlertDescription>{validationError}</AlertDescription>
+              </Alert>
+            )}
+            {error && (
               <Alert variant="error">
                 <AlertCircle />
                 <AlertTitle>{t('errors.loginFailed')}</AlertTitle>
-                <AlertDescription>{displayError}</AlertDescription>
+                <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
@@ -137,17 +147,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* OAuth divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="border-border w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card text-muted-foreground px-2">Or continue with</span>
-            </div>
-          </div>
-
-          {/* OIDC login button */}
           <OIDCLoginButton />
 
           {/* Register link */}

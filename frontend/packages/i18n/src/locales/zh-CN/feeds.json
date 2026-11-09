@@ -112,7 +112,8 @@
     "markAllAsRead": "全部标为已读",
     "refresh": "刷新",
     "openInNewTab": "在新标签页中打开",
-    "copyLink": "复制链接"
+    "copyLink": "复制链接",
+    "moreActions": "更多操作"
   },
   "states": {
     "refreshing": "刷新中...",

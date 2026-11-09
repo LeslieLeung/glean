@@ -82,9 +82,29 @@ describe('authStore', () => {
     it('should handle generic error on login failure', async () => {
       vi.mocked(authService.login).mockRejectedValue('unknown')
 
-      await expect(useAuthStore.getState().login('test@example.com', 'pass')).rejects.toBe('unknown')
+      await expect(useAuthStore.getState().login('test@example.com', 'pass')).rejects.toBe(
+        'unknown'
+      )
 
       expect(useAuthStore.getState().error).toBe('Login failed')
+    })
+
+    it('should prefer an API detail over the axios message', async () => {
+      const axiosError = new AxiosError('Request failed with status code 401')
+      axiosError.response = {
+        data: { detail: 'Invalid email or password' },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config: {} as never,
+      }
+      vi.mocked(authService.login).mockRejectedValue(axiosError)
+
+      await expect(useAuthStore.getState().login('test@example.com', 'wrong')).rejects.toBe(
+        axiosError
+      )
+
+      expect(useAuthStore.getState().error).toBe('Invalid email or password')
     })
   })
 
@@ -217,7 +237,9 @@ describe('authStore', () => {
     it('should set error on failure', async () => {
       vi.mocked(authService.updateUser).mockRejectedValue(new Error('fail'))
 
-      await expect(useAuthStore.getState().updateSettings({ read_later_days: 30 })).rejects.toThrow()
+      await expect(
+        useAuthStore.getState().updateSettings({ read_later_days: 30 })
+      ).rejects.toThrow()
 
       expect(useAuthStore.getState().error).toBe('fail')
     })

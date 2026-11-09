@@ -18,7 +18,7 @@ import {
   Menu as MenuIcon,
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { processHtmlContent } from '../lib/html'
+import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ArticleOutline } from './ArticleOutline'
 import { PreferenceButtons } from './EntryActions/PreferenceButtons'
@@ -159,7 +159,13 @@ export function ArticleReader({
     window.dispatchEvent(new CustomEvent('openMobileSidebar'))
   }
   const updateMutation = useUpdateEntryState()
-  const contentRef = useContentRenderer(entry.content || entry.summary || undefined)
+  const articleHtml = (() => {
+    const source = entry.content || entry.summary
+    if (!source) return ''
+    const stripped = stripFeedMetadataHtml(processHtmlContent(source))
+    return articleHtmlHasContent(stripped) ? stripped : ''
+  })()
+  const contentRef = useContentRenderer(articleHtml || undefined)
   const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -229,14 +235,18 @@ export function ArticleReader({
           <div className="flex h-14 items-center gap-2 px-4">
             {shouldShowCloseButton && onClose ? (
               <button
+                type="button"
                 onClick={onClose}
+                aria-label={t('article.back')}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleOpenMenu}
+                aria-label={t('article.openMenu')}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
                 <MenuIcon className="h-5 w-5" />
@@ -369,17 +379,11 @@ export function ArticleReader({
               </div>
             )}
 
-            {entry.content ? (
+            {articleHtml ? (
               <article
                 ref={contentRef}
                 className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.content) }}
-              />
-            ) : entry.summary ? (
-              <article
-                ref={contentRef}
-                className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.summary) }}
+                dangerouslySetInnerHTML={{ __html: articleHtml }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -400,12 +404,12 @@ export function ArticleReader({
           </div>
         </div>
 
-        {(entry.content || entry.summary) && (
+        {articleHtml && (
           <ArticleOutline
             key={`${entry.id}-${isMobile}`}
             contentRef={contentRef}
             scrollContainerRef={scrollContainerRef}
-            contentKey={entry.content || entry.summary || ''}
+            contentKey={articleHtml}
             isMobile={isMobile}
           />
         )}
