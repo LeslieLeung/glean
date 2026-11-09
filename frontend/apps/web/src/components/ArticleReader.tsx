@@ -18,7 +18,7 @@ import {
   Menu as MenuIcon,
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { processHtmlContent, stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
+import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ArticleOutline } from './ArticleOutline'
 import { PreferenceButtons } from './EntryActions/PreferenceButtons'
@@ -163,7 +163,7 @@ export function ArticleReader({
     const source = entry.content || entry.summary
     if (!source) return ''
     const stripped = stripFeedMetadataHtml(processHtmlContent(source))
-    return stripHtmlTags(stripped) ? stripped : ''
+    return articleHtmlHasContent(stripped) ? stripped : ''
   })()
   const contentRef = useContentRenderer(articleHtml || undefined)
   const [isBookmarking, setIsBookmarking] = useState(false)

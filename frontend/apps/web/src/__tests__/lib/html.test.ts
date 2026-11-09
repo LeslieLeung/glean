@@ -4,6 +4,7 @@ import {
   processHtmlContent,
   stripFeedMetadataText,
   stripFeedMetadataHtml,
+  articleHtmlHasContent,
 } from '@/lib/html'
 
 describe('stripHtmlTags', () => {
@@ -136,6 +137,11 @@ describe('stripFeedMetadataText', () => {
       'Article URL: https://example.com/post Comments URL: https://news.ycombinator.com/item?id=1 Points: 55 # Comments: 18'
     expect(stripFeedMetadataText(text)).toBe('')
   })
+
+  it('keeps ordinary prose that mentions points', () => {
+    expect(stripFeedMetadataText('Hit Points: 100')).toBe('Hit Points: 100')
+    expect(stripFeedMetadataText('Rewards Points: 1,000')).toBe('Rewards Points: 1,000')
+  })
 })
 
 describe('stripFeedMetadataHtml', () => {
@@ -149,5 +155,26 @@ describe('stripFeedMetadataHtml', () => {
   it('returns an empty string when every block is metadata', () => {
     const html = '<p>Points: 134</p><p># Comments: 20</p>'
     expect(stripFeedMetadataHtml(html)).toBe('')
+  })
+
+  it('keeps an image-only paragraph', () => {
+    const html = '<p>Introduction</p><p><img src="comic.png"></p>'
+    const result = stripFeedMetadataHtml(html)
+    expect(result).toContain('Introduction')
+    expect(result).toContain('<img src="comic.png">')
+    expect(articleHtmlHasContent(result)).toBe(true)
+  })
+
+  it('keeps links and tables when there is no feed metadata', () => {
+    const html =
+      '<div>Read <a href="https://example.com">more</a></div><table><tr><td>1</td></tr></table>'
+    expect(stripFeedMetadataHtml(html)).toBe(html)
+    expect(articleHtmlHasContent('<img src="comic.png">')).toBe(true)
+    expect(articleHtmlHasContent('')).toBe(false)
+  })
+
+  it('keeps prose that is not feed boilerplate', () => {
+    const html = '<p>Hit Points: 100</p><p>Rewards Points: 1,000</p>'
+    expect(stripFeedMetadataHtml(html)).toBe(html)
   })
 })

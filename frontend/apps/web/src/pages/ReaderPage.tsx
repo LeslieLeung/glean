@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast } from 'date-fns'
 import { stripFeedMetadataText, stripHtmlTags } from '../lib/html'
+import { indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
 import {
   buttonVariants,
   Alert,
@@ -115,6 +116,7 @@ export default function ReaderPage() {
     preferenceScore: number | null
     publishedAt: string | null
     index: number
+    order: string[]
   } | null>(null)
 
   // Track previous view state for animations
@@ -228,9 +230,18 @@ export default function ReaderPage() {
 
     // Keep the article at the index it had when the reader opened it.
     // Equal preference scores used to miss that slot and append the article.
+    // A later unread refetch drops earlier read items, so reuse the saved
+    // neighbor order instead of that stale index.
     const savedIndex = originalData?.id === selectedEntryId ? originalData.index : -1
     if (savedIndex >= 0) {
-      const insertIdx = Math.min(savedIndex, rawEntries.length)
+      const insertIdx = originalData?.order
+        ? indexBeforeSurvivingNeighbor(
+            originalData.order,
+            selectedEntryId,
+            rawEntries.map((entry) => entry.id),
+            savedIndex
+          )
+        : Math.min(savedIndex, rawEntries.length)
       return [
         ...rawEntries.slice(0, insertIdx),
         entryWithOriginalScore,
@@ -393,6 +404,7 @@ export default function ReaderPage() {
           preferenceScore: entry.preference_score,
           publishedAt: entry.published_at,
           index: index >= 0 ? index : 0,
+          order: entries.map((item) => item.id),
         }
       }
 
