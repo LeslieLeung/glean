@@ -26,7 +26,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast } from 'date-fns'
-import { stripHtmlTags } from '../lib/html'
+import { stripFeedMetadataText, stripHtmlTags } from '../lib/html'
 import {
   buttonVariants,
   Alert,
@@ -114,6 +114,7 @@ export default function ReaderPage() {
     id: string
     preferenceScore: number | null
     publishedAt: string | null
+    index: number
   } | null>(null)
 
   // Track previous view state for animations
@@ -225,6 +226,18 @@ export default function ReaderPage() {
           }
         : selectedEntry
 
+    // Keep the article at the index it had when the reader opened it.
+    // Equal preference scores used to miss that slot and append the article.
+    const savedIndex = originalData?.id === selectedEntryId ? originalData.index : -1
+    if (savedIndex >= 0) {
+      const insertIdx = Math.min(savedIndex, rawEntries.length)
+      return [
+        ...rawEntries.slice(0, insertIdx),
+        entryWithOriginalScore,
+        ...rawEntries.slice(insertIdx),
+      ]
+    }
+
     if (usesSmartSorting) {
       // For Smart view or Smart filter, insert based on ORIGINAL preference_score to maintain correct order
       // Use the saved original score, not the current score (which may have changed after like/dislike)
@@ -234,7 +247,7 @@ export default function ReaderPage() {
           : (selectedEntry.preference_score ?? -1)
       let insertIdx = rawEntries.findIndex((e) => {
         const entryScore = e.preference_score ?? -1
-        return entryScore < selectedScore
+        return entryScore <= selectedScore
       })
       if (insertIdx === -1) insertIdx = rawEntries.length
       return [
@@ -374,10 +387,12 @@ export default function ReaderPage() {
       // Save the original position data when first selecting an entry
       // This ensures the entry stays in place even after like/dislike/bookmark actions
       if (selectedEntryOriginalDataRef.current?.id !== entry.id) {
+        const index = entries.findIndex((item) => item.id === entry.id)
         selectedEntryOriginalDataRef.current = {
           id: entry.id,
           preferenceScore: entry.preference_score,
           publishedAt: entry.published_at,
+          index: index >= 0 ? index : 0,
         }
       }
 
@@ -389,7 +404,7 @@ export default function ReaderPage() {
         })
       }
     },
-    [isMobile, updateMutation]
+    [entries, isMobile, updateMutation]
   )
 
   // Keyboard navigation: arrow keys and j/k to switch between entries
@@ -864,6 +879,7 @@ function EntryListItem({
   dataEntryId?: string
 }) {
   const remainingTime = showReadLaterRemaining ? formatRemainingTime(entry.read_later_until) : null
+  const summary = stripFeedMetadataText(stripHtmlTags(entry.summary))
   return (
     <div
       onClick={onClick}
@@ -919,9 +935,9 @@ function EntryListItem({
 
             {/* Fixed height summary area for consistent card size */}
             <div className="mb-1.5 h-10">
-              {entry.summary && (
+              {summary && (
                 <p className="text-muted-foreground/70 line-clamp-2 text-sm leading-relaxed">
-                  {stripHtmlTags(entry.summary)}
+                  {summary}
                 </p>
               )}
             </div>

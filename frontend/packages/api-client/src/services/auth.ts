@@ -106,6 +106,13 @@ export class AuthService {
    *
    * Returns authorization URL and state token for CSRF protection.
    */
+  /**
+   * List external sign-in methods enabled on this server.
+   */
+  async getAuthProviders(): Promise<{ oidc_enabled: boolean }> {
+    return this.client.get<{ oidc_enabled: boolean }>('/auth/providers')
+  }
+
   async getOIDCAuthUrl(): Promise<{ authorization_url: string; state: string }> {
     return this.client.get<{ authorization_url: string; state: string }>(
       '/auth/oauth/oidc/authorize'

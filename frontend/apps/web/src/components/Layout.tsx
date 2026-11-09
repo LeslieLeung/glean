@@ -480,7 +480,7 @@ export function Layout() {
         {/* Toggle button - desktop only */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground absolute top-16 -right-3 z-10 hidden h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors md:flex"
+          className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground absolute top-5 right-2 z-10 hidden h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors md:flex"
           aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <ChevronLeft

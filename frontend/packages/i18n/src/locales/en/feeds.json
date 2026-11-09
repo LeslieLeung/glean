@@ -112,7 +112,8 @@
     "markAllAsRead": "Mark All as Read",
     "refresh": "Refresh",
     "openInNewTab": "Open in New Tab",
-    "copyLink": "Copy Link"
+    "copyLink": "Copy Link",
+    "moreActions": "More actions"
   },
   "states": {
     "refreshing": "Refreshing...",

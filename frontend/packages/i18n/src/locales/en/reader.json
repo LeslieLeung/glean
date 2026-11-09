@@ -55,7 +55,9 @@
   },
   "article": {
     "noContent": "No content available",
-    "viewOriginal": "View Original Article"
+    "viewOriginal": "View Original Article",
+    "back": "Back",
+    "openMenu": "Open menu"
   },
   "outline": {
     "title": "Table of contents",

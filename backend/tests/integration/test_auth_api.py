@@ -179,6 +179,18 @@ class TestAuthMe:
         assert response.status_code == 401
 
 
+class TestAuthProviders:
+    """Test the public provider-discovery endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_providers_reports_oidc_disabled_by_default(self, client: AsyncClient):
+        """OIDC is off unless the server is configured for it."""
+        response = await client.get("/api/auth/providers")
+
+        assert response.status_code == 200
+        assert response.json() == {"oidc_enabled": False}
+
+
 class TestAuthLogout:
     """Test logout endpoint."""
 

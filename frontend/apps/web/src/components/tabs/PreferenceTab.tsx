@@ -99,11 +99,7 @@ export function PreferenceTab() {
   return (
     <div className="stagger-children space-y-6">
       {/* Header */}
-      <div className="animate-fade-in flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-foreground text-lg font-medium">{t('preferences.title')}</h3>
-          <p className="text-muted-foreground text-sm">{t('preferences.desc')}</p>
-        </div>
+      <div className="animate-fade-in flex items-center justify-end gap-3">
         <Button
           variant="outline"
           size="sm"

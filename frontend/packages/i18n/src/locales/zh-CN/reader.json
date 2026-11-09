@@ -55,7 +55,9 @@
   },
   "article": {
     "noContent": "没有可用内容",
-    "viewOriginal": "查看原文"
+    "viewOriginal": "查看原文",
+    "back": "返回",
+    "openMenu": "打开菜单"
   },
   "outline": {
     "title": "文章目录",

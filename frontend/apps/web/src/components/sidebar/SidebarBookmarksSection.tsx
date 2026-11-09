@@ -167,7 +167,7 @@ function SidebarBookmarkFolderItem({
   onRename,
   onDelete,
 }: SidebarBookmarkFolderItemProps) {
-  const { t } = useTranslation('bookmarks')
+  const { t } = useTranslation(['bookmarks', 'feeds'])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [renameFolderName, setRenameFolderName] = useState(folder.name)
@@ -238,7 +238,10 @@ function SidebarBookmarkFolderItem({
         </button>
 
         <Menu>
-          <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <MenuTrigger
+            aria-label={t('feeds:contextMenu.moreActions')}
+            className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">

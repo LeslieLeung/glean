@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Badge, Menu, MenuTrigger, MenuPopup, cn } from '@glean/ui'
+import { useTranslation } from '@glean/i18n'
 import { ChevronRight, Folder, FolderOpen, MoreHorizontal } from 'lucide-react'
 
 // Unified sidebar item styles
@@ -104,6 +105,7 @@ export function SidebarFolderItemBase({
   onContextMenu,
   hasChevron = true,
 }: SidebarFolderItemBaseProps) {
+  const { t } = useTranslation('feeds')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
@@ -162,7 +164,10 @@ export function SidebarFolderItemBase({
 
         {menuContent && (
           <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-            <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <MenuTrigger
+              aria-label={t('contextMenu.moreActions')}
+              className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+            >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </MenuTrigger>
             <MenuPopup align="end">{menuContent}</MenuPopup>
@@ -203,6 +208,7 @@ export function SidebarFeedItemBase({
   onDragEnd,
   onContextMenu,
 }: SidebarFeedItemBaseProps) {
+  const { t } = useTranslation('feeds')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
@@ -239,7 +245,10 @@ export function SidebarFeedItemBase({
 
       {menuContent && (
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <MenuTrigger
+            aria-label={t('contextMenu.moreActions')}
+            className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">{menuContent}</MenuPopup>
@@ -269,6 +278,7 @@ export function SidebarTagItem({
   badge,
   menuContent,
 }: SidebarTagItemProps) {
+  const { t } = useTranslation('feeds')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
@@ -297,7 +307,10 @@ export function SidebarTagItem({
 
       {menuContent && (
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <MenuTrigger className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <MenuTrigger
+            aria-label={t('contextMenu.moreActions')}
+            className="touch-target-none text-muted-foreground hover:bg-accent hover:text-foreground h-5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+          >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </MenuTrigger>
           <MenuPopup align="end">{menuContent}</MenuPopup>

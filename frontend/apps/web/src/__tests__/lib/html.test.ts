@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { stripHtmlTags, processHtmlContent } from '@/lib/html'
+import {
+  stripHtmlTags,
+  processHtmlContent,
+  stripFeedMetadataText,
+  stripFeedMetadataHtml,
+} from '@/lib/html'
 
 describe('stripHtmlTags', () => {
   it('should return empty string for null', () => {
@@ -76,7 +81,8 @@ describe('processHtmlContent', () => {
   })
 
   it('should preserve allowed tags', () => {
-    const html = '<p>Text with <a href="https://example.com">link</a> and <img src="test.png" alt="img"></p>'
+    const html =
+      '<p>Text with <a href="https://example.com">link</a> and <img src="test.png" alt="img"></p>'
     const result = processHtmlContent(html)
     expect(result).toContain('<a')
     expect(result).toContain('<img')
@@ -115,5 +121,33 @@ describe('processHtmlContent', () => {
     const result = processHtmlContent(html)
     // The entity should be preserved, not turned into an actual <img> tag
     expect(result).toContain('&lt;img&gt;')
+  })
+})
+
+describe('stripFeedMetadataText', () => {
+  it('removes Hacker News boilerplate and keeps a real prompt', () => {
+    const text =
+      'What are you working on? Comments URL: https://news.ycombinator.com/item?id=1 Points: 10 # Comments: 2'
+    expect(stripFeedMetadataText(text)).toBe('What are you working on?')
+  })
+
+  it('returns an empty string when the text is only feed metadata', () => {
+    const text =
+      'Article URL: https://example.com/post Comments URL: https://news.ycombinator.com/item?id=1 Points: 55 # Comments: 18'
+    expect(stripFeedMetadataText(text)).toBe('')
+  })
+})
+
+describe('stripFeedMetadataHtml', () => {
+  it('drops metadata paragraphs and keeps the article body', () => {
+    const html =
+      '<p>Article URL: <a href="https://example.com">https://example.com</a></p><p>A real paragraph.</p>'
+    expect(stripFeedMetadataHtml(html)).toContain('A real paragraph.')
+    expect(stripFeedMetadataHtml(html)).not.toContain('Article URL')
+  })
+
+  it('returns an empty string when every block is metadata', () => {
+    const html = '<p>Points: 134</p><p># Comments: 20</p>'
+    expect(stripFeedMetadataHtml(html)).toBe('')
   })
 })

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { isAxiosError } from 'axios'
 import type { User, UserSettings } from '@glean/types'
 import { authService } from '@glean/api-client'
+import { apiErrorMessage } from '../utils/apiError'
 
 interface AuthState {
   user: User | null
@@ -44,8 +45,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Login failed'
-      set({ error: message, isLoading: false })
+      set({ error: apiErrorMessage(error), isLoading: false })
       throw error
     }
   },

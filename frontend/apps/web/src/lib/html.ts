@@ -28,6 +28,49 @@ export function stripHtmlTags(html: string | null | undefined): string {
   return temp.textContent?.trim().replace(/\s+/g, ' ') || ''
 }
 
+function feedMetadataPattern(): RegExp {
+  return /(?:Article URL|Comments URL|Points|#\s*Comments):\s*(?:https?:\/\/\S+|\d+)/gi
+}
+
+/**
+ * Remove Hacker News-style feed boilerplate from plain text.
+ *
+ * Leaves any real summary that shared the same string, such as an Ask HN prompt.
+ */
+export function stripFeedMetadataText(text: string): string {
+  return text.replace(feedMetadataPattern(), '').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Remove feed-metadata blocks from HTML and drop metadata phrases inside mixed blocks.
+ * Returns an empty string when nothing readable remains.
+ */
+export function stripFeedMetadataHtml(html: string): string {
+  if (!html) return ''
+
+  const temp = document.createElement('div')
+  temp.innerHTML = html
+  const blocks = [...temp.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6')]
+
+  if (blocks.length === 0) {
+    const cleaned = stripFeedMetadataText(temp.textContent || '')
+    temp.textContent = cleaned
+    return cleaned ? temp.innerHTML : ''
+  }
+
+  for (const block of blocks) {
+    const text = (block.textContent || '').replace(/\s+/g, ' ').trim()
+    const cleaned = stripFeedMetadataText(text)
+    if (!cleaned) {
+      block.remove()
+    } else if (cleaned !== text) {
+      block.textContent = cleaned
+    }
+  }
+
+  return (temp.textContent || '').trim() ? temp.innerHTML : ''
+}
+
 /**
  * Process HTML content for safe rendering.
  * Sanitizes HTML to prevent XSS attacks while preserving safe formatting.
