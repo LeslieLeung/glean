@@ -5,6 +5,7 @@ Pydantic models for bookmark-related API request/response handling.
 """
 
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -31,6 +32,16 @@ class BookmarkCreate(BaseModel):
         """Validate that either entry_id or url is provided."""
         if not self.entry_id and not self.url:
             raise ValueError("Either entry_id or url must be provided")
+        if self.url:
+            self.url = self.url.strip()
+            parsed = urlsplit(self.url)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("A valid HTTP(S) URL is required")
         # Title is optional for URL bookmarks - will be fetched asynchronously
         return self
 
@@ -73,6 +84,9 @@ class BookmarkResponse(BaseModel):
     title: str
     excerpt: str | None
     content: str | None  # Full article content (HTML) for in-app reading
+    source_type: str = "external"
+    source_name: str | None = None
+    already_exists: bool = False
     snapshot_status: str
     folders: list[BookmarkFolderSimple] = []
     tags: list[BookmarkTagSimple] = []

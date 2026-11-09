@@ -1,3 +1,7 @@
+import { useBookmarkStore } from '../stores/bookmarkStore'
+import { useFolderStore } from '../stores/folderStore'
+import { useTagStore } from '../stores/tagStore'
+import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
@@ -62,6 +66,7 @@ interface ArticleReaderProps {
   showFullscreenButton?: boolean
   /** Hide read/unread status actions (for bookmarks page) */
   hideReadStatus?: boolean
+  onBookmarkChange?: () => void
 }
 
 /**
@@ -150,6 +155,7 @@ export function ArticleReader({
   showCloseButton,
   showFullscreenButton,
   hideReadStatus = false,
+  onBookmarkChange,
 }: ArticleReaderProps) {
   const { t } = useTranslation('reader')
   const queryClient = useQueryClient()
@@ -201,22 +207,33 @@ export function ArticleReader({
     })
   }
 
+  const [bookmarkError, setBookmarkError] = useState(false)
   const handleToggleBookmark = async () => {
+    setBookmarkError(false)
     setIsBookmarking(true)
     try {
       if (entry.is_bookmarked && entry.bookmark_id) {
         // Remove bookmark
         await bookmarkService.deleteBookmark(entry.bookmark_id)
+        showBookmarkNotice('removed', entry.bookmark_id)
       } else {
         // Create bookmark
-        await bookmarkService.createBookmark({
+        const saved = await bookmarkService.createBookmark({
           entry_id: entry.id,
         })
+        showBookmarkNotice(saved.already_exists ? 'duplicate' : 'saved', saved.id)
       }
+      onBookmarkChange?.()
+      await Promise.all([
+        useBookmarkStore.getState().fetchBookmarks(),
+        useFolderStore.getState().fetchFolders('bookmark'),
+        useTagStore.getState().fetchTags(),
+      ])
       // Invalidate queries to refetch with updated is_bookmarked status
       await queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
       await queryClient.invalidateQueries({ queryKey: entryKeys.detail(entry.id) })
     } catch (err) {
+      setBookmarkError(true)
       console.error('Failed to toggle bookmark:', err)
     } finally {
       setIsBookmarking(false)
@@ -225,6 +242,11 @@ export function ArticleReader({
 
   return (
     <div className="bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      {bookmarkError && (
+        <p role="alert" className="text-destructive p-2">
+          {t('bookmarks:library.failed')}
+        </p>
+      )}
       {/* Mobile Header - auto-hide on scroll */}
       {isMobile && (
         <div
@@ -330,17 +352,23 @@ export function ArticleReader({
               </Button>
             )}
 
-            <PreferenceButtons entry={entry} />
+            {!hideReadStatus && (
+              <>
+                <PreferenceButtons entry={entry} />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleToggleReadLater}
-              className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
-            >
-              <Clock className="h-4 w-4" />
-              <span>{entry.read_later ? t('actions.savedForLater') : t('actions.readLater')}</span>
-            </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleToggleReadLater}
+                  className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
+                >
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    {entry.read_later ? t('actions.savedForLater') : t('actions.readLater')}
+                  </span>
+                </Button>
+              </>
+            )}
 
             <Button
               variant="ghost"
@@ -445,17 +473,21 @@ export function ArticleReader({
               </button>
             )}
 
-            <PreferenceButtons entry={entry} mobileStyle />
+            {!hideReadStatus && (
+              <>
+                <PreferenceButtons entry={entry} mobileStyle />
 
-            <button
-              onClick={handleToggleReadLater}
-              className={`action-btn action-btn-mobile ${readLaterAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
-                entry.read_later ? 'text-primary' : 'text-muted-foreground'
-              }`}
-            >
-              <Clock className="h-5 w-5" />
-              <span className="text-[10px]">{t('filters.readLater')}</span>
-            </button>
+                <button
+                  onClick={handleToggleReadLater}
+                  className={`action-btn action-btn-mobile ${readLaterAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+                    entry.read_later ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  <Clock className="h-5 w-5" />
+                  <span className="text-[10px]">{t('filters.readLater')}</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={handleToggleBookmark}

@@ -207,6 +207,9 @@ export interface Bookmark {
   title: string
   excerpt: string | null
   content: string | null // Full article content (HTML) for in-app reading
+  source_type?: 'rss' | 'external'
+  source_name?: string | null
+  already_exists?: boolean
   snapshot_status: 'pending' | 'processing' | 'done' | 'failed'
   folders: BookmarkFolderSimple[]
   tags: BookmarkTagSimple[]

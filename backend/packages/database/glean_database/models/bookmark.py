@@ -4,7 +4,7 @@ Bookmark model definition.
 This module defines the Bookmark model for saving entries and external URLs.
 """
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, generate_uuid
@@ -52,6 +52,13 @@ class Bookmark(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     excerpt: Mapped[str | None] = mapped_column(Text)
     content: Mapped[str | None] = mapped_column(Text)  # Full article content (HTML)
+
+    source_type: Mapped[str] = mapped_column(
+        String(20), default="external", server_default="external"
+    )
+    source_name: Mapped[str | None] = mapped_column(String(500))
+    title_edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    excerpt_edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     # Snapshot status (for M6)
     snapshot_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")

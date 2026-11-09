@@ -4,7 +4,7 @@ Bookmarks router.
 Provides endpoints for bookmark management.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from arq.connections import ArqRedis
@@ -34,9 +34,11 @@ async def get_bookmarks(
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     folder_id: str | None = Query(None, description="Filter by folder"),
     tag_ids: list[str] | None = Query(None, description="Filter by tags"),
-    search: str | None = Query(None, description="Search in title"),
-    sort: str = Query("created_at", description="Sort field"),
-    order: str = Query("desc", description="Sort order"),
+    search: str | None = Query(None, description="Search title, summary, URL and source name"),
+    sort: Literal["created_at", "title"] = "created_at",
+    order: Literal["asc", "desc"] = "desc",
+    unfiled: bool = False,
+    source_type: Literal["rss", "external"] | None = None,
 ) -> BookmarkListResponse:
     """
     Get bookmarks with filtering and pagination.
@@ -48,7 +50,7 @@ async def get_bookmarks(
         per_page: Items per page.
         folder_id: Filter by folder ID.
         tag_ids: Filter by tag IDs (intersection).
-        search: Search in title.
+        search: Search title, summary, URL and source name.
         sort: Sort field (created_at or title).
         order: Sort order (asc or desc).
 
@@ -64,6 +66,8 @@ async def get_bookmarks(
         search=search,
         sort=sort,
         order=order,
+        unfiled=unfiled,
+        source_type=source_type,
     )
 
 
@@ -99,11 +103,8 @@ async def create_bookmark(
 
         # Queue metadata fetch task if needed
         if needs_metadata_fetch:
-            await redis.enqueue_job(
-                "fetch_bookmark_metadata_task",
-                bookmark.id,
-            )
-
+            await bookmark_service.queue_content(bookmark.id)
+            bookmark = await bookmark_service.get_bookmark(bookmark.id, current_user.id)
         return bookmark
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
@@ -298,3 +299,27 @@ async def remove_tag_from_bookmark(
         return await bookmark_service.remove_tag(str(bookmark_id), current_user.id, str(tag_id))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+
+
+@router.post("/{bookmark_id}/retry", response_model=BookmarkResponse)
+async def retry_bookmark(
+    bookmark_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    bookmark_service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> BookmarkResponse:
+    try:
+        return await bookmark_service.retry_content(str(bookmark_id), current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.post("/{bookmark_id}/restore", response_model=BookmarkResponse)
+async def restore_bookmark(
+    bookmark_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    bookmark_service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> BookmarkResponse:
+    try:
+        return await bookmark_service.restore_bookmark(str(bookmark_id), current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e

@@ -114,6 +114,14 @@ export function SidebarBookmarksSection({
             title={t('bookmarks.allBookmarks')}
           />
 
+          <SidebarItem
+            icon={<FolderOpen />}
+            label={t('bookmarks:library.unfiled')}
+            isActive={isBookmarksPage && currentBookmarkFolderId === 'unfiled'}
+            onClick={() => onSelectFolder('unfiled')}
+            isSidebarCollapsed={!isSidebarOpen && !isMobileSidebarOpen}
+            title={t('bookmarks:library.unfiled')}
+          />
           {(isSidebarOpen || isMobileSidebarOpen) && bookmarkFolders.length > 0 && (
             <div className="space-y-0.5">
               {bookmarkFolders.map((folder) => (

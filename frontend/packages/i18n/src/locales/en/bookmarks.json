@@ -57,9 +57,9 @@
     "searchBookmarks": "Search bookmarks...",
     "searchTag": "Search or create tag...",
     "articleTitle": "Article title",
-    "addNote": "Add a note...",
+    "addNote": "Summary (optional)",
     "bookmarkTitle": "Bookmark title",
-    "bookmarkNotes": "Add notes...",
+    "bookmarkNotes": "Summary (optional)",
     "searchFolder": "Search or create folder..."
   },
   "common": {
@@ -80,7 +80,7 @@
     "next": "Next"
   },
   "delete": {
-    "confirm": "This action cannot be undone. The bookmark will be permanently deleted.",
+    "confirm": "Removing bookmarks deletes their saved text and organization, without changing original articles or reading states.",
     "deleting": "Deleting...",
     "delete": "Delete"
   },
@@ -96,11 +96,11 @@
       "description": "Save a URL or create a note for later reading.",
       "url": "URL",
       "bookmarkTitle": "Title",
-      "notes": "Notes",
+      "notes": "Summary",
       "folders": "Folders",
       "tags": "Tags",
       "error": {
-        "urlOrTitleRequired": "Please provide a URL or title",
+        "urlOrTitleRequired": "Enter a valid webpage URL",
         "failedToCreate": "Failed to create bookmark"
       },
       "cancel": "Cancel",
@@ -111,7 +111,7 @@
       "title": "Edit Bookmark",
       "description": "Update bookmark details, folders, and tags.",
       "bookmarkTitle": "Title",
-      "notes": "Notes",
+      "notes": "Summary",
       "source": {
         "savedFromFeed": "Saved from feed",
         "externalLink": "External link",
@@ -126,6 +126,9 @@
       "cancel": "Cancel",
       "saving": "Saving...",
       "save": "Save Changes"
+    },
+    "deleteFolder": {
+      "description": "Delete “{{name}}” and its subfolders? Bookmarks will be kept."
     }
   },
   "filters": {
@@ -134,5 +137,41 @@
   "view": {
     "grid": "Grid view",
     "list": "List view"
+  },
+  "library": {
+    "optional": "Optional details and organization",
+    "duplicate": "Already saved",
+    "saved": "Saved",
+    "removed": "Removed from bookmarks",
+    "organize": "Organize",
+    "view": "View",
+    "undo": "Undo",
+    "failed": "Unable to complete. Please retry.",
+    "retry": "Retry content",
+    "unfiled": "Unfiled",
+    "noResults": "No matching bookmarks",
+    "select": "Select",
+    "fetching": "Fetching content",
+    "fetchFailed": "Content fetch failed",
+    "contentSaved": "Full text saved",
+    "summaryOnly": "Summary only",
+    "linkOnly": "Link only",
+    "source": "Source",
+    "allSources": "All sources",
+    "external": "External links",
+    "sort": "Sort",
+    "newest": "Newest saved",
+    "oldest": "Oldest saved",
+    "byTitle": "Title",
+    "filterTags": "Tags (match all)",
+    "clear": "Clear filters",
+    "selectPage": "Select this page",
+    "selected": "{{count}} selected",
+    "operation": "Operation",
+    "target": "Folder or tag",
+    "choose": "Choose…",
+    "apply": "Apply",
+    "batchFailed": "Some items failed. They remain selected for retry.",
+    "removeMany": "Remove {{count}} bookmarks?"
   }
 }

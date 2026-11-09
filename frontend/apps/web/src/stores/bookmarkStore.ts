@@ -12,7 +12,7 @@ interface BookmarkState {
   error: string | null
   filters: BookmarkListParams
 
-  fetchBookmarks: (params?: BookmarkListParams) => Promise<void>
+  fetchBookmarks: (params?: BookmarkListParams, silent?: boolean) => Promise<void>
   createBookmark: (data: CreateBookmarkRequest) => Promise<Bookmark | null>
   updateBookmark: (id: string, data: UpdateBookmarkRequest) => Promise<Bookmark | null>
   deleteBookmark: (id: string) => Promise<boolean>
@@ -24,6 +24,8 @@ interface BookmarkState {
   reset: () => void
 }
 
+let requestVersion = 0
+
 export const useBookmarkStore = create<BookmarkState>((set, get) => ({
   bookmarks: [],
   total: 0,
@@ -33,11 +35,19 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
   error: null,
   filters: {},
 
-  fetchBookmarks: async (params) => {
-    set({ loading: true, error: null })
+  fetchBookmarks: async (params, silent = false) => {
+    const version = ++requestVersion
+    if (!silent) set({ loading: true, error: null })
     const finalFilters = { ...get().filters, ...params }
+    set({ filters: finalFilters })
     try {
-      const response = await bookmarkService.getBookmarks(finalFilters)
+      let response = await bookmarkService.getBookmarks(finalFilters)
+      if (version !== requestVersion) return
+      if (response.page > Math.max(1, response.pages)) {
+        finalFilters.page = Math.max(1, response.pages)
+        response = await bookmarkService.getBookmarks(finalFilters)
+        if (version !== requestVersion) return
+      }
       set({
         bookmarks: response.items,
         total: response.total,
@@ -46,10 +56,10 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
         filters: finalFilters,
       })
     } catch (err) {
-      set({ error: 'Failed to load bookmarks' })
+      if (version === requestVersion) set({ error: 'Failed to load bookmarks' })
       logger.error('Failed to fetch bookmarks:', err)
     } finally {
-      set({ loading: false })
+      if (version === requestVersion) set({ loading: false })
     }
   },
 
@@ -155,6 +165,7 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
   },
 
   reset: () => {
+    requestVersion++
     set({
       bookmarks: [],
       total: 0,

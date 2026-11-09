@@ -23,7 +23,13 @@ describe('BookmarkService', () => {
   })
 
   it('should get bookmarks with pagination', async () => {
-    vi.mocked(mockClient.get).mockResolvedValue({ items: [], total: 0, page: 2, pages: 3, per_page: 10 })
+    vi.mocked(mockClient.get).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 2,
+      pages: 3,
+      per_page: 10,
+    })
 
     await service.getBookmarks({ page: 2, per_page: 10 })
 
@@ -31,7 +37,13 @@ describe('BookmarkService', () => {
   })
 
   it('should get bookmarks with folder filter', async () => {
-    vi.mocked(mockClient.get).mockResolvedValue({ items: [], total: 0, page: 1, pages: 0, per_page: 20 })
+    vi.mocked(mockClient.get).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pages: 0,
+      per_page: 20,
+    })
 
     await service.getBookmarks({ folder_id: 'f1' })
 
@@ -39,7 +51,13 @@ describe('BookmarkService', () => {
   })
 
   it('should get bookmarks with multiple tag_ids', async () => {
-    vi.mocked(mockClient.get).mockResolvedValue({ items: [], total: 0, page: 1, pages: 0, per_page: 20 })
+    vi.mocked(mockClient.get).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pages: 0,
+      per_page: 20,
+    })
 
     await service.getBookmarks({ tag_ids: ['t1', 't2'] })
 
@@ -47,7 +65,13 @@ describe('BookmarkService', () => {
   })
 
   it('should get bookmarks with search and sort', async () => {
-    vi.mocked(mockClient.get).mockResolvedValue({ items: [], total: 0, page: 1, pages: 0, per_page: 20 })
+    vi.mocked(mockClient.get).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pages: 0,
+      per_page: 20,
+    })
 
     await service.getBookmarks({ search: 'react', sort: 'title', order: 'asc' })
 
@@ -131,4 +155,28 @@ describe('BookmarkService', () => {
     expect(mockClient.delete).toHaveBeenCalledWith('/bookmarks/b1/tags/t1')
     expect(result).toEqual(bookmark)
   })
+})
+
+it('combines unfiled, source, tags and keyword filters', async () => {
+  const client = createMockClient()
+  await new BookmarkService(client).getBookmarks({
+    unfiled: true,
+    source_type: 'external',
+    tag_ids: ['a', 'b'],
+    search: 'a & b',
+  })
+  const url = new URL(vi.mocked(client.get).mock.calls[0][0], 'https://example.org')
+  expect(url.searchParams.get('unfiled')).toBe('true')
+  expect(url.searchParams.get('source_type')).toBe('external')
+  expect(url.searchParams.getAll('tag_ids')).toEqual(['a', 'b'])
+  expect(url.searchParams.get('search')).toBe('a & b')
+})
+
+it('retries fetching and restores bookmarks through owner-scoped endpoints', async () => {
+  const client = createMockClient()
+  const service = new BookmarkService(client)
+  await service.retryContent('saved-id')
+  await service.restoreBookmark('saved-id')
+  expect(client.post).toHaveBeenCalledWith('/bookmarks/saved-id/retry')
+  expect(client.post).toHaveBeenCalledWith('/bookmarks/saved-id/restore')
 })

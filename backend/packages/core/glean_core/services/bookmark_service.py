@@ -4,13 +4,15 @@ Bookmark service.
 Handles bookmark CRUD operations and folder/tag associations.
 """
 
+import json
 from math import ceil
 from typing import Any, cast
 
 from arq.connections import ArqRedis
-from sqlalchemy import func, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from glean_core import RedisKeys, get_logger
 from glean_core.schemas.bookmark import (
@@ -26,8 +28,10 @@ from glean_database.models import (
     BookmarkFolder,
     BookmarkTag,
     Entry,
+    Feed,
     Folder,
     Tag,
+    User,
 )
 from glean_rss import strip_html_tags
 
@@ -60,6 +64,8 @@ class BookmarkService:
         search: str | None = None,
         sort: str = "created_at",
         order: str = "desc",
+        unfiled: bool = False,
+        source_type: str | None = None,
     ) -> BookmarkListResponse:
         """
         Get bookmarks for a user with filtering and pagination.
@@ -70,7 +76,7 @@ class BookmarkService:
             per_page: Items per page.
             folder_id: Filter by folder.
             tag_ids: Filter by tags (intersection).
-            search: Search in title.
+            search: Search title, summary, URL and source name.
             sort: Sort field (created_at or title).
             order: Sort order (asc or desc).
 
@@ -81,9 +87,27 @@ class BookmarkService:
         base_query = select(Bookmark).where(Bookmark.user_id == user_id)
 
         # Filter by folder
+        if unfiled:
+            base_query = base_query.where(~Bookmark.bookmark_folders.any())
+        if source_type:
+            base_query = base_query.where(Bookmark.source_type == source_type)
         if folder_id:
-            base_query = base_query.join(BookmarkFolder).where(
-                BookmarkFolder.folder_id == folder_id
+            descendants = (
+                select(Folder.id)
+                .where(Folder.id == folder_id, Folder.user_id == user_id)
+                .cte(recursive=True)
+            )
+            descendants = descendants.union_all(
+                select(Folder.id)
+                .join(descendants, Folder.parent_id == descendants.c.id)
+                .where(Folder.user_id == user_id)
+            )
+            base_query = base_query.where(
+                Bookmark.id.in_(
+                    select(BookmarkFolder.bookmark_id).where(
+                        BookmarkFolder.folder_id.in_(select(descendants.c.id))
+                    )
+                )
             )
 
         # Filter by tags (intersection)
@@ -96,7 +120,20 @@ class BookmarkService:
 
         # Search
         if search:
-            base_query = base_query.where(Bookmark.title.ilike(f"%{search}%"))
+            term = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            base_query = base_query.where(
+                or_(
+                    *(
+                        column.ilike(term, escape="\\")
+                        for column in (
+                            Bookmark.title,
+                            Bookmark.excerpt,
+                            Bookmark.url,
+                            Bookmark.source_name,
+                        )
+                    )
+                )
+            )
 
         # Count total
         count_query = select(func.count()).select_from(base_query.subquery())
@@ -113,7 +150,7 @@ class BookmarkService:
                 selectinload(Bookmark.bookmark_folders).selectinload(BookmarkFolder.folder),
                 selectinload(Bookmark.bookmark_tags).selectinload(BookmarkTag.tag),
             )
-            .order_by(order_column)
+            .order_by(order_column, Bookmark.id)
             .offset((page - 1) * per_page)
             .limit(per_page)
         )
@@ -142,6 +179,8 @@ class BookmarkService:
                     excerpt=bookmark.excerpt,
                     content=bookmark.content,
                     snapshot_status=bookmark.snapshot_status,
+                    source_type=bookmark.source_type,
+                    source_name=bookmark.source_name,
                     folders=folders,
                     tags=tags,
                     created_at=bookmark.created_at,
@@ -203,6 +242,8 @@ class BookmarkService:
             excerpt=bookmark.excerpt,
             content=bookmark.content,
             snapshot_status=bookmark.snapshot_status,
+            source_type=bookmark.source_type,
+            source_name=bookmark.source_name,
             folders=folders,
             tags=tags,
             created_at=bookmark.created_at,
@@ -221,66 +262,75 @@ class BookmarkService:
 
         Returns:
             Tuple of (created bookmark response, needs_metadata_fetch flag).
-            needs_metadata_fetch is True when title/excerpt need to be fetched
-            asynchronously for URL bookmarks.
+            needs_metadata_fetch is True when a saved body is not yet available.
 
         Raises:
             ValueError: If entry not found or validation fails.
         """
-        title = data.title[:500] if data.title else data.title
-        excerpt = data.excerpt
+        # Serialize creates per owner, including cross-source duplicates.
+        await self.session.execute(select(User.id).where(User.id == user_id).with_for_update())
         entry_id = data.entry_id
+        entry = None
         url = data.url
-        needs_metadata_fetch = False
-
-        # If bookmarking an entry, get its details
-        if entry_id:
-            # Check if bookmark already exists for this entry
-            existing_stmt = select(Bookmark).where(
-                Bookmark.user_id == user_id,
-                Bookmark.entry_id == entry_id,
-            )
-            existing_result = await self.session.execute(existing_stmt)
-            existing_bookmark = existing_result.scalar_one_or_none()
-            if existing_bookmark:
-                # Return existing bookmark instead of creating duplicate
-                return await self.get_bookmark(existing_bookmark.id, user_id), False
-
-            stmt = select(Entry).where(Entry.id == entry_id)
-            result = await self.session.execute(stmt)
-            entry = result.scalar_one_or_none()
+        source_name = None
+        if data.entry_id:
+            entry = await self.session.get(Entry, data.entry_id)
             if not entry:
                 raise ValueError("Entry not found")
-            title = title or entry.title
-            # Use same logic as article list: content first, then summary
-            if not excerpt:
-                source_content = entry.content or entry.summary
-                if source_content:
-                    excerpt = strip_html_tags(source_content, max_length=200)
-        elif url:
-            # URL bookmark without title - need to fetch metadata asynchronously
-            if not title:
-                # Use URL as temporary title until metadata is fetched
-                title = url
-                needs_metadata_fetch = True
-            elif not excerpt:
-                # Have title but no excerpt - still fetch metadata for excerpt
-                needs_metadata_fetch = True
-
-        # Create bookmark
+            url = entry.url
+            source_name = await self.session.scalar(
+                select(Feed.title).where(Feed.id == entry.feed_id)
+            )
+        conditions: list[ColumnElement[bool]] = []
+        if data.entry_id:
+            conditions.append(Bookmark.entry_id == data.entry_id)
+        if url:
+            # Exact addresses only: query strings and fragments can identify distinct resources.
+            conditions.append(Bookmark.url == url)
+            conditions.append(Bookmark.entry_id.in_(select(Entry.id).where(Entry.url == url)))
+        existing = await self.session.scalar(
+            select(Bookmark)
+            .where(Bookmark.user_id == user_id, or_(*conditions))
+            .order_by(Bookmark.created_at)
+            .limit(1)
+        )
+        if existing:
+            # Attach an external save to its RSS entry without replacing user metadata.
+            if entry and not existing.entry_id:
+                existing.entry_id = entry.id
+                existing.content = existing.content or entry.content
+                await mark_preferences_dirty(self.session, [user_id])
+            await self.session.commit()
+            if entry:
+                await self._queue_preference_sync(user_id)
+            result = await self.get_bookmark(existing.id, user_id)
+            result.already_exists = True
+            return result, False
+        needs_metadata_fetch = entry is None or not entry.content
         bookmark = Bookmark(
             user_id=user_id,
-            entry_id=entry_id,
+            entry_id=data.entry_id,
             url=url,
-            title=title,
-            excerpt=excerpt,
-            snapshot_status="pending",
+            title=(data.title or (entry.title if entry else url) or "")[:500],
+            excerpt=data.excerpt
+            if data.excerpt is not None
+            else (
+                strip_html_tags(entry.summary or entry.content or "", max_length=200)
+                if entry
+                else None
+            ),
+            content=entry.content if entry else None,
+            source_type="rss" if entry else "external",
+            source_name=source_name,
+            title_edited=bool(data.title),
+            excerpt_edited=data.excerpt is not None,
+            snapshot_status="pending" if needs_metadata_fetch else "done",
         )
         self.session.add(bookmark)
         await self.session.flush()
 
         # Add folders
-        for folder_id in data.folder_ids:
+        for folder_id in set(data.folder_ids):
             # Verify folder exists and belongs to user
             folder_stmt = select(Folder).where(
                 Folder.id == folder_id,
@@ -292,7 +342,7 @@ class BookmarkService:
                 self.session.add(BookmarkFolder(bookmark_id=bookmark.id, folder_id=folder_id))
 
         # Add tags
-        for tag_id in data.tag_ids:
+        for tag_id in set(data.tag_ids):
             # Verify tag exists and belongs to user
             tag_stmt = select(Tag).where(Tag.id == tag_id, Tag.user_id == user_id)
             tag_result = await self.session.execute(tag_stmt)
@@ -331,8 +381,10 @@ class BookmarkService:
 
         if data.title is not None:
             bookmark.title = data.title
-        if data.excerpt is not None:
+            bookmark.title_edited = True
+        if "excerpt" in data.model_fields_set:
             bookmark.excerpt = data.excerpt
+            bookmark.excerpt_edited = True
 
         await self.session.commit()
         return await self.get_bookmark(bookmark_id, user_id)
@@ -350,12 +402,111 @@ class BookmarkService:
         """
         bookmark = await self._get_bookmark_or_raise(bookmark_id, user_id)
         entry_id = bookmark.entry_id
+        if self.redis_pool:
+            snapshot = (await self.get_bookmark(bookmark_id, user_id)).model_dump(mode="json")
+            snapshot.update(
+                title_edited=bookmark.title_edited, excerpt_edited=bookmark.excerpt_edited
+            )
+            await self.redis_pool.setex(
+                f"bookmark:undo:{user_id}:{bookmark_id}", 30, json.dumps(snapshot)
+            )
         await self.session.delete(bookmark)
         if entry_id:
             await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         if entry_id:
             await self._queue_preference_sync(user_id)
+
+    async def retry_content(self, bookmark_id: str, user_id: str) -> BookmarkResponse:
+        bookmark = await self._get_bookmark_or_raise(bookmark_id, user_id)
+        if not bookmark.url:
+            raise ValueError("Bookmark has no URL")
+        bookmark.snapshot_status = "pending"
+        await self.session.commit()
+        await self.queue_content(bookmark_id)
+        return await self.get_bookmark(bookmark_id, user_id)
+
+    async def queue_content(self, bookmark_id: str) -> None:
+        try:
+            if not self.redis_pool:
+                raise RuntimeError("Queue unavailable")
+            await self.redis_pool.enqueue_job("fetch_bookmark_metadata_task", bookmark_id)
+        except Exception:
+            bookmark = await self.session.get(Bookmark, bookmark_id)
+            if bookmark:
+                bookmark.snapshot_status = "failed"
+                await self.session.commit()
+            logger.exception("Unable to queue bookmark content")
+
+    async def restore_bookmark(self, bookmark_id: str, user_id: str) -> BookmarkResponse:
+        """Restore the exact saved content and associations during the undo window."""
+        await self.session.execute(select(User.id).where(User.id == user_id).with_for_update())
+        existing = await self.session.get(Bookmark, bookmark_id)
+        if existing and existing.user_id == user_id:
+            await self.session.commit()
+            return await self.get_bookmark(bookmark_id, user_id)
+        key = f"bookmark:undo:{user_id}:{bookmark_id}"
+        raw = await self.redis_pool.get(key) if self.redis_pool else None
+        if not raw:
+            raise ValueError("Undo expired")
+        saved = json.loads(raw)
+        data = BookmarkResponse.model_validate(saved)
+        entry_id = (
+            data.entry_id
+            if data.entry_id and await self.session.get(Entry, data.entry_id)
+            else None
+        )
+        duplicate = await self.session.scalar(
+            select(Bookmark)
+            .where(
+                Bookmark.user_id == user_id,
+                or_(
+                    Bookmark.url == data.url if data.url else false(),
+                    Bookmark.entry_id == entry_id if entry_id else false(),
+                ),
+            )
+            .limit(1)
+        )
+        if duplicate:
+            raise ValueError("This content has already been saved again")
+        bookmark = Bookmark(
+            id=data.id,
+            user_id=user_id,
+            entry_id=entry_id,
+            url=data.url,
+            title=data.title,
+            excerpt=data.excerpt,
+            content=data.content,
+            source_type=data.source_type,
+            source_name=data.source_name,
+            snapshot_status=data.snapshot_status,
+            title_edited=saved.get("title_edited", True),
+            excerpt_edited=saved.get("excerpt_edited", True),
+            created_at=data.created_at,
+            updated_at=data.updated_at,
+        )
+        self.session.add(bookmark)
+        await self.session.flush()
+        for folder in data.folders:
+            if await self.session.scalar(
+                select(Folder.id).where(Folder.id == folder.id, Folder.user_id == user_id)
+            ):
+                self.session.add(BookmarkFolder(bookmark_id=bookmark_id, folder_id=folder.id))
+        for tag in data.tags:
+            if await self.session.scalar(
+                select(Tag.id).where(Tag.id == tag.id, Tag.user_id == user_id)
+            ):
+                self.session.add(BookmarkTag(bookmark_id=bookmark_id, tag_id=tag.id))
+        if entry_id:
+            await mark_preferences_dirty(self.session, [user_id])
+        await self.session.commit()
+        if self.redis_pool:
+            await self.redis_pool.delete(key)
+        if entry_id:
+            await self._queue_preference_sync(user_id)
+        if data.snapshot_status in ("pending", "processing"):
+            await self.queue_content(bookmark_id)
+        return await self.get_bookmark(bookmark_id, user_id)
 
     async def _queue_preference_sync(self, user_id: str) -> None:
         """Best-effort enqueue of a current-state preference rebuild."""

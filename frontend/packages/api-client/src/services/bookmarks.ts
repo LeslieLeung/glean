@@ -10,6 +10,8 @@ export interface BookmarkListParams {
   page?: number
   per_page?: number
   folder_id?: string
+  unfiled?: boolean
+  source_type?: 'rss' | 'external'
   tag_ids?: string[]
   search?: string
   sort?: 'created_at' | 'title'
@@ -31,6 +33,8 @@ export class BookmarkService {
     const searchParams = new URLSearchParams()
     if (params.page) searchParams.set('page', String(params.page))
     if (params.per_page) searchParams.set('per_page', String(params.per_page))
+    if (params.unfiled) searchParams.set('unfiled', 'true')
+    if (params.source_type) searchParams.set('source_type', params.source_type)
     if (params.folder_id) searchParams.set('folder_id', params.folder_id)
     if (params.tag_ids?.length) {
       params.tag_ids.forEach((id) => searchParams.append('tag_ids', id))
@@ -71,6 +75,14 @@ export class BookmarkService {
    */
   async deleteBookmark(bookmarkId: string): Promise<void> {
     await this.client.delete(`/bookmarks/${bookmarkId}`)
+  }
+
+  async retryContent(id: string): Promise<Bookmark> {
+    return this.client.post<Bookmark>(`/bookmarks/${id}/retry`)
+  }
+
+  async restoreBookmark(id: string): Promise<Bookmark> {
+    return this.client.post<Bookmark>(`/bookmarks/${id}/restore`)
   }
 
   /**
