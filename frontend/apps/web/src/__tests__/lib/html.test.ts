@@ -178,6 +178,12 @@ describe('stripFeedMetadataHtml', () => {
     expect(stripFeedMetadataHtml(html)).toBe(html)
   })
 
+  it('keeps summary text that follows metadata after a line break', () => {
+    const html =
+      '<p>Article URL: <a href="https://example.com">https://example.com</a><br>Introduction</p>'
+    expect(stripHtmlTags(stripFeedMetadataHtml(html))).toBe('Introduction')
+  })
+
   it('keeps article text that follows metadata after a line break', () => {
     const html =
       '<p>Article URL: <a href="https://example.com">https://example.com</a><br>Introduction</p>'
