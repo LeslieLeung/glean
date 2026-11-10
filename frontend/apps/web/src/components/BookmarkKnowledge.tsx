@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState, type RefObject } from 'react'
+import { lazy, Suspense, useEffect, useState, type RefObject } from 'react'
 import { isAxiosError } from 'axios'
-import DOMPurify from 'dompurify'
-import { marked } from 'marked'
 import { Highlighter, NotebookPen, MessageSquarePlus } from 'lucide-react'
 import { bookmarkService } from '@glean/api-client'
 import type { AnnotationAnchor, AnnotationColor, BookmarkAnnotation } from '@glean/types'
 import { useTranslation } from '@glean/i18n'
 import {
   Button,
-  Textarea,
+  Skeleton,
   Sheet,
   SheetPopup,
   SheetHeader,
@@ -17,6 +15,9 @@ import {
 } from '@glean/ui'
 import { useBookmarkNote } from '../hooks/useBookmarkNote'
 import { useTextAnnotations } from '../hooks/useTextAnnotations'
+import { AnnotationColorPicker } from './AnnotationColorPicker'
+
+const MarkdownEditor = lazy(() => import('./MarkdownEditor'))
 
 export function BookmarkKnowledge({
   bookmarkId,
@@ -32,7 +33,6 @@ export function BookmarkKnowledge({
   const { t } = useTranslation('bookmarks')
   const note = useBookmarkNote(bookmarkId)
   const [open, setOpen] = useState(false)
-  const [preview, setPreview] = useState(false)
   const [annotations, setAnnotations] = useState<BookmarkAnnotation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -40,6 +40,7 @@ export function BookmarkKnowledge({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pending, setPending] = useState<AnnotationAnchor | null>(null)
   const [newBody, setNewBody] = useState('')
+  const [newColor, setNewColor] = useState<AnnotationColor>('yellow')
   const { selection, clearSelection, unresolved, jumpTo } = useTextAnnotations(
     contentRef,
     contentKey,
@@ -48,10 +49,6 @@ export function BookmarkKnowledge({
       setSelectedId(id)
       setOpen(true)
     }
-  )
-  const markdown = useMemo(
-    () => DOMPurify.sanitize(marked.parse(note.body, { async: false })),
-    [note.body]
   )
   useEffect(() => {
     let active = true
@@ -84,7 +81,7 @@ export function BookmarkKnowledge({
       setLoading(false)
     }
   }
-  const create = async (anchor: AnnotationAnchor, body = '') => {
+  const create = async (anchor: AnnotationAnchor, body = '', color: AnnotationColor = 'yellow') => {
     if (busy) return
     setBusy(true)
     setError('')
@@ -92,12 +89,13 @@ export function BookmarkKnowledge({
       const item = await bookmarkService.createAnnotation(bookmarkId, {
         ...anchor,
         body,
-        color: 'yellow',
+        color,
       })
       setAnnotations((items) => [...items, item])
       setSelectedId(item.id)
       setPending(null)
       setNewBody('')
+      setNewColor('yellow')
       clearSelection()
       window.getSelection()?.removeAllRanges()
     } catch {
@@ -213,28 +211,17 @@ export function BookmarkKnowledge({
           </SheetHeader>
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 pb-6">
             <section className="space-y-3" aria-label={t('knowledge.note')}>
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-medium">{t('knowledge.note')}</h3>
-                <Button variant="ghost" size="sm" onClick={() => setPreview(!preview)}>
-                  {t(preview ? 'knowledge.edit' : 'knowledge.preview')}
-                </Button>
-              </div>
-              {preview ? (
-                <div
-                  className="prose dark:prose-invert max-w-none break-words"
-                  dangerouslySetInnerHTML={{ __html: markdown }}
-                />
-              ) : (
-                <Textarea
-                  aria-label={t('knowledge.note')}
-                  rows={8}
+              <h3 className="font-medium">{t('knowledge.note')}</h3>
+              <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+                <MarkdownEditor
+                  label={t('knowledge.note')}
                   maxLength={100_000}
                   value={note.body}
                   disabled={!note.ready}
-                  onChange={(event) => note.change(event.target.value)}
+                  onChange={note.change}
                   placeholder={t('knowledge.notePlaceholder')}
                 />
-              )}
+              </Suspense>
               <div className="flex flex-wrap items-center gap-2 text-xs" aria-live="polite">
                 <span>{t(`knowledge.${note.status}`)}</span>
                 {note.status === 'error' && (
@@ -261,21 +248,33 @@ export function BookmarkKnowledge({
                   <blockquote className="text-muted-foreground line-clamp-4 text-sm">
                     {pending.exact}
                   </blockquote>
-                  <Textarea
-                    aria-label={t('knowledge.newAnnotation')}
-                    maxLength={20_000}
-                    value={newBody}
-                    onChange={(event) => setNewBody(event.target.value)}
-                  />
+                  <Suspense fallback={<Skeleton className="h-28 w-full" />}>
+                    <MarkdownEditor
+                      label={t('knowledge.newAnnotation')}
+                      compact
+                      value={newBody}
+                      disabled={busy}
+                      onChange={setNewBody}
+                    />
+                  </Suspense>
+                  <AnnotationColorPicker value={newColor} onChange={setNewColor} disabled={busy} />
                   <div className="flex gap-2">
-                    <Button size="sm" disabled={busy} onClick={() => create(pending, newBody)}>
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => create(pending, newBody, newColor)}
+                    >
                       {t('knowledge.save')}
                     </Button>
                     <Button
                       size="sm"
                       variant="ghost"
                       disabled={busy}
-                      onClick={() => setPending(null)}
+                      onClick={() => {
+                        setPending(null)
+                        setNewBody('')
+                        setNewColor('yellow')
+                      }}
                     >
                       {t('knowledge.cancel')}
                     </Button>
@@ -380,25 +379,20 @@ function AnnotationEditor({
         <blockquote className="line-clamp-4 border-l-2 pl-2">{item.exact}</blockquote>
       </button>
       {unresolved && <p className="text-muted-foreground text-xs">{t('knowledge.unresolved')}</p>}
-      <Textarea
-        aria-label={t('knowledge.annotationBody')}
-        maxLength={20_000}
-        value={body}
-        onChange={(event) => change({ ...draft, body: event.target.value })}
+      <Suspense fallback={<Skeleton className="h-28 w-full" />}>
+        <MarkdownEditor
+          label={t('knowledge.annotationBody')}
+          compact
+          value={body}
+          disabled={busy}
+          onChange={(body) => change({ ...draft, body })}
+        />
+      </Suspense>
+      <AnnotationColorPicker
+        value={color}
+        disabled={busy}
+        onChange={(color) => change({ ...draft, color })}
       />
-      <div className="flex items-center gap-2" role="group" aria-label={t('knowledge.color')}>
-        {(['yellow', 'green', 'blue', 'pink'] as const).map((value) => (
-          <Button
-            key={value}
-            size="sm"
-            variant={color === value ? 'outline' : 'ghost'}
-            aria-pressed={color === value}
-            onClick={() => change({ ...draft, color: value })}
-          >
-            {t(`knowledge.colors.${value}`)}
-          </Button>
-        ))}
-      </div>
       {conflict && (
         <div role="alert" className="space-y-2 text-sm">
           <p>{t('knowledge.annotationConflict')}</p>

@@ -226,6 +226,28 @@
       "content": "Article",
       "note": "Note",
       "annotation": "Annotation"
+    },
+    "editor": {
+      "formatting": "Formatting",
+      "bold": "Bold",
+      "italic": "Italic",
+      "strike": "Strikethrough",
+      "heading": "Heading",
+      "bullet": "Bullet list",
+      "ordered": "Numbered list",
+      "task": "Task list",
+      "quote": "Quote",
+      "code": "Inline code",
+      "codeBlock": "Code block",
+      "link": "Edit link",
+      "unlink": "Remove link",
+      "undo": "Undo",
+      "redo": "Redo",
+      "linkUrl": "Link URL",
+      "applyLink": "Apply link",
+      "invalidLink": "Enter an HTTP, HTTPS or email link.",
+      "hint": "Markdown shortcuts supported.",
+      "limit": "Maximum {{count}} characters, including formatting."
     }
   }
 }

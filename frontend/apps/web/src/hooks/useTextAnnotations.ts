@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { AnnotationAnchor, BookmarkAnnotation } from '@glean/types'
 import { indexText, locateAnchor, selectionAnchor, textHash } from '../lib/textAnnotations'
 
-const colors = { yellow: '#facc1566', green: '#4ade8066', blue: '#60a5fa66', pink: '#f472b666' }
+import { annotationColors } from '../lib/annotationColors'
 function clearMarks(root: HTMLElement) {
   root
     .querySelectorAll('mark[data-annotations]')
@@ -87,7 +87,7 @@ export function useTextAnnotations(
               start: point.start,
               end: point.end,
               id: annotation.id,
-              color: colors[annotation.color],
+              color: annotationColors[annotation.color] + '66',
             })
           segments.set(point.node, list)
         }
