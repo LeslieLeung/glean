@@ -32,6 +32,7 @@ import {
 import { format } from 'date-fns'
 import {
   Button,
+  Checkbox,
   Input,
   Skeleton,
   Menu,
@@ -117,6 +118,7 @@ export default function BookmarksPage() {
     next.delete('page')
     setSearchParams(next, { replace: true })
   }
+  const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const toggleSelection = (id: string) =>
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]))
@@ -282,78 +284,47 @@ export default function BookmarksPage() {
       <div className={`${hasActiveReader ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col`}>
         {/* Header */}
         <header className="border-border bg-card border-b px-4 py-3 sm:px-6 sm:py-4">
-          {/* Title row with view toggle */}
-          <div className="mb-3 flex items-center justify-between gap-3 md:mb-0">
-            <h1 className="font-display text-foreground shrink-0 text-xl font-bold">
-              {t('title')}
-            </h1>
-            {/* View Toggle - always visible next to title */}
-            <div className="border-border flex shrink-0 rounded-lg border p-0.5 md:hidden">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center justify-center rounded-md px-3 py-1.5 transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={t('view.grid')}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center justify-center rounded-md px-3 py-1.5 transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={t('view.list')}
-              >
-                <List className="h-4 w-4" />
-              </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-foreground mr-auto text-xl font-bold">{t('title')}</h1>
+            <div
+              className="border-border flex items-center rounded-lg border p-0.5"
+              role="group"
+              aria-label={t('library.viewMode')}
+            >
+              {(['grid', 'list'] as const).map((mode) => (
+                <Button
+                  key={mode}
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t(`view.${mode}`)}
+                  aria-pressed={viewMode === mode}
+                  onClick={() => setViewMode(mode)}
+                  className={
+                    viewMode === mode ? 'bg-muted text-foreground' : 'text-muted-foreground'
+                  }
+                >
+                  {mode === 'grid' ? (
+                    <LayoutGrid className="h-4 w-4" />
+                  ) : (
+                    <List className="h-4 w-4" />
+                  )}
+                </Button>
+              ))}
             </div>
-          </div>
-
-          {/* Search and actions row */}
-          <div className="flex items-center gap-2 sm:gap-3 md:flex-row md:items-center md:justify-between">
-            {/* Desktop view toggle */}
-            <div className="border-border hidden shrink-0 rounded-lg border p-0.5 md:flex">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={t('view.grid')}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={t('view.list')}
-              >
-                <List className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="relative min-w-0 flex-1 md:max-w-64">
+            <div className="relative order-last w-full sm:order-none sm:w-64">
               <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 z-10 h-4 w-4 -translate-y-1/2" />
               <Input
-                type="text"
+                type="search"
                 placeholder={t('placeholders.searchBookmarks')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-10 w-full [&_input]:pl-9"
+                className="w-full [&_input]:pl-9"
               />
             </div>
             <Button
+              aria-label={t('actions.addBookmark')}
               onClick={() => setShowCreateBookmark(true)}
-              className="h-10 shrink-0 whitespace-nowrap"
+              className="shrink-0"
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t('actions.addBookmark')}</span>
@@ -380,22 +351,27 @@ export default function BookmarksPage() {
                   </button>
                 </span>
               )}
-              {selectedTag &&
-                (() => {
-                  const tag = tags.find((t) => t.id === selectedTag)
-                  return tag ? (
-                    <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-2 text-xs">
-                      <Tag className="h-3 w-3" />
-                      <span className="max-w-24 truncate">{tag.name}</span>
-                      <button
-                        onClick={() => clearFilter('tag')}
-                        className="touch-target-none hover:bg-accent hover:text-foreground rounded p-0.5 transition-colors"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ) : null
-                })()}
+              {searchParams.getAll('tag').map((id) => (
+                <span
+                  key={id}
+                  className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-2 text-xs"
+                >
+                  <Tag className="h-3 w-3" />
+                  {tags.find((tag) => tag.id === id)?.name || id}
+                  <button
+                    aria-label={t('library.removeFilter')}
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams)
+                      next.delete('tag', id)
+                      next.delete('page')
+                      setSearchParams(next)
+                    }}
+                    className="hover:bg-accent rounded p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
               {searchQuery && (
                 <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full py-1 pr-1 pl-2 text-xs">
                   <Search className="h-3 w-3" />
@@ -416,6 +392,8 @@ export default function BookmarksPage() {
           selectedIds={selectedIds}
           setSelectedIds={setSelectedIds}
           bookmarks={bookmarks}
+          selectionMode={selectionMode}
+          onSelectionModeChange={setSelectionMode}
         />
         {error && (
           <div role="alert" className="text-destructive p-4">
@@ -479,16 +457,11 @@ export default function BookmarksPage() {
               <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                 {bookmarks.map((bookmark, index) => (
                   <div key={bookmark.id}>
-                    <label className="mb-1 flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(bookmark.id)}
-                        onChange={() => toggleSelection(bookmark.id)}
-                      />
-                      {t('library.select')}
-                    </label>
                     <BookmarkCard
                       bookmark={bookmark}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.includes(bookmark.id)}
+                      onToggleSelect={() => toggleSelection(bookmark.id)}
                       onClick={() => handleBookmarkClick(bookmark)}
                       onDelete={() => handleDelete(bookmark.id)}
                       onEdit={() => setEditingBookmark(bookmark)}
@@ -505,7 +478,6 @@ export default function BookmarksPage() {
                       }}
                       style={{ animationDelay: `${index * 0.05}s` }}
                     />
-                    <BookmarkContentStatus bookmark={bookmark} />
                   </div>
                 ))}
               </div>
@@ -513,16 +485,11 @@ export default function BookmarksPage() {
               <div className="space-y-2">
                 {bookmarks.map((bookmark, index) => (
                   <div key={bookmark.id}>
-                    <label className="mb-1 flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(bookmark.id)}
-                        onChange={() => toggleSelection(bookmark.id)}
-                      />
-                      {t('library.select')}
-                    </label>
                     <BookmarkListItem
                       bookmark={bookmark}
+                      selectionMode={selectionMode}
+                      selected={selectedIds.includes(bookmark.id)}
+                      onToggleSelect={() => toggleSelection(bookmark.id)}
                       onClick={() => handleBookmarkClick(bookmark)}
                       onDelete={() => handleDelete(bookmark.id)}
                       onEdit={() => setEditingBookmark(bookmark)}
@@ -539,7 +506,6 @@ export default function BookmarksPage() {
                       }}
                       style={{ animationDelay: `${index * 0.03}s` }}
                     />
-                    <BookmarkContentStatus bookmark={bookmark} />
                   </div>
                 ))}
               </div>
@@ -651,6 +617,9 @@ interface BookmarkCardProps {
   onAddTag: (bookmarkId: string, tagId: string) => Promise<void>
   onRemoveTag: (bookmarkId: string, tagId: string) => Promise<void>
   onCreateTag: (name: string) => Promise<string | null>
+  selectionMode: boolean
+  selected: boolean
+  onToggleSelect: () => void
   style?: React.CSSProperties
 }
 
@@ -664,6 +633,9 @@ function BookmarkCard({
   onRemoveTag,
   onCreateTag,
   style,
+  selectionMode,
+  selected,
+  onToggleSelect,
 }: BookmarkCardProps) {
   const { t } = useTranslation('bookmarks')
   const [tagSearch, setTagSearch] = useState('')
@@ -704,11 +676,23 @@ function BookmarkCard({
 
   return (
     <div
-      className="card-hover animate-fade-in border-border bg-card group relative overflow-hidden rounded-xl border p-4 transition-all"
+      className={`card-hover animate-fade-in bg-card group relative overflow-hidden rounded-xl border p-4 transition-all ${selected ? 'border-primary ring-primary/20 ring-2' : 'border-border'}`}
       style={style}
     >
+      {selectionMode && (
+        <div className="mb-3 flex items-center">
+          <Checkbox
+            aria-label={`${t('library.select')} ${bookmark.title}`}
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+          />
+        </div>
+      )}
       {/* Clickable Title */}
-      <button onClick={onClick} className="mb-2 block w-full text-left">
+      <button
+        onClick={selectionMode ? onToggleSelect : onClick}
+        className="mb-2 block w-full text-left"
+      >
         <h3 className="text-foreground hover:text-primary line-clamp-2 font-medium transition-colors">
           {bookmark.title}
         </h3>
@@ -846,7 +830,7 @@ function BookmarkCard({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+        <div className="flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
           <button
             onClick={(e) => {
               e.stopPropagation()
@@ -882,6 +866,7 @@ function BookmarkCard({
         </div>
       </div>
 
+      <BookmarkContentStatus bookmark={bookmark} />
       {/* Folders indicator */}
       {bookmark.folders.length > 0 && (
         <div className="bg-muted text-muted-foreground absolute top-2 right-2 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs">
@@ -920,6 +905,9 @@ function BookmarkListItem({
   onRemoveTag,
   onCreateTag,
   style,
+  selectionMode,
+  selected,
+  onToggleSelect,
 }: BookmarkCardProps) {
   const { t } = useTranslation('bookmarks')
   const [tagSearch, setTagSearch] = useState('')
@@ -960,11 +948,21 @@ function BookmarkListItem({
 
   return (
     <div
-      className="card-hover animate-fade-in border-border bg-card group flex items-center gap-4 rounded-lg border px-4 py-3 transition-all"
+      className={`card-hover animate-fade-in bg-card group flex items-center gap-4 rounded-lg border px-4 py-3 transition-all ${selected ? 'border-primary ring-primary/20 ring-2' : 'border-border'}`}
       style={style}
     >
+      {selectionMode && (
+        <Checkbox
+          aria-label={`${t('library.select')} ${bookmark.title}`}
+          checked={selected}
+          onCheckedChange={onToggleSelect}
+        />
+      )}
       {/* Main content - clickable */}
-      <button onClick={onClick} className="min-w-0 flex-1 text-left">
+      <button
+        onClick={selectionMode ? onToggleSelect : onClick}
+        className="min-w-0 flex-1 text-left"
+      >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="text-foreground hover:text-primary line-clamp-1 font-medium transition-colors">
@@ -975,6 +973,7 @@ function BookmarkListItem({
                 {stripHtmlTags(bookmark.excerpt)}
               </p>
             )}
+            <BookmarkContentStatus bookmark={bookmark} />
           </div>
         </div>
       </button>
@@ -1111,7 +1110,7 @@ function BookmarkListItem({
       </div>
 
       {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
         <button
           onClick={(e) => {
             e.stopPropagation()

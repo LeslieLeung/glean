@@ -172,6 +172,11 @@
     "choose": "请选择…",
     "apply": "应用",
     "batchFailed": "部分操作失败，失败项已保留选中，可重试。",
-    "removeMany": "取消收藏 {{count}} 条内容？"
+    "removeMany": "取消收藏 {{count}} 条内容？",
+    "done": "完成选择",
+    "rss": "RSS 文章",
+    "matchAll": "同时包含所选标签",
+    "viewMode": "视图切换",
+    "removeFilter": "移除筛选"
   }
 }

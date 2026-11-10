@@ -172,6 +172,11 @@
     "choose": "Choose…",
     "apply": "Apply",
     "batchFailed": "Some items failed. They remain selected for retry.",
-    "removeMany": "Remove {{count}} bookmarks?"
+    "removeMany": "Remove {{count}} bookmarks?",
+    "done": "Done",
+    "rss": "RSS articles",
+    "matchAll": "Match all selected tags",
+    "viewMode": "View mode",
+    "removeFilter": "Remove filter"
   }
 }

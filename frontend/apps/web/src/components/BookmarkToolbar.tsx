@@ -1,4 +1,15 @@
 import { useState } from 'react'
+import {
+  ArrowDownWideNarrow,
+  CheckSquare,
+  ChevronDown,
+  FolderPlus,
+  Tags,
+  Trash2,
+  X,
+  Loader2,
+  Filter,
+} from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from '@glean/i18n'
@@ -10,6 +21,15 @@ import {
   MenuTrigger,
   MenuPopup,
   MenuCheckboxItem,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubTrigger,
+  MenuSubPopup,
+  Checkbox,
+  buttonVariants,
   AlertDialog,
   AlertDialogPopup,
   AlertDialogHeader,
@@ -26,17 +46,19 @@ export function BookmarkToolbar({
   bookmarks,
   selectedIds,
   setSelectedIds,
+  selectionMode,
+  onSelectionModeChange,
 }: {
   bookmarks: Bookmark[]
   selectedIds: string[]
   setSelectedIds: (ids: string[]) => void
+  selectionMode: boolean
+  onSelectionModeChange: (value: boolean) => void
 }) {
   const { t } = useTranslation('bookmarks')
   const [params, setParams] = useSearchParams()
   const { bookmarkFolders, fetchFolders } = useFolderStore()
   const { tags, fetchTags } = useTagStore()
-  const [operation, setOperation] = useState('addFolder')
-  const [target, setTarget] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -53,7 +75,8 @@ export function BookmarkToolbar({
     next.delete('page')
     setParams(next)
   }
-  const run = async () => {
+  const run = async (operation: string, target = '') => {
+    if (busy || !selectedIds.length) return
     setBusy(true)
     setFailed(false)
     setConfirm(false)
@@ -79,140 +102,203 @@ export function BookmarkToolbar({
     setFailed(failures.length > 0)
     setBusy(false)
   }
-  const targets = operation.includes('Folder') ? flatten(bookmarkFolders) : tags
-  const selectClass = 'bg-background border-border rounded-md border p-2 text-sm'
+  const folders = flatten(bookmarkFolders)
+  const source = params.get('source') || ''
+  const sort =
+    params.get('sort') === 'title' ? 'title' : params.get('order') === 'asc' ? 'oldest' : 'newest'
+  const hasFilters = ['source', 'folder', 'tag', 'q'].some((key) => params.has(key))
+  const triggerClass = buttonVariants({ variant: 'ghost', size: 'sm' })
+  const targetMenu = (
+    operation: string,
+    label: string,
+    targets: { id: string; name: string }[]
+  ) => (
+    <MenuSub>
+      <MenuSubTrigger disabled={!targets.length}>{label}</MenuSubTrigger>
+      <MenuSubPopup className="max-h-72 overflow-y-auto">
+        {targets.map((target) => (
+          <MenuItem key={target.id} onClick={() => run(operation, target.id)}>
+            {target.name}
+          </MenuItem>
+        ))}
+      </MenuSubPopup>
+    </MenuSub>
+  )
   return (
-    <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
-      <select
-        aria-label={t('library.source')}
-        className={selectClass}
-        value={params.get('source') || ''}
-        onChange={(e) => set('source', e.target.value)}
-      >
-        <option value="">{t('library.allSources')}</option>
-        <option value="rss">RSS</option>
-        <option value="external">{t('library.external')}</option>
-      </select>
-      <select
-        aria-label={t('library.sort')}
-        className={selectClass}
-        value={
-          params.get('sort') === 'title'
-            ? 'title'
-            : params.get('order') === 'asc'
-              ? 'oldest'
-              : 'newest'
-        }
-        onChange={(e) => {
-          const next = new URLSearchParams(params)
-          next.set('sort', e.target.value === 'title' ? 'title' : 'created_at')
-          next.set('order', e.target.value === 'newest' ? 'desc' : 'asc')
-          next.delete('page')
-          setParams(next)
-        }}
-      >
-        <option value="newest">{t('library.newest')}</option>
-        <option value="oldest">{t('library.oldest')}</option>
-        <option value="title">{t('library.byTitle')}</option>
-      </select>
-      <Menu>
-        <MenuTrigger className={selectClass}>
-          {t('library.filterTags')} ({params.getAll('tag').length})
-        </MenuTrigger>
-        <MenuPopup>
-          {tags.map((tag) => (
-            <MenuCheckboxItem
-              key={tag.id}
-              checked={params.getAll('tag').includes(tag.id)}
-              onCheckedChange={(checked) => {
+    <div
+      className="border-border bg-background flex flex-wrap items-center gap-2 border-b px-4 py-2 sm:px-6"
+      aria-busy={busy}
+    >
+      {selectionMode ? (
+        <>
+          <label className="text-muted-foreground mr-2 flex items-center gap-2 text-sm">
+            <Checkbox
+              aria-label={t('library.selectPage')}
+              checked={
+                bookmarks.length > 0 && bookmarks.every((item) => selectedIds.includes(item.id))
+              }
+              indeterminate={selectedIds.length > 0 && selectedIds.length < bookmarks.length}
+              disabled={busy || !bookmarks.length}
+              onCheckedChange={(checked) =>
+                setSelectedIds(checked ? bookmarks.map((item) => item.id) : [])
+              }
+            />
+            {selectedIds.length
+              ? t('library.selected', { count: selectedIds.length })
+              : t('library.selectPage')}
+          </label>
+          <Menu>
+            <MenuTrigger className={triggerClass} disabled={busy || !selectedIds.length}>
+              <FolderPlus className="h-4 w-4" />
+              {t('folders.title')}
+              <ChevronDown className="h-3 w-3" />
+            </MenuTrigger>
+            <MenuPopup>
+              {targetMenu('addFolder', t('actions.addToFolder'), folders)}
+              {targetMenu('removeFolder', t('actions.removeFromFolder'), folders)}
+            </MenuPopup>
+          </Menu>
+          <Menu>
+            <MenuTrigger className={triggerClass} disabled={busy || !selectedIds.length}>
+              <Tags className="h-4 w-4" />
+              {t('tags.title')}
+              <ChevronDown className="h-3 w-3" />
+            </MenuTrigger>
+            <MenuPopup>
+              {targetMenu('addTag', t('actions.addTags'), tags)}
+              {targetMenu('removeTag', t('actions.removeTags'), tags)}
+            </MenuPopup>
+          </Menu>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            disabled={busy || !selectedIds.length}
+            onClick={() => setConfirm(true)}
+          >
+            <Trash2 className="h-4 w-4" />
+            {t('actions.removeBookmark')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            disabled={busy}
+            onClick={() => {
+              setSelectedIds([])
+              onSelectionModeChange(false)
+            }}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+            {t('library.done')}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Menu>
+            <MenuTrigger className={triggerClass}>
+              <Filter className="h-4 w-4" />
+              {t(
+                source === 'rss'
+                  ? 'library.rss'
+                  : source === 'external'
+                    ? 'library.external'
+                    : 'library.allSources'
+              )}
+              <ChevronDown className="h-3 w-3" />
+            </MenuTrigger>
+            <MenuPopup>
+              <MenuRadioGroup value={source} onValueChange={(value) => set('source', value)}>
+                <MenuRadioItem value="">{t('library.allSources')}</MenuRadioItem>
+                <MenuRadioItem value="rss">{t('library.rss')}</MenuRadioItem>
+                <MenuRadioItem value="external">{t('library.external')}</MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
+          <Menu>
+            <MenuTrigger className={triggerClass}>
+              <Tags className="h-4 w-4" />
+              {t('tags.title')}
+              {params.getAll('tag').length > 0 && (
+                <span className="bg-primary/10 text-primary rounded px-1.5 text-xs">
+                  {params.getAll('tag').length}
+                </span>
+              )}
+              <ChevronDown className="h-3 w-3" />
+            </MenuTrigger>
+            <MenuPopup className="max-h-72 overflow-y-auto">
+              <div className="text-muted-foreground px-2 py-1.5 text-xs">
+                {t('library.matchAll')}
+              </div>
+              <MenuSeparator />
+              {!tags.length && <MenuItem disabled>{t('tags.noTagsYet')}</MenuItem>}
+              {tags.map((tag) => (
+                <MenuCheckboxItem
+                  key={tag.id}
+                  checked={params.getAll('tag').includes(tag.id)}
+                  closeOnClick={false}
+                  onCheckedChange={(checked) => {
+                    const next = new URLSearchParams(params)
+                    next.delete('tag', tag.id)
+                    if (checked) next.append('tag', tag.id)
+                    next.delete('page')
+                    setParams(next)
+                  }}
+                >
+                  {tag.name}
+                </MenuCheckboxItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+          <Menu>
+            <MenuTrigger className={triggerClass}>
+              <ArrowDownWideNarrow className="h-4 w-4" />
+              {t(`library.${sort === 'title' ? 'byTitle' : sort}`)}
+              <ChevronDown className="h-3 w-3" />
+            </MenuTrigger>
+            <MenuPopup>
+              <MenuRadioGroup
+                value={sort}
+                onValueChange={(value) => {
+                  const next = new URLSearchParams(params)
+                  next.set('sort', value === 'title' ? 'title' : 'created_at')
+                  next.set('order', value === 'newest' ? 'desc' : 'asc')
+                  next.delete('page')
+                  setParams(next)
+                }}
+              >
+                <MenuRadioItem value="newest">{t('library.newest')}</MenuRadioItem>
+                <MenuRadioItem value="oldest">{t('library.oldest')}</MenuRadioItem>
+                <MenuRadioItem value="title">{t('library.byTitle')}</MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuPopup>
+          </Menu>
+          {hasFilters && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground"
+              onClick={() => {
                 const next = new URLSearchParams(params)
-                const selected = next.getAll('tag').filter((id) => id !== tag.id)
-                next.delete('tag')
-                if (checked) selected.push(tag.id)
-                selected.forEach((id) => next.append('tag', id))
-                next.delete('page')
+                ;['source', 'folder', 'tag', 'q', 'page'].forEach((key) => next.delete(key))
                 setParams(next)
               }}
             >
-              {tag.name}
-            </MenuCheckboxItem>
-          ))}
-        </MenuPopup>
-      </Menu>
-      {params.getAll('tag').map((id) => (
-        <Button
-          key={id}
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            const next = new URLSearchParams(params)
-            next.delete('tag', id)
-            next.delete('page')
-            setParams(next)
-          }}
-        >
-          {tags.find((tag) => tag.id === id)?.name || id} ×
-        </Button>
-      ))}
-      <Button variant="ghost" size="sm" onClick={() => setParams({})}>
-        {t('library.clear')}
-      </Button>
-      {bookmarks.length > 0 && (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={bookmarks.every((item) => selectedIds.includes(item.id))}
-            disabled={busy}
-            onChange={(e) =>
-              setSelectedIds(e.target.checked ? bookmarks.map((item) => item.id) : [])
-            }
-          />
-          {t('library.selectPage')}
-        </label>
-      )}
-      {selectedIds.length > 0 && (
-        <div className="flex w-full flex-wrap items-center gap-2" aria-busy={busy}>
-          <span>{t('library.selected', { count: selectedIds.length })}</span>
-          <select
-            aria-label={t('library.operation')}
-            className={selectClass}
-            disabled={busy}
-            value={operation}
-            onChange={(e) => {
-              setOperation(e.target.value)
-              setTarget('')
-            }}
-          >
-            <option value="addFolder">{t('actions.addToFolder')}</option>
-            <option value="removeFolder">{t('actions.removeFromFolder')}</option>
-            <option value="addTag">{t('actions.addTags')}</option>
-            <option value="removeTag">{t('actions.removeTags')}</option>
-            <option value="delete">{t('actions.removeBookmark')}</option>
-          </select>
-          {operation !== 'delete' && (
-            <select
-              aria-label={t('library.target')}
-              className={selectClass}
-              value={target}
-              disabled={busy}
-              onChange={(e) => setTarget(e.target.value)}
-            >
-              <option value="">{t('library.choose')}</option>
-              {targets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
+              <X className="h-3.5 w-3.5" />
+              {t('library.clear')}
+            </Button>
           )}
           <Button
             size="sm"
-            disabled={busy || (operation !== 'delete' && !target)}
-            onClick={() => (operation === 'delete' ? setConfirm(true) : run())}
+            variant="ghost"
+            className="ml-auto"
+            disabled={!bookmarks.length}
+            onClick={() => onSelectionModeChange(true)}
           >
-            {t('library.apply')}
+            <CheckSquare className="h-4 w-4" />
+            {t('library.select')}
           </Button>
-        </div>
+        </>
       )}
       {failed && (
         <p role="alert" className="text-destructive">
@@ -229,7 +315,7 @@ export function BookmarkToolbar({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose>{t('common.cancel')}</AlertDialogClose>
-            <Button variant="destructive" onClick={run}>
+            <Button variant="destructive" onClick={() => run('delete')}>
               {t('actions.removeBookmark')}
             </Button>
           </AlertDialogFooter>
