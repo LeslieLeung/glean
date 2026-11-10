@@ -25,6 +25,7 @@ import { format } from 'date-fns'
 import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ArticleOutline } from './ArticleOutline'
+import { BookmarkKnowledge } from './BookmarkKnowledge'
 import { PreferenceButtons } from './EntryActions/PreferenceButtons'
 
 /**
@@ -50,6 +51,7 @@ function useAnimationTrigger(isActive: boolean | null | undefined, animationClas
 }
 
 interface ArticleReaderProps {
+  bookmarkId?: string
   entry: EntryWithState
   onClose?: () => void
   isFullscreen?: boolean
@@ -149,6 +151,7 @@ function useScrollHide(scrollContainerRef: React.RefObject<HTMLDivElement | null
  */
 export function ArticleReader({
   entry,
+  bookmarkId,
   onClose,
   isFullscreen = false,
   onToggleFullscreen,
@@ -386,6 +389,16 @@ export function ArticleReader({
             </Button>
           </div>
         </div>
+      )}
+
+      {bookmarkId && (
+        <BookmarkKnowledge
+          key={bookmarkId}
+          bookmarkId={bookmarkId}
+          contentRef={contentRef}
+          contentKey={articleHtml}
+          canHighlight={!!entry.content}
+        />
       )}
 
       {/* Content with Outline */}

@@ -4,9 +4,12 @@ Bookmark model definition.
 This module defines the Bookmark model for saving entries and external URLs.
 """
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text
+from typing import Any
+
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from ..search_text import bookmark_search_text
 from .base import Base, TimestampMixin, generate_uuid
 
 
@@ -53,6 +56,8 @@ class Bookmark(Base, TimestampMixin):
     excerpt: Mapped[str | None] = mapped_column(Text)
     content: Mapped[str | None] = mapped_column(Text)  # Full article content (HTML)
 
+    search_text: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+
     source_type: Mapped[str] = mapped_column(
         String(20), default="external", server_default="external"
     )
@@ -77,6 +82,12 @@ class Bookmark(Base, TimestampMixin):
     # Constraints: Either entry_id or url must be provided
     # Unique constraint: one bookmark per user per entry (when entry_id is set)
     __table_args__ = (
+        Index(
+            "ix_bookmarks_search_text",
+            "search_text",
+            postgresql_using="gin",
+            postgresql_ops={"search_text": "gin_trgm_ops"},
+        ),
         CheckConstraint(
             "(entry_id IS NOT NULL) OR (url IS NOT NULL)",
             name="ck_bookmark_source",
@@ -93,4 +104,12 @@ class Bookmark(Base, TimestampMixin):
             unique=True,
             postgresql_where="entry_id IS NOT NULL",
         ),
+    )
+
+
+@event.listens_for(Bookmark, "before_insert")
+@event.listens_for(Bookmark, "before_update")
+def update_search_projection(_mapper: Any, _connection: Any, target: Bookmark) -> None:
+    target.search_text = bookmark_search_text(
+        target.title, target.excerpt, target.url, target.source_name, target.content
     )

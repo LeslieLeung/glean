@@ -5,27 +5,34 @@ Handles bookmark CRUD operations and folder/tag associations.
 """
 
 import json
+from functools import reduce
 from math import ceil
+from operator import add
 from typing import Any, cast
 
 from arq.connections import ArqRedis
-from sqlalchemy import false, func, or_, select
+from sqlalchemy import case, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from glean_core import RedisKeys, get_logger
 from glean_core.schemas.bookmark import (
+    AnnotationResponse,
     BookmarkCreate,
     BookmarkFolderSimple,
     BookmarkListResponse,
+    BookmarkNoteResponse,
     BookmarkResponse,
+    BookmarkSearchMatch,
     BookmarkTagSimple,
     BookmarkUpdate,
 )
 from glean_database.models import (
     Bookmark,
+    BookmarkAnnotation,
     BookmarkFolder,
+    BookmarkNote,
     BookmarkTag,
     Entry,
     Feed,
@@ -33,6 +40,7 @@ from glean_database.models import (
     Tag,
     User,
 )
+from glean_database.search_text import html_text
 from glean_rss import strip_html_tags
 
 from .preference_dirty_service import mark_preferences_dirty
@@ -118,20 +126,35 @@ class BookmarkService:
                 )
                 base_query = base_query.where(Bookmark.id.in_(select(subquery)))
 
-        # Search
-        if search:
-            term = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        # Each keyword may match a different part of the same owned bookmark.
+        terms = list(dict.fromkeys((search or "").split()))[:20]
+        scores: list[ColumnElement[int]] = []
+        for word in terms:
+            term = "%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            note_match = (
+                select(BookmarkNote.bookmark_id)
+                .where(
+                    BookmarkNote.bookmark_id == Bookmark.id,
+                    BookmarkNote.body.ilike(term, escape="\\"),
+                )
+                .exists()
+            )
+            annotation_match = (
+                select(BookmarkAnnotation.id)
+                .where(
+                    BookmarkAnnotation.bookmark_id == Bookmark.id,
+                    BookmarkAnnotation.search_text.ilike(term, escape="\\"),
+                )
+                .exists()
+            )
             base_query = base_query.where(
-                or_(
-                    *(
-                        column.ilike(term, escape="\\")
-                        for column in (
-                            Bookmark.title,
-                            Bookmark.excerpt,
-                            Bookmark.url,
-                            Bookmark.source_name,
-                        )
-                    )
+                or_(Bookmark.search_text.ilike(term, escape="\\"), note_match, annotation_match)
+            )
+            scores.extend(
+                (
+                    case((Bookmark.title.ilike(term, escape="\\"), 8), else_=0),
+                    case((note_match, 5), else_=0),
+                    case((annotation_match, 3), else_=0),
                 )
             )
 
@@ -141,8 +164,11 @@ class BookmarkService:
         total = count_result.scalar_one()
 
         # Sorting
-        order_column = getattr(Bookmark, sort, Bookmark.created_at)
-        order_column = order_column.desc() if order == "desc" else order_column.asc()
+        if sort == "relevance" and scores:
+            order_column = reduce(add, scores[1:], scores[0]).desc()
+        else:
+            order_column = getattr(Bookmark, sort, Bookmark.created_at)
+            order_column = order_column.desc() if order == "desc" else order_column.asc()
 
         # Pagination
         query = (
@@ -157,6 +183,24 @@ class BookmarkService:
 
         result = await self.session.execute(query)
         bookmarks = result.scalars().unique().all()
+
+        # Load personal search hits in two bounded queries, never per result.
+        ids = [item.id for item in bookmarks]
+        notes = {}
+        annotations: dict[str, list[BookmarkAnnotation]] = {}
+        if terms and ids:
+            notes = {
+                note.bookmark_id: note.body
+                for note in await self.session.scalars(
+                    select(BookmarkNote).where(BookmarkNote.bookmark_id.in_(ids))
+                )
+            }
+            for annotation in await self.session.scalars(
+                select(BookmarkAnnotation)
+                .where(BookmarkAnnotation.bookmark_id.in_(ids))
+                .order_by(BookmarkAnnotation.start)
+            ):
+                annotations.setdefault(annotation.bookmark_id, []).append(annotation)
 
         # Build response
         items: list[BookmarkResponse] = []
@@ -178,6 +222,12 @@ class BookmarkService:
                     title=bookmark.title,
                     excerpt=bookmark.excerpt,
                     content=bookmark.content,
+                    search_matches=self._search_matches(
+                        bookmark,
+                        terms,
+                        notes.get(bookmark.id, ""),
+                        annotations.get(bookmark.id, []),
+                    ),
                     snapshot_status=bookmark.snapshot_status,
                     source_type=bookmark.source_type,
                     source_name=bookmark.source_name,
@@ -249,6 +299,33 @@ class BookmarkService:
             created_at=bookmark.created_at,
             updated_at=bookmark.updated_at,
         )
+
+    @staticmethod
+    def _search_matches(
+        bookmark: Bookmark, terms: list[str], note: str, annotations: list[BookmarkAnnotation]
+    ) -> list[BookmarkSearchMatch]:
+        if not terms:
+            return []
+        fields = [
+            ("title", bookmark.title),
+            ("excerpt", html_text(bookmark.excerpt)),
+            ("url", bookmark.url or ""),
+            ("source", bookmark.source_name or ""),
+            ("content", html_text(bookmark.content)),
+            ("note", note),
+        ]
+        fields.extend(("annotation", item.search_text) for item in annotations)
+        matches: list[BookmarkSearchMatch] = []
+        for field, value in fields:
+            positions = [value.lower().find(word.lower()) for word in terms]
+            positions = [position for position in positions if position >= 0]
+            if positions:
+                start = max(0, min(positions) - 50)
+                snippet = ("…" if start else "") + value[start : start + 200]
+                if start + 200 < len(value):
+                    snippet += "…"
+                matches.append(BookmarkSearchMatch(field=field, snippet=snippet))
+        return matches[:5]
 
     async def create_bookmark(
         self, user_id: str, data: BookmarkCreate
@@ -400,12 +477,28 @@ class BookmarkService:
         Raises:
             ValueError: If bookmark not found or unauthorized.
         """
-        bookmark = await self._get_bookmark_or_raise(bookmark_id, user_id)
+        bookmark = await self.session.scalar(
+            select(Bookmark)
+            .where(Bookmark.id == bookmark_id, Bookmark.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if bookmark is None:
+            raise ValueError("Bookmark not found")
         entry_id = bookmark.entry_id
         if self.redis_pool:
             snapshot = (await self.get_bookmark(bookmark_id, user_id)).model_dump(mode="json")
+            from .bookmark_knowledge_service import BookmarkKnowledgeService
+
+            knowledge = BookmarkKnowledgeService(self.session)
             snapshot.update(
-                title_edited=bookmark.title_edited, excerpt_edited=bookmark.excerpt_edited
+                title_edited=bookmark.title_edited,
+                excerpt_edited=bookmark.excerpt_edited,
+                note=(await knowledge.get_note(bookmark_id, user_id)).model_dump(mode="json"),
+                annotations=[
+                    item.model_dump(mode="json")
+                    for item in await knowledge.list_annotations(bookmark_id, user_id)
+                ],
             )
             await self.redis_pool.setex(
                 f"bookmark:undo:{user_id}:{bookmark_id}", 30, json.dumps(snapshot)
@@ -487,6 +580,19 @@ class BookmarkService:
         )
         self.session.add(bookmark)
         await self.session.flush()
+        note = BookmarkNoteResponse.model_validate(saved.get("note", {}))
+        if note.revision:
+            self.session.add(
+                BookmarkNote(
+                    bookmark_id=bookmark_id,
+                    body=note.body,
+                    revision=note.revision,
+                    updated_at=note.updated_at,
+                )
+            )
+        for raw_annotation in saved.get("annotations", []):
+            annotation = AnnotationResponse.model_validate(raw_annotation)
+            self.session.add(BookmarkAnnotation(bookmark_id=bookmark_id, **annotation.model_dump()))
         for folder in data.folders:
             if await self.session.scalar(
                 select(Folder.id).where(Folder.id == folder.id, Folder.user_id == user_id)

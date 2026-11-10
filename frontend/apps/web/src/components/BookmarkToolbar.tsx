@@ -105,7 +105,13 @@ export function BookmarkToolbar({
   const folders = flatten(bookmarkFolders)
   const source = params.get('source') || ''
   const sort =
-    params.get('sort') === 'title' ? 'title' : params.get('order') === 'asc' ? 'oldest' : 'newest'
+    params.get('sort') === 'relevance'
+      ? 'relevance'
+      : params.get('sort') === 'title'
+        ? 'title'
+        : params.get('order') === 'asc'
+          ? 'oldest'
+          : 'newest'
   const hasFilters = ['source', 'folder', 'tag', 'q'].some((key) => params.has(key))
   const triggerClass = buttonVariants({ variant: 'ghost', size: 'sm' })
   const targetMenu = (
@@ -261,12 +267,16 @@ export function BookmarkToolbar({
                 value={sort}
                 onValueChange={(value) => {
                   const next = new URLSearchParams(params)
-                  next.set('sort', value === 'title' ? 'title' : 'created_at')
+                  next.set(
+                    'sort',
+                    value === 'relevance' ? 'relevance' : value === 'title' ? 'title' : 'created_at'
+                  )
                   next.set('order', value === 'newest' ? 'desc' : 'asc')
                   next.delete('page')
                   setParams(next)
                 }}
               >
+                <MenuRadioItem value="relevance">{t('library.relevance')}</MenuRadioItem>
                 <MenuRadioItem value="newest">{t('library.newest')}</MenuRadioItem>
                 <MenuRadioItem value="oldest">{t('library.oldest')}</MenuRadioItem>
                 <MenuRadioItem value="title">{t('library.byTitle')}</MenuRadioItem>

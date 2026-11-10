@@ -54,7 +54,7 @@
     "updatedAt": "更新时间"
   },
   "placeholders": {
-    "searchBookmarks": "搜索收藏...",
+    "searchBookmarks": "搜索正文、备注、批注…",
     "searchTag": "搜索或创建标签...",
     "articleTitle": "文章标题",
     "addNote": "补充摘要（可选）",
@@ -177,6 +177,55 @@
     "rss": "RSS 文章",
     "matchAll": "同时包含所选标签",
     "viewMode": "视图切换",
-    "removeFilter": "移除筛选"
+    "removeFilter": "移除筛选",
+    "relevance": "相关度"
+  },
+  "knowledge": {
+    "title": "笔记与批注",
+    "description": "记录自己的想法，保留值得重读的段落。",
+    "note": "个人备注",
+    "notePlaceholder": "写下你的想法，支持 Markdown；与网页摘要分开保存。",
+    "highlight": "划线",
+    "annotate": "添加批注",
+    "annotations": "划线与批注",
+    "newAnnotation": "为选中文字添加批注",
+    "annotationBody": "批注内容",
+    "preview": "预览",
+    "edit": "编辑",
+    "saved": "已保存",
+    "saving": "正在保存…",
+    "dirty": "等待保存…",
+    "loading": "正在加载…",
+    "error": "保存或加载失败，草稿已保留，请重试。",
+    "conflict": "备注已在其他窗口更新，本地草稿已保留。",
+    "keepMine": "保留我的版本",
+    "useLatest": "使用最新版本",
+    "retry": "重试",
+    "reload": "重新加载批注",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirmDelete": "确认删除划线及批注",
+    "empty": "选择正文中的文字，即可划线或添加批注。",
+    "loadFailed": "无法加载批注，请重试。",
+    "saveFailed": "操作失败，输入内容已保留。",
+    "annotationConflict": "批注已在其他窗口更改，请重新加载后检查内容再保存。",
+    "unresolved": "无法准确定位原文，已保留引用及批注。",
+    "color": "划线颜色",
+    "colors": {
+      "yellow": "黄色",
+      "green": "绿色",
+      "blue": "蓝色",
+      "pink": "粉色"
+    },
+    "fields": {
+      "title": "标题",
+      "excerpt": "摘要",
+      "url": "链接",
+      "source": "来源",
+      "content": "正文",
+      "note": "备注",
+      "annotation": "批注"
+    }
   }
 }

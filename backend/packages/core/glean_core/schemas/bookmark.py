@@ -5,6 +5,7 @@ Pydantic models for bookmark-related API request/response handling.
 """
 
 from datetime import datetime
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -72,6 +73,11 @@ class BookmarkTagSimple(BaseModel):
     color: str | None = None
 
 
+class BookmarkSearchMatch(BaseModel):
+    field: str
+    snippet: str
+
+
 class BookmarkResponse(BaseModel):
     """Response schema for a single bookmark."""
 
@@ -86,6 +92,7 @@ class BookmarkResponse(BaseModel):
     content: str | None  # Full article content (HTML) for in-app reading
     source_type: str = "external"
     source_name: str | None = None
+    search_matches: list[BookmarkSearchMatch] = []
     already_exists: bool = False
     snapshot_status: str
     folders: list[BookmarkFolderSimple] = []
@@ -114,3 +121,47 @@ class BookmarkTagRequest(BaseModel):
     """Schema for adding a tag to a bookmark."""
 
     tag_id: str
+
+
+class BookmarkNoteUpdate(BaseModel):
+    body: str = Field(max_length=100_000)
+    revision: int = Field(ge=0)
+
+
+class BookmarkNoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    body: str = ""
+    revision: int = 0
+    updated_at: datetime | None = None
+
+
+class AnnotationCreate(BaseModel):
+    exact: str = Field(min_length=1, max_length=20_000)
+    prefix: str = Field(default="", max_length=200)
+    suffix: str = Field(default="", max_length=200)
+    start: int = Field(ge=0, le=50_000_000)
+    end: int = Field(ge=1, le=50_000_000)
+    content_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    anchor_version: Literal[1] = 1
+    body: str = Field(default="", max_length=20_000)
+    color: Literal["yellow", "green", "blue", "pink"] = "yellow"
+
+    @model_validator(mode="after")
+    def validate_position(self) -> "AnnotationCreate":
+        if self.end - self.start != len(self.exact):
+            raise ValueError("Position must match the selected Unicode code points")
+        return self
+
+
+class AnnotationUpdate(BaseModel):
+    body: str = Field(max_length=20_000)
+    color: Literal["yellow", "green", "blue", "pink"] = "yellow"
+    revision: int = Field(ge=1)
+
+
+class AnnotationResponse(AnnotationCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    revision: int
+    created_at: datetime
+    updated_at: datetime

@@ -180,3 +180,13 @@ it('retries fetching and restores bookmarks through owner-scoped endpoints', asy
   expect(client.post).toHaveBeenCalledWith('/bookmarks/saved-id/retry')
   expect(client.post).toHaveBeenCalledWith('/bookmarks/saved-id/restore')
 })
+
+it('sends note revisions and annotation deletion revisions', async () => {
+  const client = createMockClient()
+  const service = new BookmarkService(client)
+  vi.mocked(client.put).mockResolvedValue({ body: 'Note', revision: 2 })
+  await service.saveNote('b1', 'Note', 1)
+  expect(client.put).toHaveBeenCalledWith('/bookmarks/b1/note', { body: 'Note', revision: 1 })
+  await service.deleteAnnotation('b1', 'a1', 3)
+  expect(client.delete).toHaveBeenCalledWith('/bookmarks/b1/annotations/a1?revision=3')
+})

@@ -12,14 +12,23 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from glean_core.schemas import UserResponse
 from glean_core.schemas.bookmark import (
+    AnnotationCreate,
+    AnnotationResponse,
+    AnnotationUpdate,
     BookmarkCreate,
     BookmarkFolderRequest,
     BookmarkListResponse,
+    BookmarkNoteResponse,
+    BookmarkNoteUpdate,
     BookmarkResponse,
     BookmarkTagRequest,
     BookmarkUpdate,
 )
 from glean_core.services import BookmarkService
+from glean_core.services.bookmark_knowledge_service import (
+    BookmarkKnowledgeService,
+    RevisionConflictError,
+)
 
 from ..dependencies import get_bookmark_service, get_current_user, get_redis_pool
 
@@ -34,8 +43,10 @@ async def get_bookmarks(
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
     folder_id: str | None = Query(None, description="Filter by folder"),
     tag_ids: list[str] | None = Query(None, description="Filter by tags"),
-    search: str | None = Query(None, description="Search title, summary, URL and source name"),
-    sort: Literal["created_at", "title"] = "created_at",
+    search: str | None = Query(
+        None, max_length=500, description="Search article content, notes and annotations"
+    ),
+    sort: Literal["created_at", "title", "relevance"] = "created_at",
     order: Literal["asc", "desc"] = "desc",
     unfiled: bool = False,
     source_type: Literal["rss", "external"] | None = None,
@@ -323,3 +334,101 @@ async def restore_bookmark(
         return await bookmark_service.restore_bookmark(str(bookmark_id), current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+@router.get("/{bookmark_id}/note", response_model=BookmarkNoteResponse)
+async def get_note(
+    bookmark_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> BookmarkNoteResponse:
+    try:
+        return await BookmarkKnowledgeService(service.session).get_note(
+            str(bookmark_id), current_user.id
+        )
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.put("/{bookmark_id}/note", response_model=BookmarkNoteResponse)
+async def save_note(
+    bookmark_id: UUID,
+    data: BookmarkNoteUpdate,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> BookmarkNoteResponse:
+    try:
+        return await BookmarkKnowledgeService(service.session).save_note(
+            str(bookmark_id), current_user.id, data
+        )
+    except RevisionConflictError as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.get("/{bookmark_id}/annotations", response_model=list[AnnotationResponse])
+async def list_annotations(
+    bookmark_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> list[AnnotationResponse]:
+    try:
+        return await BookmarkKnowledgeService(service.session).list_annotations(
+            str(bookmark_id), current_user.id
+        )
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.post("/{bookmark_id}/annotations", response_model=AnnotationResponse, status_code=201)
+async def create_annotation(
+    bookmark_id: UUID,
+    data: AnnotationCreate,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> AnnotationResponse:
+    knowledge = BookmarkKnowledgeService(service.session)
+    try:
+        await knowledge.get_note(str(bookmark_id), current_user.id)
+        return await knowledge.create_annotation(str(bookmark_id), current_user.id, data)
+    except ValueError as error:
+        raise HTTPException(
+            404 if str(error) == "Bookmark not found" else 400, str(error)
+        ) from error
+
+
+@router.patch("/{bookmark_id}/annotations/{annotation_id}", response_model=AnnotationResponse)
+async def update_annotation(
+    bookmark_id: UUID,
+    annotation_id: UUID,
+    data: AnnotationUpdate,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+) -> AnnotationResponse:
+    try:
+        return await BookmarkKnowledgeService(service.session).update_annotation(
+            str(bookmark_id), current_user.id, str(annotation_id), data
+        )
+    except RevisionConflictError as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@router.delete("/{bookmark_id}/annotations/{annotation_id}", status_code=204)
+async def delete_annotation(
+    bookmark_id: UUID,
+    annotation_id: UUID,
+    current_user: Annotated[UserResponse, Depends(get_current_user)],
+    service: Annotated[BookmarkService, Depends(get_bookmark_service)],
+    revision: int = Query(ge=1),
+) -> None:
+    try:
+        await BookmarkKnowledgeService(service.session).delete_annotation(
+            str(bookmark_id), current_user.id, str(annotation_id), revision
+        )
+    except RevisionConflictError as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error

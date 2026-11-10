@@ -209,6 +209,7 @@ export interface Bookmark {
   content: string | null // Full article content (HTML) for in-app reading
   source_type?: 'rss' | 'external'
   source_name?: string | null
+  search_matches?: { field: string; snippet: string }[]
   already_exists?: boolean
   snapshot_status: 'pending' | 'processing' | 'done' | 'failed'
   folders: BookmarkFolderSimple[]
@@ -286,4 +287,32 @@ export interface APITokenListResponse {
 export interface CreateAPITokenRequest {
   name: string
   expires_in_days?: number | null
+}
+
+export interface BookmarkNote {
+  body: string
+  revision: number
+  updated_at: string | null
+}
+
+export type AnnotationColor = 'yellow' | 'green' | 'blue' | 'pink'
+
+/** Positions count Unicode code points in normalized reader text (anchor version 1). */
+export interface AnnotationAnchor {
+  exact: string
+  prefix: string
+  suffix: string
+  start: number
+  end: number
+  content_hash: string
+  anchor_version: 1
+}
+
+export interface BookmarkAnnotation extends AnnotationAnchor {
+  id: string
+  body: string
+  color: AnnotationColor
+  revision: number
+  created_at: string
+  updated_at: string
 }

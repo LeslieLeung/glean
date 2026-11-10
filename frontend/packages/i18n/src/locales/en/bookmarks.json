@@ -54,7 +54,7 @@
     "updatedAt": "Updated"
   },
   "placeholders": {
-    "searchBookmarks": "Search bookmarks...",
+    "searchBookmarks": "Search articles, notes, annotations…",
     "searchTag": "Search or create tag...",
     "articleTitle": "Article title",
     "addNote": "Summary (optional)",
@@ -177,6 +177,55 @@
     "rss": "RSS articles",
     "matchAll": "Match all selected tags",
     "viewMode": "View mode",
-    "removeFilter": "Remove filter"
+    "removeFilter": "Remove filter",
+    "relevance": "Relevance"
+  },
+  "knowledge": {
+    "title": "Notes & annotations",
+    "description": "Keep your thoughts and passages worth revisiting.",
+    "note": "Personal note",
+    "notePlaceholder": "Your thoughts, in Markdown. Saved separately from the page summary.",
+    "highlight": "Highlight",
+    "annotate": "Annotate",
+    "annotations": "Highlights & annotations",
+    "newAnnotation": "Annotate selected text",
+    "annotationBody": "Annotation text",
+    "preview": "Preview",
+    "edit": "Edit",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "dirty": "Waiting to save…",
+    "loading": "Loading…",
+    "error": "Unable to load or save. Your draft is kept; please retry.",
+    "conflict": "This note changed in another window. Your draft is kept.",
+    "keepMine": "Keep my version",
+    "useLatest": "Use latest version",
+    "retry": "Retry",
+    "reload": "Reload annotations",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirmDelete": "Delete highlight and annotation",
+    "empty": "Select article text to highlight or annotate it.",
+    "loadFailed": "Unable to load annotations. Please retry.",
+    "saveFailed": "The operation failed. Your input is kept.",
+    "annotationConflict": "This annotation changed in another window. Reload and review before saving.",
+    "unresolved": "Unable to locate the passage. Your quotation and annotation are kept.",
+    "color": "Highlight color",
+    "colors": {
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "pink": "Pink"
+    },
+    "fields": {
+      "title": "Title",
+      "excerpt": "Summary",
+      "url": "URL",
+      "source": "Source",
+      "content": "Article",
+      "note": "Note",
+      "annotation": "Annotation"
+    }
   }
 }

@@ -1,5 +1,9 @@
 import type {
   Bookmark,
+  BookmarkNote,
+  BookmarkAnnotation,
+  AnnotationAnchor,
+  AnnotationColor,
   BookmarkListResponse,
   CreateBookmarkRequest,
   UpdateBookmarkRequest,
@@ -14,7 +18,7 @@ export interface BookmarkListParams {
   source_type?: 'rss' | 'external'
   tag_ids?: string[]
   search?: string
-  sort?: 'created_at' | 'title'
+  sort?: 'created_at' | 'title' | 'relevance'
   order?: 'asc' | 'desc'
 }
 
@@ -83,6 +87,40 @@ export class BookmarkService {
 
   async restoreBookmark(id: string): Promise<Bookmark> {
     return this.client.post<Bookmark>(`/bookmarks/${id}/restore`)
+  }
+
+  async getNote(id: string): Promise<BookmarkNote> {
+    return this.client.get<BookmarkNote>(`/bookmarks/${id}/note`)
+  }
+
+  async saveNote(id: string, body: string, revision: number): Promise<BookmarkNote> {
+    return this.client.put<BookmarkNote>(`/bookmarks/${id}/note`, { body, revision })
+  }
+
+  async getAnnotations(id: string): Promise<BookmarkAnnotation[]> {
+    return this.client.get<BookmarkAnnotation[]>(`/bookmarks/${id}/annotations`)
+  }
+
+  async createAnnotation(
+    id: string,
+    data: AnnotationAnchor & { body: string; color: AnnotationColor }
+  ): Promise<BookmarkAnnotation> {
+    return this.client.post<BookmarkAnnotation>(`/bookmarks/${id}/annotations`, data)
+  }
+
+  async updateAnnotation(
+    id: string,
+    annotationId: string,
+    data: { body: string; color: AnnotationColor; revision: number }
+  ): Promise<BookmarkAnnotation> {
+    return this.client.patch<BookmarkAnnotation>(
+      `/bookmarks/${id}/annotations/${annotationId}`,
+      data
+    )
+  }
+
+  async deleteAnnotation(id: string, annotationId: string, revision: number): Promise<void> {
+    await this.client.delete(`/bookmarks/${id}/annotations/${annotationId}?revision=${revision}`)
   }
 
   /**

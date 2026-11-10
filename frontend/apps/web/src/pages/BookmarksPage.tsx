@@ -10,6 +10,7 @@ import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
 import { useTranslation } from '@glean/i18n'
 import { ArticleReader } from '../components/ArticleReader'
+import { BookmarkSearchMatches } from '../components/BookmarkSearchMatches'
 import { stripHtmlTags } from '../lib/html'
 import type { Bookmark, FolderTreeNode, TagWithCounts, EntryWithState } from '@glean/types'
 import {
@@ -165,7 +166,12 @@ export default function BookmarksPage() {
           : params.get('source') === 'external'
             ? 'external'
             : undefined,
-      sort: params.get('sort') === 'title' ? 'title' : 'created_at',
+      sort:
+        params.get('sort') === 'relevance'
+          ? 'relevance'
+          : params.get('sort') === 'title'
+            ? 'title'
+            : 'created_at',
       order: params.get('order') === 'asc' ? 'asc' : 'desc',
     })
     setSelectedIds([])
@@ -591,6 +597,7 @@ export default function BookmarksPage() {
             )}
           </div>
           <ArticleReader
+            bookmarkId={selectedBookmark.id}
             onBookmarkChange={() => {
               closeReader()
               fetchBookmarks()
@@ -698,6 +705,7 @@ function BookmarkCard({
         </h3>
       </button>
 
+      <BookmarkSearchMatches bookmark={bookmark} />
       {/* Excerpt */}
       {bookmark.excerpt && (
         <p className="text-muted-foreground mb-3 line-clamp-2 text-sm">
@@ -968,6 +976,7 @@ function BookmarkListItem({
             <h3 className="text-foreground hover:text-primary line-clamp-1 font-medium transition-colors">
               {bookmark.title}
             </h3>
+            <BookmarkSearchMatches bookmark={bookmark} />
             {bookmark.excerpt && (
               <p className="text-muted-foreground mt-0.5 line-clamp-1 text-sm">
                 {stripHtmlTags(bookmark.excerpt)}
