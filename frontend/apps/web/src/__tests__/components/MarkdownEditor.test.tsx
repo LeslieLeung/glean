@@ -60,41 +60,37 @@ it('supports tables, tasks, fenced code and links in saved Markdown', async () =
   expect(editor.querySelectorAll('table tr')).toHaveLength(2)
   expect(editor.querySelector('a')?.getAttribute('href')).toBe('https://example.org')
 })
-it('keeps formatting controls disabled while the note is loading', async () => {
+it('is read-only while loading and has no formatting toolbar', async () => {
   render(<MarkdownEditor label="Note" value="" disabled onChange={vi.fn()} />)
   const editor = await screen.findByRole('textbox', { name: 'Note' })
   expect(editor.getAttribute('contenteditable')).toBe('false')
-  expect(
-    (screen.getByRole('button', { name: 'knowledge.editor.bold' }) as HTMLButtonElement).disabled
-  ).toBe(true)
+  expect(screen.queryByRole('group')).toBeNull()
+  expect(screen.queryByRole('button')).toBeNull()
 })
 
-it('applies formatting through the toolbar and saves Markdown rather than HTML', async () => {
+it('keeps keyboard formatting shortcuts without a toolbar', async () => {
   const onChange = vi.fn()
   render(<MarkdownEditor label="Note" value="Example" onChange={onChange} />)
   const editor = await screen.findByRole('textbox', { name: 'Note' })
-  fireEvent.click(screen.getByRole('button', { name: 'knowledge.editor.heading' }))
-  await waitFor(() => expect(editor.querySelector('h2')?.textContent).toBe('Example'))
-  expect(onChange).toHaveBeenLastCalledWith(expect.stringMatching(/^## Example\s*$/))
-  expect(
-    screen.getByRole('button', { name: 'knowledge.editor.heading' }).getAttribute('aria-pressed')
-  ).toBe('true')
+  editor.focus()
+  fireEvent.keyDown(editor, { key: 'a', ctrlKey: true })
+  fireEvent.keyDown(editor, { key: 'b', ctrlKey: true })
+  await waitFor(() => expect(editor.querySelector('strong')?.textContent).toBe('Example'))
+  expect(onChange).toHaveBeenLastCalledWith('**Example**')
+  expect(screen.queryByRole('button')).toBeNull()
 })
 
-it('pastes plain Markdown as formatted content and rejects unsafe link entry', async () => {
+it('pastes formatted Markdown without rendering unsafe links', async () => {
   const onChange = vi.fn()
   render(<MarkdownEditor label="Note" value="" onChange={onChange} />)
   const editor = await screen.findByRole('textbox', { name: 'Note' })
   fireEvent.paste(editor, {
-    clipboardData: { getData: (type: string) => (type === 'text/plain' ? '**Pasted**' : '') },
+    clipboardData: {
+      getData: (type: string) =>
+        type === 'text/plain' ? '**Pasted** [Unsafe](javascript:alert(1))' : '',
+    },
   })
   await waitFor(() => expect(editor.querySelector('strong')?.textContent).toBe('Pasted'))
-  expect(onChange).toHaveBeenLastCalledWith('**Pasted**')
-  fireEvent.click(screen.getByRole('button', { name: 'knowledge.editor.link' }))
-  fireEvent.change(screen.getByRole('textbox', { name: 'knowledge.editor.linkUrl' }), {
-    target: { value: 'javascript:alert(1)' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'knowledge.editor.applyLink' }))
-  await screen.findByRole('alert')
-  expect(editor.querySelector('a')).toBeNull()
+  expect(editor.querySelector('[href^="javascript:"]')).toBeNull()
+  expect(screen.queryByRole('button')).toBeNull()
 })

@@ -387,18 +387,17 @@ export function ArticleReader({
               )}
               <span>{entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}</span>
             </Button>
+            {bookmarkId && (
+              <BookmarkKnowledge
+                key={bookmarkId}
+                bookmarkId={bookmarkId}
+                contentRef={contentRef}
+                contentKey={articleHtml}
+                canHighlight={!!entry.content}
+              />
+            )}
           </div>
         </div>
-      )}
-
-      {bookmarkId && (
-        <BookmarkKnowledge
-          key={bookmarkId}
-          bookmarkId={bookmarkId}
-          contentRef={contentRef}
-          contentKey={articleHtml}
-          canHighlight={!!entry.content}
-        />
       )}
 
       {/* Content with Outline */}
@@ -518,6 +517,16 @@ export function ArticleReader({
                 {entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}
               </span>
             </button>
+            {bookmarkId && (
+              <BookmarkKnowledge
+                key={bookmarkId}
+                bookmarkId={bookmarkId}
+                contentRef={contentRef}
+                contentKey={articleHtml}
+                canHighlight={!!entry.content}
+                mobile
+              />
+            )}
           </div>
         </div>
       )}

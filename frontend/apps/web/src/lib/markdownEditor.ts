@@ -42,7 +42,7 @@ export function markdownExtensions({
   return [
     StarterKit.configure({
       underline: false,
-      link: { openOnClick: false, defaultProtocol: 'https' },
+      link: { openOnClick: false, defaultProtocol: 'https', markdownLinks: true },
     }),
     Markdown,
     TableKit.configure({ table: { resizable: false } }),

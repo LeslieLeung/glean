@@ -24,11 +24,13 @@ export function BookmarkKnowledge({
   contentRef,
   contentKey,
   canHighlight,
+  mobile = false,
 }: {
   bookmarkId: string
   contentRef: RefObject<HTMLElement | null>
   contentKey: string
   canHighlight: boolean
+  mobile?: boolean
 }) {
   const { t } = useTranslation('bookmarks')
   const note = useBookmarkNote(bookmarkId)
@@ -156,29 +158,43 @@ export function BookmarkKnowledge({
   }
   return (
     <>
-      <div className="border-border flex flex-wrap items-center gap-2 border-b px-4 py-2">
-        <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-          <NotebookPen className="size-4" />
-          {t('knowledge.title')}
-          {annotations.length > 0 && (
-            <span className="text-muted-foreground">{annotations.length}</span>
-          )}
+      <div className="contents">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen(true)}
+          aria-label={t('knowledge.title')}
+          className={
+            mobile
+              ? 'action-btn-mobile h-auto flex-col gap-0.5 px-3 py-1.5'
+              : 'action-btn text-muted-foreground'
+          }
+        >
+          <NotebookPen className={mobile ? 'size-5' : 'size-4'} />
+          <span className={mobile ? 'text-[10px]' : undefined}>
+            {t(mobile ? 'knowledge.shortTitle' : 'knowledge.title')}
+            {annotations.length > 0 && (
+              <span className="text-muted-foreground ml-1.5">{annotations.length}</span>
+            )}
+          </span>
         </Button>
         {canHighlight && selection && (
           <>
             <Button
               variant="outline"
-              size="sm"
+              size={mobile ? 'icon' : 'sm'}
+              title={t('knowledge.highlight')}
               disabled={busy || loading}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => create(selection)}
             >
               <Highlighter className="size-4" />
-              {t('knowledge.highlight')}
+              <span className={mobile ? 'sr-only' : undefined}>{t('knowledge.highlight')}</span>
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              size={mobile ? 'icon' : 'sm'}
+              title={t('knowledge.annotate')}
               disabled={busy || loading}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => {
@@ -187,12 +203,12 @@ export function BookmarkKnowledge({
               }}
             >
               <MessageSquarePlus className="size-4" />
-              {t('knowledge.annotate')}
+              <span className={mobile ? 'sr-only' : undefined}>{t('knowledge.annotate')}</span>
             </Button>
           </>
         )}
         {note.status !== 'saved' && note.status !== 'loading' && (
-          <span className="text-muted-foreground text-xs" role="status">
+          <span className={mobile ? 'sr-only' : 'text-muted-foreground text-xs'} role="status">
             {t(`knowledge.${note.status}`)}
           </span>
         )}

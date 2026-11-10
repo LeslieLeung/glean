@@ -1,5 +1,15 @@
+.markdown-editor:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+/* The rounded container owns focus styling, including the global focus-visible ring. */
+.markdown-editor .tiptap:focus,
+.markdown-editor .tiptap:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 .markdown-editor .tiptap {
-  min-height: 12rem;
+  min-height: 10rem;
   max-height: 28rem;
   overflow-y: auto;
   overflow-wrap: anywhere;
@@ -9,7 +19,7 @@
   outline: none;
 }
 .markdown-editor-compact .tiptap {
-  min-height: 6rem;
+  min-height: 5rem;
   max-height: 20rem;
 }
 .markdown-editor .tiptap > * + * {

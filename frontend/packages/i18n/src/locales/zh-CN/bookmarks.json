@@ -228,26 +228,9 @@
       "annotation": "批注"
     },
     "editor": {
-      "formatting": "文字格式",
-      "bold": "粗体",
-      "italic": "斜体",
-      "strike": "删除线",
-      "heading": "标题",
-      "bullet": "无序列表",
-      "ordered": "有序列表",
-      "task": "任务列表",
-      "quote": "引用",
-      "code": "行内代码",
-      "codeBlock": "代码块",
-      "link": "编辑链接",
-      "unlink": "移除链接",
-      "undo": "撤销",
-      "redo": "重做",
-      "linkUrl": "链接地址",
-      "applyLink": "应用链接",
-      "invalidLink": "请输入 HTTP、HTTPS 或邮件链接。",
       "hint": "支持 Markdown 快捷输入。",
       "limit": "最多 {{count}} 个字符（含格式标记）。"
-    }
+    },
+    "shortTitle": "笔记"
   }
 }
