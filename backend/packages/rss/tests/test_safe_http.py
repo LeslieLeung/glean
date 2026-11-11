@@ -200,15 +200,15 @@ class TestDefaultPolicy:
     """Test env-based policy configuration."""
 
     def test_secure_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("GLEAN_SSRF_ALLOW_PRIVATE", raising=False)
-        monkeypatch.delenv("GLEAN_SSRF_ALLOWED_HOSTS", raising=False)
+        monkeypatch.delenv("SSRF_ALLOW_PRIVATE", raising=False)
+        monkeypatch.delenv("SSRF_ALLOWED_HOSTS", raising=False)
         policy = _default_policy()
         assert policy.block_private_ips is True
         assert policy.block_localhost is True
         assert policy.block_cloud_metadata is True
 
     def test_allow_private_opt_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GLEAN_SSRF_ALLOW_PRIVATE", "true")
+        monkeypatch.setenv("SSRF_ALLOW_PRIVATE", "true")
         policy = _default_policy()
         assert policy.block_private_ips is False
         assert policy.block_localhost is False
@@ -220,7 +220,7 @@ class TestDefaultPolicy:
         validate_resolved_ip("10.0.0.1", policy)
 
     def test_allowed_hosts_parsing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GLEAN_SSRF_ALLOWED_HOSTS", "Internal.Local, feeds.lan ,")
+        monkeypatch.setenv("SSRF_ALLOWED_HOSTS", "Internal.Local, feeds.lan ,")
         policy = _default_policy()
         assert policy.allowed_hosts == frozenset({"internal.local", "feeds.lan"})
 
