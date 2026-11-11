@@ -1,5 +1,7 @@
 {
   "sidebar": {
+    "collapseBookmarks": "收起书签栏",
+    "expandBookmarks": "展开书签栏",
     "feeds": "订阅",
     "smart": "智能列表",
     "allFeeds": "全部订阅",

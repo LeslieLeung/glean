@@ -1,5 +1,7 @@
 {
   "sidebar": {
+    "collapseBookmarks": "Collapse bookmarks section",
+    "expandBookmarks": "Expand bookmarks section",
     "feeds": "Feeds",
     "smart": "Smart",
     "allFeeds": "All Feeds",
