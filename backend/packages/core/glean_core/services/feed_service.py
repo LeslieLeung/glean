@@ -6,6 +6,7 @@ Handles feed discovery, subscription management, and OPML import/export.
 
 import hashlib
 import math
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from glean_database.models import (
     VectorCleanupPending,
 )
 
+from .entry_dedup import url_user_entry_id
 from .preference_dirty_service import get_feed_preference_user_ids, mark_preferences_dirty
 
 # Sentinel for unset values
@@ -82,11 +84,11 @@ class FeedService:
             # 1. Not in user_entries (never seen)
             # 2. In user_entries but is_read = False
             unread_stmt = (
-                select(func.count(Entry.id))
+                select(func.count(func.distinct(Entry.url)))
                 .where(Entry.feed_id == sub.feed_id)
                 .outerjoin(
                     UserEntry,
-                    (UserEntry.entry_id == Entry.id) & (UserEntry.user_id == user_id),
+                    UserEntry.id == url_user_entry_id(user_id),
                 )
                 .where((UserEntry.id.is_(None)) | (UserEntry.is_read.is_(False)))
             )
@@ -241,11 +243,11 @@ class FeedService:
             # 1. Not in user_entries (never seen)
             # 2. In user_entries but is_read = False
             unread_stmt = (
-                select(func.count(Entry.id))
+                select(func.count(func.distinct(Entry.url)))
                 .where(Entry.feed_id == sub.feed_id)
                 .outerjoin(
                     UserEntry,
-                    (UserEntry.entry_id == Entry.id) & (UserEntry.user_id == user_id),
+                    UserEntry.id == url_user_entry_id(user_id),
                 )
                 .where((UserEntry.id.is_(None)) | (UserEntry.is_read.is_(False)))
             )
@@ -424,6 +426,8 @@ class FeedService:
 
         feed_id = subscription.feed_id
 
+        await self._preserve_shared_url_states(user_id, feed_id)
+
         # 1. Delete user's UserEntry records for entries in this feed
         # This also cascades to UserEntryTag via relationship
         delete_user_entries_stmt = delete(UserEntry).where(
@@ -446,6 +450,53 @@ class FeedService:
         await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         return orphaned_feed_id, entry_ids
+
+    async def _preserve_shared_url_states(self, user_id: str, feed_id: str) -> None:
+        """Retain authoritative URL state on an entry in a surviving subscription."""
+        result = await self.session.execute(
+            select(UserEntry, Entry.url)
+            .join(Entry, Entry.id == UserEntry.entry_id)
+            .where(
+                UserEntry.user_id == user_id,
+                Entry.feed_id == feed_id,
+                UserEntry.id == url_user_entry_id(user_id),
+            )
+        )
+        for state, url in result.all():
+            target_id = await self.session.scalar(
+                select(Entry.id)
+                .join(Subscription, Subscription.feed_id == Entry.feed_id)
+                .where(
+                    Subscription.user_id == user_id,
+                    Entry.feed_id != feed_id,
+                    Entry.url == url,
+                )
+                .order_by(Subscription.created_at, Entry.created_at, Entry.id)
+                .limit(1)
+            )
+            if target_id is None:
+                continue
+            target = await self.session.scalar(
+                select(UserEntry).where(
+                    UserEntry.user_id == user_id, UserEntry.entry_id == target_id
+                )
+            )
+            if target is None:
+                target = UserEntry(user_id=user_id, entry_id=target_id)
+                self.session.add(target)
+            target.is_read = state.is_read
+            target.is_liked = state.is_liked
+            target.read_later = state.read_later
+            target.read_later_until = state.read_later_until
+            target.read_at = state.read_at
+            target.liked_at = state.liked_at
+            # Supersede every legacy row for this URL. A wall-clock stamp can
+            # land behind the database clock that just updated the source row.
+            target.updated_at = max(
+                datetime.now(UTC),
+                state.updated_at + timedelta(microseconds=1),
+            )
+        await self.session.flush()
 
     async def _remove_feed_affinity(self, user_id: str, feed_id: str) -> None:
         """
@@ -598,6 +649,8 @@ class FeedService:
 
             if subscription:
                 feed_id = subscription.feed_id
+
+                await self._preserve_shared_url_states(user_id, feed_id)
 
                 # 1. Delete user's UserEntry records for entries in this feed
                 delete_user_entries_stmt = delete(UserEntry).where(
