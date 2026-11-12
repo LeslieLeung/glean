@@ -743,8 +743,10 @@ version = "0.1.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "bcrypt" },
+    { name = "beautifulsoup4" },
     { name = "glean-database" },
     { name = "glean-rss" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "python-jose", extra = ["cryptography"] },
 ]
@@ -752,8 +754,10 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "bcrypt", specifier = ">=4.0.0" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "glean-database", editable = "packages/database" },
     { name = "glean-rss", editable = "packages/rss" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic", specifier = ">=2.6.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
 ]

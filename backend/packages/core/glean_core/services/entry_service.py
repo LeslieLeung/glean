@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from glean_core import RedisKeys, get_logger
 from glean_core.published_at import effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
+from glean_core.schemas.jev import JevConfig
+from glean_core.services.jev_service import classification_for_display
+from glean_core.services.typed_config_service import TypedConfigService
 from glean_database.models import (
     Bookmark,
     Entry,
@@ -130,6 +133,8 @@ class EntryService:
         if not feed_ids:
             return EntryListResponse(items=[], total=0, page=page, per_page=per_page, total_pages=0)
 
+        jev_config = await TypedConfigService(self.session).get(JevConfig)
+
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
         bookmark_id_subq = (
             select(Bookmark.id)
@@ -226,6 +231,12 @@ class EntryService:
                     author=entry.author,
                     content=entry.content,
                     summary=entry.summary,
+                    classification=classification_for_display(
+                        entry.classification_result, jev_config
+                    ),
+                    classification_status=entry.classification_status
+                    if jev_config.enabled
+                    else None,
                     published_at=effective_published_at(entry.published_at, entry.created_at),
                     created_at=entry.created_at,
                     is_read=bool(user_entry.is_read) if user_entry else False,
@@ -273,6 +284,12 @@ class EntryService:
                         author=entry.author,
                         content=entry.content,
                         summary=entry.summary,
+                        classification=classification_for_display(
+                            entry.classification_result, jev_config
+                        ),
+                        classification_status=entry.classification_status
+                        if jev_config.enabled
+                        else None,
                         published_at=effective_published_at(entry.published_at, entry.created_at),
                         created_at=entry.created_at,
                         is_read=bool(user_entry.is_read) if user_entry else False,
@@ -313,6 +330,8 @@ class EntryService:
         Raises:
             ValueError: If entry not found or user not subscribed.
         """
+        jev_config = await TypedConfigService(self.session).get(JevConfig)
+
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
         bookmark_id_subq = (
             select(Bookmark.id)
@@ -362,6 +381,8 @@ class EntryService:
             author=entry.author,
             content=entry.content,
             summary=entry.summary,
+            classification=classification_for_display(entry.classification_result, jev_config),
+            classification_status=entry.classification_status if jev_config.enabled else None,
             published_at=effective_published_at(entry.published_at, entry.created_at),
             created_at=entry.created_at,
             is_read=bool(user_entry.is_read) if user_entry else False,

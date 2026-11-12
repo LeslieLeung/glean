@@ -123,6 +123,10 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 所有配置选项请参见 [.env.example](.env.example)。
 
+文章 AI 检测和自定义内容分类可在管理面板的 **Jev 分类** 中配置。
+执行 `make db-upgrade` 并重启 API 和 Worker 后，填写 Jev 服务器和 API 密钥，
+测试连接并启用检测，结果会显示在阅读列表卡片上。
+
 ## Docker 镜像
 
 预构建镜像托管在 GitHub Container Registry：
