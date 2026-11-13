@@ -365,11 +365,15 @@ class BookmarkService:
             # Exact addresses only: query strings and fragments can identify distinct resources.
             conditions.append(Bookmark.url == url)
             conditions.append(Bookmark.entry_id.in_(select(Entry.id).where(Entry.url == url)))
+        existing_stmt = select(Bookmark).where(Bookmark.user_id == user_id, or_(*conditions))
+        if entry_id:
+            # Historical URL duplicates may coexist with an entry-linked save.
+            # Reuse that association before attaching an older external bookmark.
+            existing_stmt = existing_stmt.order_by(
+                case((Bookmark.entry_id == entry_id, 0), else_=1)
+            )
         existing = await self.session.scalar(
-            select(Bookmark)
-            .where(Bookmark.user_id == user_id, or_(*conditions))
-            .order_by(Bookmark.created_at)
-            .limit(1)
+            existing_stmt.order_by(Bookmark.created_at, Bookmark.id).limit(1)
         )
         if existing:
             # Attach an external save to its RSS entry without replacing user metadata.
@@ -383,7 +387,7 @@ class BookmarkService:
             result = await self.get_bookmark(existing.id, user_id)
             result.already_exists = True
             return result, False
-        needs_metadata_fetch = entry is None or not entry.content
+        needs_metadata_fetch = bool(url) and (entry is None or not entry.content)
         bookmark = Bookmark(
             user_id=user_id,
             entry_id=data.entry_id,

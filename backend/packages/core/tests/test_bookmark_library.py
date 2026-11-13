@@ -1,5 +1,6 @@
 """Bookmark library behavior, persistence and ownership boundaries."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 import pytest
@@ -8,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core.schemas.bookmark import BookmarkCreate, BookmarkUpdate
 from glean_core.services.bookmark_service import BookmarkService
-from glean_database.models import Entry, Feed, Folder, Tag, User
+from glean_core.services.entry_service import EntryService
+from glean_database.models import Bookmark, Entry, Feed, Folder, Subscription, Tag, User
 
 
 class UndoCache:
@@ -217,3 +219,53 @@ async def test_external_bookmark_state_is_shared_by_matching_rss_articles(db_ses
     assert all(item.bookmark_id == saved.id for item in listing.items)
     await bookmarks.delete_bookmark(saved.id, user.id)
     assert not (await entries.get_entry(entry.id, user.id)).is_bookmarked
+
+
+async def test_linkless_entries_do_not_share_bookmark_state(db_session: AsyncSession):
+    user, _, feed, entry = await setup_library(db_session)
+    entry.url = ""
+    other = Entry(feed_id=feed.id, url="", title="Other linkless entry")
+    db_session.add_all([other, Subscription(user_id=user.id, feed_id=feed.id)])
+    await db_session.commit()
+    service = BookmarkService(db_session)
+    saved, _ = await service.create_bookmark(user.id, BookmarkCreate(entry_id=entry.id))
+    entries = EntryService(db_session)
+    listed = await entries.get_entries(user.id)
+    by_id = {item.id: item for item in listed.items}
+    assert by_id[entry.id].bookmark_id == saved.id
+    assert by_id[other.id].bookmark_id is None
+    assert (await entries.get_entry(entry.id, user.id)).bookmark_id == saved.id
+    assert (await entries.get_entry(other.id, user.id)).bookmark_id is None
+
+
+async def test_historical_duplicate_prefers_existing_entry_association(db_session: AsyncSession):
+    user, _, _, entry = await setup_library(db_session)
+    external = Bookmark(
+        user_id=user.id,
+        url=entry.url,
+        title="Older external save",
+        created_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    linked = Bookmark(user_id=user.id, entry_id=entry.id, url=entry.url, title="RSS save")
+    db_session.add_all([external, linked])
+    await db_session.commit()
+    saved, fetch = await BookmarkService(db_session).create_bookmark(
+        user.id, BookmarkCreate(entry_id=entry.id)
+    )
+    assert saved.id == linked.id
+    assert saved.already_exists and not fetch
+    assert external.entry_id is None
+
+
+async def test_title_only_entry_does_not_wait_for_content(db_session: AsyncSession):
+    user, _, _, entry = await setup_library(db_session)
+    entry.url = ""
+    entry.content = None
+    entry.summary = None
+    await db_session.commit()
+    saved, fetch = await BookmarkService(db_session).create_bookmark(
+        user.id, BookmarkCreate(entry_id=entry.id)
+    )
+    assert not fetch
+    assert saved.snapshot_status == "done"
+    assert saved.title == entry.title

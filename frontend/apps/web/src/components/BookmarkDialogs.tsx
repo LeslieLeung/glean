@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from '@glean/i18n'
-import type { Bookmark, FolderTreeNode, TagWithCounts } from '@glean/types'
+import type { Bookmark, FolderTreeNode, TagWithCounts, UpdateBookmarkRequest } from '@glean/types'
 import {
   Button,
   Input,
@@ -269,13 +269,14 @@ export function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBoo
     setError('')
 
     try {
-      // Update title and excerpt
-      const updated = await updateBookmark(bookmark.id, {
-        title: title.trim(),
-        excerpt: excerpt.trim(),
-      })
-
-      if (!updated) throw new Error('Save failed')
+      // Organization alone must leave pending metadata available for retrieval.
+      const changes: UpdateBookmarkRequest = {}
+      if (title !== bookmark.title) changes.title = title.trim()
+      if (excerpt !== (bookmark.excerpt || '')) changes.excerpt = excerpt.trim()
+      if (Object.keys(changes).length > 0) {
+        const updated = await updateBookmark(bookmark.id, changes)
+        if (!updated) throw new Error('Save failed')
+      }
       // Handle folder changes
       const currentFolderIds = bookmark.folders.map((f) => f.id)
       const foldersToAdd = selectedFolderIds.filter((id) => !currentFolderIds.includes(id))
