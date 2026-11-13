@@ -36,12 +36,10 @@
 
 ## 快速开始
 
-### 使用 pgvector（推荐）
-
-使用 PostgreSQL 内置的 pgvector 扩展，无需额外基础设施：
+默认部署把向量存在带 pgvector 扩展的 PostgreSQL 里，不需要单独的向量数据库。
 
 ```bash
-# 下载 pgvector 版本
+# 下载默认 Compose 文件
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # 启动 Glean
@@ -57,9 +55,9 @@ docker compose up -d
 - 密码：`Admin123!`
 - ⚠️ **生产环境请立即修改此密码！**
 
-### 使用 Milvus
+### 可选：Milvus
 
-适合偏好独立 Milvus 向量数据库的用户：
+需要独立 Milvus 向量数据库时使用：
 
 ```bash
 # 下载 docker-compose.yml
@@ -162,15 +160,15 @@ IMAGE_TAG=v0.3.0-alpha.1 docker compose up -d
 
 ## 部署
 
-两种部署方案包含相同的核心服务：
+默认部署（`docker-compose.pgvector.yml`）包含：
 - **Web 应用**（端口 80）- 主用户界面
 - **管理后台**（端口 3001）- 用户管理和系统监控
 - **后端 API** - FastAPI 服务器
 - **Worker** - 后台任务处理器（订阅源抓取、清理）
-- **PostgreSQL** - 数据库
+- **PostgreSQL** - 数据库和向量存储（pgvector）
 - **Redis** - 任务队列
 
-区别在于向量存储：`docker-compose.pgvector.yml` 使用 PostgreSQL 的 pgvector 扩展（推荐），`docker-compose.yml` 使用独立的 Milvus 向量数据库。
+`docker-compose.yml` 是可选的 Milvus 部署，在相同核心服务之外再启动 etcd、MinIO 和 Milvus。
 
 详细的部署说明和配置请参见 [DEPLOY.zh-CN.md](DEPLOY.zh-CN.md)。
 

@@ -20,12 +20,12 @@ This guide provides comprehensive instructions for deploying Glean in production
 
 ## Quick Deployment
 
-### Using pgvector (Recommended)
+The default deployment uses PostgreSQL's pgvector extension for vector storage.
 
-Uses PostgreSQL's built-in pgvector extension for vector storage. No additional infrastructure required:
+### Default: pgvector
 
 ```bash
-# Download pgvector compose
+# Download the default compose file
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # (Optional) Create .env file to customize admin credentials
@@ -56,12 +56,12 @@ docker compose up -d
 2. Change the default password
 3. Configure additional environment variables for production (see [Environment Configuration](#environment-configuration))
 
-### Using Milvus
+### Optional: Milvus
 
-Uses a dedicated Milvus vector database for vector storage:
+Use the Milvus compose file for a dedicated vector database:
 
 ```bash
-# Download docker-compose.yml
+# Download the Milvus compose file
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
 # (Optional) Create .env file to customize admin credentials
@@ -155,8 +155,8 @@ docker compose up -d
 # Create deployment directory
 mkdir -p ~/glean && cd ~/glean
 
-# Download docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+# Download the default pgvector compose file
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # Download environment template
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
@@ -244,9 +244,9 @@ docker compose logs backend | grep "Admin Account Created"
 > vector store until the embedding status returns to `idle`; a backend or
 > embedding-model change can require a full rebuild.
 
-### Using pgvector (Recommended)
+### Default: pgvector
 
-Uses PostgreSQL with pgvector extension for vector storage (6 services total). Use `docker-compose.pgvector.yml` for this configuration.
+Uses PostgreSQL with the pgvector extension for vector storage (6 services total). This is `docker-compose.pgvector.yml`.
 
 **Services:**
 
@@ -291,9 +291,9 @@ The pgvector `vector` HNSW operator class supports at most 2,000 dimensions.
 Glean keeps exact sequential search available but does not create an HNSW index
 for higher-dimensional models.
 
-### Using Milvus
+### Optional: Milvus
 
-Uses a dedicated Milvus vector database (9 services total). Use `docker-compose.yml` for this configuration.
+Uses a dedicated Milvus vector database (9 services total). This is `docker-compose.yml`.
 
 **Core services:**
 
@@ -375,25 +375,16 @@ Uses a dedicated Milvus vector database (9 services total). Use `docker-compose.
 
 Two vector backends are supported:
 
-- `pgvector` (in `docker-compose.pgvector.yml`, **recommended** — no extra infrastructure needed)
-- `milvus` (in `docker-compose.yml` — for users who prefer a dedicated vector database)
+- `pgvector` (`docker-compose.pgvector.yml`, the default deployment)
+- `milvus` (`docker-compose.yml`, a dedicated vector database)
 
 **Backend selector:**
 
-| Variable         | Default  | Description                                   |
-| ---------------- | -------- | --------------------------------------------- |
-| `VECTOR_BACKEND` | `milvus` | Vector backend (`pgvector` or `milvus`)       |
+| Variable         | Default    | Description                                   |
+| ---------------- | ---------- | --------------------------------------------- |
+| `VECTOR_BACKEND` | `pgvector` | Vector backend (`pgvector` or `milvus`)       |
 
-**Milvus connection settings (VECTOR_BACKEND=milvus):**
-
-| Variable                  | Default     | Description                       |
-| ------------------------- | ----------- | --------------------------------- |
-| `MILVUS_HOST`             | `localhost` | Milvus server host                |
-| `MILVUS_PORT`             | `19530`     | Milvus server port                |
-| `MILVUS_USER`             | -           | Milvus username (if auth enabled) |
-| `MILVUS_PASSWORD`         | -           | Milvus password (if auth enabled) |
-| `MILVUS_ENTRIES_COLLECTION` | `entries` | Collection name for entry vectors |
-| `MILVUS_PREFS_COLLECTION` | `user_preferences` | Collection name for user preferences |
+The pgvector compose file sets `VECTOR_BACKEND=pgvector`. The Milvus compose file sets `milvus`.
 
 **pgvector settings (VECTOR_BACKEND=pgvector):**
 
@@ -405,6 +396,17 @@ Two vector backends are supported:
 | `PGVECTOR_METADATA_TABLE`   | `vector_store_metadata`    | Table name for model signature metadata                  |
 
 When `PGVECTOR_DATABASE_URL` is left empty, Glean connects pgvector to `DATABASE_URL` using its own async pool. That is fine for most installs, but count it separately when tuning PostgreSQL connection limits.
+
+**Milvus connection settings (VECTOR_BACKEND=milvus):**
+
+| Variable                  | Default     | Description                       |
+| ------------------------- | ----------- | --------------------------------- |
+| `MILVUS_HOST`             | `localhost` | Milvus server host                |
+| `MILVUS_PORT`             | `19530`     | Milvus server port                |
+| `MILVUS_USER`             | -           | Milvus username (if auth enabled) |
+| `MILVUS_PASSWORD`         | -           | Milvus password (if auth enabled) |
+| `MILVUS_ENTRIES_COLLECTION` | `entries` | Collection name for entry vectors |
+| `MILVUS_PREFS_COLLECTION` | `user_preferences` | Collection name for user preferences |
 
 ### Embedding Configuration
 

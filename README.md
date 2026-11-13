@@ -36,12 +36,10 @@ A self-hosted RSS reader and personal knowledge management tool.
 
 ## Quick Start
 
-### Using pgvector (Recommended)
-
-Uses PostgreSQL's built-in pgvector extension — no extra infrastructure required:
+The default deployment stores vectors in PostgreSQL with the pgvector extension. No separate vector database is required.
 
 ```bash
-# Download pgvector compose
+# Download the default compose file
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # Start Glean
@@ -57,9 +55,9 @@ docker compose up -d
 - Password: `Admin123!`
 - ⚠️ **Change this password in production!**
 
-### Using Milvus
+### Optional: Milvus
 
-For deployments that prefer a dedicated Milvus vector database:
+Use this when the deployment should run a dedicated Milvus vector database:
 
 ```bash
 # Download docker-compose.yml
@@ -162,15 +160,15 @@ See available pre-release versions on the [Releases page](https://github.com/Les
 
 ## Deployment
 
-Both deployments include the same core services:
+The default deployment (`docker-compose.pgvector.yml`) includes:
 - **Web App** (port 80) - Main user interface
 - **Admin Dashboard** (port 3001) - User management and system monitoring
 - **Backend API** - FastAPI server
 - **Worker** - Background task processor (feed fetching, cleanup)
-- **PostgreSQL** - Database
+- **PostgreSQL** - Database and vector store (pgvector)
 - **Redis** - Task queue
 
-The difference is the vector backend: `docker-compose.pgvector.yml` uses PostgreSQL's pgvector extension (recommended), while `docker-compose.yml` uses a dedicated Milvus vector database.
+`docker-compose.yml` is the optional Milvus deployment. It adds etcd, MinIO, and Milvus beside the same core services.
 
 For detailed deployment instructions and configuration, see [DEPLOY.md](DEPLOY.md).
 
