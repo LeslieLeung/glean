@@ -9,7 +9,7 @@ from math import isfinite
 from typing import TYPE_CHECKING, Any, cast
 
 from arq.connections import ArqRedis
-from sqlalchemy import desc, func, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys, get_logger
@@ -134,8 +134,14 @@ class EntryService:
         bookmark_id_subq = (
             select(Bookmark.id)
             .where(Bookmark.user_id == user_id)
-            .where(Bookmark.entry_id == Entry.id)
+            .where(
+                or_(
+                    Bookmark.entry_id == Entry.id,
+                    and_(Entry.url != "", Bookmark.url == Entry.url),
+                )
+            )
             .correlate(Entry)
+            .order_by(Bookmark.created_at, Bookmark.id)
             .limit(1)
             .scalar_subquery()
         )
@@ -317,8 +323,14 @@ class EntryService:
         bookmark_id_subq = (
             select(Bookmark.id)
             .where(Bookmark.user_id == user_id)
-            .where(Bookmark.entry_id == Entry.id)
+            .where(
+                or_(
+                    Bookmark.entry_id == Entry.id,
+                    and_(Entry.url != "", Bookmark.url == Entry.url),
+                )
+            )
             .correlate(Entry)
+            .order_by(Bookmark.created_at, Bookmark.id)
             .limit(1)
             .scalar_subquery()
         )

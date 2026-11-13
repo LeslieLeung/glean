@@ -295,6 +295,11 @@ export class ApiClient {
     return response.data
   }
 
+  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.put<T>(url, data, config)
+    return response.data
+  }
+
   /**
    * Make a PATCH request.
    */

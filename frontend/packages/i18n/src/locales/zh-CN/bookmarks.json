@@ -1,11 +1,11 @@
 {
-  "title": "书签",
+  "title": "收藏",
   "subtitle": "您保存的文章",
   "actions": {
-    "addBookmark": "添加书签",
-    "removeBookmark": "移除书签",
-    "editBookmark": "编辑书签",
-    "moveToFolder": "移动到文件夹",
+    "addBookmark": "添加收藏",
+    "removeBookmark": "移除收藏",
+    "editBookmark": "编辑收藏",
+    "moveToFolder": "加入文件夹",
     "addToFolder": "添加到文件夹",
     "removeFromFolder": "从文件夹中移除",
     "addTags": "添加标签",
@@ -37,12 +37,12 @@
     "creating": "创建中..."
   },
   "empty": {
-    "title": "暂无书签",
+    "title": "暂无收藏",
     "description": "保存您想稍后阅读的文章",
-    "addBookmark": "添加书签",
-    "noBookmarks": "未找到书签",
+    "addBookmark": "添加收藏",
+    "noBookmarks": "未找到收藏",
     "noBookmarksDescription": "保存文章或添加外部链接以建立您的收藏",
-    "addFirstBookmark": "添加您的第一个书签"
+    "addFirstBookmark": "添加您的第一个收藏"
   },
   "metadata": {
     "title": "标题",
@@ -54,12 +54,12 @@
     "updatedAt": "更新时间"
   },
   "placeholders": {
-    "searchBookmarks": "搜索收藏...",
+    "searchBookmarks": "搜索正文、备注、批注…",
     "searchTag": "搜索或创建标签...",
     "articleTitle": "文章标题",
-    "addNote": "添加笔记...",
+    "addNote": "补充摘要（可选）",
     "bookmarkTitle": "收藏标题",
-    "bookmarkNotes": "添加笔记...",
+    "bookmarkNotes": "补充摘要（可选）",
     "searchFolder": "搜索或创建文件夹..."
   },
   "common": {
@@ -75,12 +75,12 @@
     "exitFullscreen": "退出全屏"
   },
   "pagination": {
-    "showing": "显示 {{count}} / {{total}} 个书签",
+    "showing": "显示 {{count}} / {{total}} 个收藏",
     "previous": "上一页",
     "next": "下一页"
   },
   "delete": {
-    "confirm": "此操作无法撤销。书签将被永久删除。",
+    "confirm": "取消收藏会移除已保存的正文和分类，不影响原文章、已读或稍后读状态。",
     "deleting": "删除中...",
     "delete": "删除"
   },
@@ -92,26 +92,26 @@
   },
   "dialogs": {
     "createBookmark": {
-      "title": "添加书签",
+      "title": "添加收藏",
       "description": "保存链接或创建笔记以便稍后阅读。",
       "url": "链接",
       "bookmarkTitle": "标题",
-      "notes": "笔记",
+      "notes": "摘要",
       "folders": "文件夹",
       "tags": "标签",
       "error": {
-        "urlOrTitleRequired": "请提供链接或标题",
-        "failedToCreate": "创建书签失败"
+        "urlOrTitleRequired": "请输入有效的网页链接",
+        "failedToCreate": "创建收藏失败"
       },
       "cancel": "取消",
       "saving": "保存中...",
-      "save": "保存书签"
+      "save": "保存收藏"
     },
     "editBookmark": {
-      "title": "编辑书签",
-      "description": "更新书签详情、文件夹和标签。",
+      "title": "编辑收藏",
+      "description": "更新收藏详情、文件夹和标签。",
       "bookmarkTitle": "标题",
-      "notes": "笔记",
+      "notes": "摘要",
       "source": {
         "savedFromFeed": "从订阅保存",
         "externalLink": "外部链接",
@@ -121,11 +121,14 @@
       "tags": "标签",
       "error": {
         "titleRequired": "标题是必需的",
-        "failedToUpdate": "更新书签失败"
+        "failedToUpdate": "更新收藏失败"
       },
       "cancel": "取消",
       "saving": "保存中...",
       "save": "保存更改"
+    },
+    "deleteFolder": {
+      "description": "删除“{{name}}”及其子文件夹？收藏内容会保留。"
     }
   },
   "filters": {
@@ -134,5 +137,100 @@
   "view": {
     "grid": "网格视图",
     "list": "列表视图"
+  },
+  "library": {
+    "optional": "补充信息与分类（可选）",
+    "duplicate": "已在收藏中",
+    "saved": "已收藏",
+    "removed": "已取消收藏",
+    "organize": "整理",
+    "view": "查看",
+    "undo": "撤销",
+    "failed": "操作未完成，请重试。",
+    "retry": "重新获取内容",
+    "unfiled": "未分类",
+    "noResults": "未找到匹配内容",
+    "select": "选择",
+    "fetching": "正在获取内容",
+    "fetchFailed": "内容获取失败",
+    "contentSaved": "已保存正文",
+    "summaryOnly": "仅保存摘要",
+    "linkOnly": "仅保存链接",
+    "source": "来源",
+    "allSources": "全部来源",
+    "external": "外部链接",
+    "sort": "排序",
+    "newest": "最近收藏",
+    "oldest": "最早收藏",
+    "byTitle": "标题",
+    "filterTags": "标签（同时包含）",
+    "clear": "清除筛选",
+    "selectPage": "选择当前页",
+    "selected": "已选 {{count}} 条",
+    "operation": "操作",
+    "target": "文件夹或标签",
+    "choose": "请选择…",
+    "apply": "应用",
+    "batchFailed": "部分操作失败，失败项已保留选中，可重试。",
+    "removeMany": "取消收藏 {{count}} 条内容？",
+    "done": "完成选择",
+    "rss": "RSS 文章",
+    "matchAll": "同时包含所选标签",
+    "viewMode": "视图切换",
+    "removeFilter": "移除筛选",
+    "relevance": "相关度"
+  },
+  "knowledge": {
+    "title": "笔记与批注",
+    "description": "记录自己的想法，保留值得重读的段落。",
+    "note": "个人备注",
+    "notePlaceholder": "写下你的想法，支持 Markdown；与网页摘要分开保存。",
+    "highlight": "划线",
+    "annotate": "添加批注",
+    "annotations": "划线与批注",
+    "newAnnotation": "为选中文字添加批注",
+    "annotationBody": "批注内容",
+    "preview": "预览",
+    "edit": "编辑",
+    "saved": "已保存",
+    "saving": "正在保存…",
+    "dirty": "等待保存…",
+    "loading": "正在加载…",
+    "error": "保存或加载失败，草稿已保留，请重试。",
+    "conflict": "备注已在其他窗口更新，本地草稿已保留。",
+    "keepMine": "保留我的版本",
+    "useLatest": "使用最新版本",
+    "retry": "重试",
+    "reload": "重新加载批注",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirmDelete": "确认删除划线及批注",
+    "empty": "选择正文中的文字，即可划线或添加批注。",
+    "loadFailed": "无法加载批注，请重试。",
+    "saveFailed": "操作失败，输入内容已保留。",
+    "annotationConflict": "批注已在其他窗口更改，请重新加载后检查内容再保存。",
+    "unresolved": "无法准确定位原文，已保留引用及批注。",
+    "color": "划线颜色",
+    "colors": {
+      "yellow": "黄色",
+      "green": "绿色",
+      "blue": "蓝色",
+      "pink": "粉色"
+    },
+    "fields": {
+      "title": "标题",
+      "excerpt": "摘要",
+      "url": "链接",
+      "source": "来源",
+      "content": "正文",
+      "note": "备注",
+      "annotation": "批注"
+    },
+    "editor": {
+      "hint": "支持 Markdown 快捷输入。",
+      "limit": "最多 {{count}} 个字符（含格式标记）。"
+    },
+    "shortTitle": "笔记"
   }
 }

@@ -19,7 +19,11 @@ vi.mock('@glean/logger', () => ({
 
 import { useBookmarkStore } from '@/stores/bookmarkStore'
 import { bookmarkService } from '@glean/api-client'
-import { createMockBookmark, createMockBookmarkFolder, createMockBookmarkTag } from '../helpers/mockData'
+import {
+  createMockBookmark,
+  createMockBookmarkFolder,
+  createMockBookmarkTag,
+} from '../helpers/mockData'
 
 const mockBookmark = createMockBookmark({ id: 'b1', url: 'https://example.com', title: 'Test' })
 
@@ -100,7 +104,9 @@ describe('bookmarkStore', () => {
         per_page: 20,
       })
 
-      const result = await useBookmarkStore.getState().createBookmark({ url: 'https://example.com' })
+      const result = await useBookmarkStore
+        .getState()
+        .createBookmark({ url: 'https://example.com' })
 
       expect(result).toEqual(mockBookmark)
       expect(bookmarkService.createBookmark).toHaveBeenCalledWith({ url: 'https://example.com' })
@@ -109,7 +115,9 @@ describe('bookmarkStore', () => {
     it('should return null on failure', async () => {
       vi.mocked(bookmarkService.createBookmark).mockRejectedValue(new Error('fail'))
 
-      const result = await useBookmarkStore.getState().createBookmark({ url: 'https://example.com' })
+      const result = await useBookmarkStore
+        .getState()
+        .createBookmark({ url: 'https://example.com' })
 
       expect(result).toBeNull()
     })
@@ -166,7 +174,9 @@ describe('bookmarkStore', () => {
       const result = await useBookmarkStore.getState().addFolder('b1', 'f1')
 
       expect(result).toEqual(updated)
-      expect(useBookmarkStore.getState().bookmarks[0].folders).toEqual([createMockBookmarkFolder({ id: 'f1' })])
+      expect(useBookmarkStore.getState().bookmarks[0].folders).toEqual([
+        createMockBookmarkFolder({ id: 'f1' }),
+      ])
     })
 
     it('should return null on failure', async () => {
@@ -181,7 +191,9 @@ describe('bookmarkStore', () => {
   describe('removeFolder', () => {
     it('should remove folder and update bookmark', async () => {
       const updated = { ...mockBookmark, folders: [] }
-      useBookmarkStore.setState({ bookmarks: [{ ...mockBookmark, folders: [createMockBookmarkFolder({ id: 'f1' })] }] })
+      useBookmarkStore.setState({
+        bookmarks: [{ ...mockBookmark, folders: [createMockBookmarkFolder({ id: 'f1' })] }],
+      })
       vi.mocked(bookmarkService.removeFolder).mockResolvedValue(updated)
 
       const result = await useBookmarkStore.getState().removeFolder('b1', 'f1')
@@ -205,7 +217,9 @@ describe('bookmarkStore', () => {
   describe('removeTag', () => {
     it('should remove tag and update bookmark', async () => {
       const updated = { ...mockBookmark, tags: [] }
-      useBookmarkStore.setState({ bookmarks: [{ ...mockBookmark, tags: [createMockBookmarkTag({ id: 't1' })] }] })
+      useBookmarkStore.setState({
+        bookmarks: [{ ...mockBookmark, tags: [createMockBookmarkTag({ id: 't1' })] }],
+      })
       vi.mocked(bookmarkService.removeTag).mockResolvedValue(updated)
 
       const result = await useBookmarkStore.getState().removeTag('b1', 't1')
@@ -245,5 +259,41 @@ describe('bookmarkStore', () => {
       expect(state.error).toBeNull()
       expect(state.filters).toEqual({})
     })
+  })
+})
+
+describe('bookmark list request ordering', () => {
+  it('keeps the newest filter result when an earlier request finishes late', async () => {
+    useBookmarkStore.getState().reset()
+    let finishOld!: (value: Awaited<ReturnType<typeof bookmarkService.getBookmarks>>) => void
+    vi.mocked(bookmarkService.getBookmarks).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve
+        })
+    )
+    const oldRequest = useBookmarkStore.getState().fetchBookmarks({ search: 'old' })
+    vi.mocked(bookmarkService.getBookmarks).mockResolvedValueOnce({
+      items: [],
+      page: 1,
+      pages: 1,
+      total: 0,
+      per_page: 20,
+    })
+    await useBookmarkStore.getState().fetchBookmarks({ search: 'new' })
+    finishOld({ items: [mockBookmark], page: 1, pages: 1, total: 1, per_page: 20 })
+    await oldRequest
+    expect(useBookmarkStore.getState().filters.search).toBe('new')
+    expect(useBookmarkStore.getState().bookmarks).toEqual([])
+  })
+
+  it('returns to the last available page after removals', async () => {
+    useBookmarkStore.getState().reset()
+    vi.mocked(bookmarkService.getBookmarks)
+      .mockResolvedValueOnce({ items: [], page: 2, pages: 1, total: 1, per_page: 20 })
+      .mockResolvedValueOnce({ items: [mockBookmark], page: 1, pages: 1, total: 1, per_page: 20 })
+    await useBookmarkStore.getState().fetchBookmarks({ page: 2 })
+    expect(useBookmarkStore.getState().page).toBe(1)
+    expect(useBookmarkStore.getState().bookmarks).toEqual([mockBookmark])
   })
 })

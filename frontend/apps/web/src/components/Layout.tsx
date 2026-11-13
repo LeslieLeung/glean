@@ -1,3 +1,4 @@
+import { BookmarkFeedback } from './BookmarkFeedback'
 import { Link, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef, useMemo } from 'react'
@@ -262,19 +263,25 @@ export function Layout() {
   }
 
   const handleBookmarkFolderSelect = (folderId?: string) => {
-    if (folderId) {
-      navigate(`/bookmarks?folder=${folderId}`)
-    } else {
-      navigate('/bookmarks')
+    const next = new URLSearchParams(isBookmarksPage ? location.search : '')
+    next.delete('item')
+    next.delete('page')
+    if (folderId) next.set('folder', folderId)
+    else {
+      next.delete('folder')
+      next.delete('tag')
     }
+    navigate(`/bookmarks?${next}`)
   }
 
   const handleTagSelect = (tagId?: string) => {
-    if (tagId) {
-      navigate(`/bookmarks?tag=${tagId}`)
-    } else {
-      navigate('/bookmarks')
-    }
+    const next = new URLSearchParams(isBookmarksPage ? location.search : '')
+    next.delete('item')
+    next.delete('page')
+    if (!tagId) next.delete('tag')
+    else if (next.getAll('tag').includes(tagId)) next.delete('tag', tagId)
+    else next.append('tag', tagId)
+    navigate(`/bookmarks?${next}`)
   }
 
   const toggleBookmarkFolder = (folderId: string) => {
@@ -591,6 +598,7 @@ export function Layout() {
       <main className="bg-background min-h-0 flex-1 overflow-auto">
         <div key={location.pathname} className="page-transition h-full">
           <Outlet />
+          <BookmarkFeedback />
         </div>
       </main>
 

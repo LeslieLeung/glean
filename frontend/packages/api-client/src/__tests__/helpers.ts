@@ -8,6 +8,7 @@ export function createMockClient(): ApiClient {
   return {
     get: vi.fn(),
     post: vi.fn(),
+    put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
     getWithHeaders: vi.fn(),

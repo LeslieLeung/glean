@@ -173,6 +173,7 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     # Create all tables
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
