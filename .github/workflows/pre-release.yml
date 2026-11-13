@@ -312,10 +312,10 @@ jobs:
                 image: ghcr.io/${{ env.IMAGE_PREFIX }}-admin:${{ github.ref_name }}
             ```
 
-            Then run:
+            Then run the default pgvector stack:
 
             ```bash
-            docker compose up -d
+            docker compose -f docker-compose.pgvector.yml -f docker-compose.override.yml up -d
             ```
 
             ## Desktop Apps

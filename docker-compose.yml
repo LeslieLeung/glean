@@ -1,7 +1,7 @@
-# Glean Docker Compose Configuration
+# Glean Docker Compose Configuration (Milvus backend)
 # Usage:
-#   pgvector deployment (recommended): docker compose -f docker-compose.pgvector.yml up -d
-#   Milvus deployment: docker compose up -d
+#   Default deployment (pgvector): docker compose -f docker-compose.pgvector.yml up -d
+#   This file (Milvus): docker compose -f docker-compose.yml up -d
 #   Local development: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 #
 # Environment variables can be set in .env file:
@@ -13,6 +13,7 @@
 #   - CREATE_ADMIN: Create admin account on startup (default: true)
 #   - ADMIN_USERNAME/PASSWORD: Admin credentials (default: admin/Admin123!)
 #   - DEBUG: Enable debug mode (default: false)
+#   - SSRF_ALLOW_PRIVATE / SSRF_ALLOWED_HOSTS: outbound fetch policy
 #   - MILVUS_HOST/PORT: Milvus connection
 
 services:
@@ -58,7 +59,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
       CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
-      VECTOR_BACKEND: ${VECTOR_BACKEND:-milvus}
+      VECTOR_BACKEND: milvus
       # Only backend runs migrations to avoid race conditions
       RUN_MIGRATIONS: "true"
       # Admin auto-creation (enabled by default, set to false to disable)
@@ -80,6 +81,9 @@ services:
       LOG_RETENTION: ${LOG_RETENTION:-30 days}
       LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
       LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+      # Outbound fetch policy (bookmark extraction, feed discovery)
+      SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
+      SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
     volumes:
       - glean_logs:/app/logs
     depends_on:
@@ -107,7 +111,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
-      VECTOR_BACKEND: ${VECTOR_BACKEND:-milvus}
+      VECTOR_BACKEND: milvus
       # Milvus configuration
       MILVUS_HOST: milvus
       MILVUS_PORT: ${MILVUS_PORT:-19530}
@@ -122,6 +126,9 @@ services:
       LOG_RETENTION: ${LOG_RETENTION:-30 days}
       LOG_COMPRESSION: ${LOG_COMPRESSION:-gz}
       LOG_SERIALIZE: ${LOG_SERIALIZE:-false}
+      # Outbound fetch policy (feed fetching)
+      SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
+      SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
     volumes:
       - glean_logs:/app/logs
     depends_on:

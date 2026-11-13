@@ -35,20 +35,17 @@ The project includes multiple Docker Compose configurations for different use ca
 ### Production Deployment
 
 ```bash
-# Basic deployment (without admin dashboard)
-docker compose up -d
-
-# pgvector backend deployment
+# Default deployment (pgvector)
 docker compose -f docker-compose.pgvector.yml up -d
 
-# Full deployment with admin dashboard
-docker compose --profile admin up -d
+# Milvus deployment
+docker compose -f docker-compose.yml up -d
 
-# Stop services
-docker compose down
+# Stop the default deployment
+docker compose -f docker-compose.pgvector.yml down
 
 # Test pre-release versions (alpha/beta/rc)
-IMAGE_TAG=v0.3.0-alpha.1 docker compose up -d
+IMAGE_TAG=v0.3.0-alpha.1 docker compose -f docker-compose.pgvector.yml up -d
 # Or set in .env: IMAGE_TAG=v0.3.0-alpha.1
 ```
 

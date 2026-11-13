@@ -281,8 +281,8 @@ jobs:
             ## Quick Start
 
             ```bash
-            # Download docker-compose.yml
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
+            # Download the default pgvector compose file
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.pgvector.yml -o docker-compose.yml
 
             # Start Glean
             docker compose up -d
