@@ -223,6 +223,9 @@
     "adding": "添加中..."
   },
   "manager": {
+    "failed": "拉取失败",
+    "noFailedFeeds": "暂无拉取失败的订阅",
+    "noFailedFeedsDescription": "目前没有订阅源处于拉取失败状态。",
     "untitled": "未命名订阅",
     "allFeeds": "全部订阅",
     "ungrouped": "未分类",

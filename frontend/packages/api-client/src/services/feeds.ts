@@ -32,6 +32,8 @@ export class FeedService {
     if (params?.search) searchParams.set('search', params.search)
     if (params?.include_descendants) searchParams.set('include_descendants', 'true')
 
+    if (params?.failed_only) searchParams.set('failed_only', 'true')
+
     const query = searchParams.toString()
     const url = query ? `/feeds?${query}` : '/feeds'
     return this.client.get<SubscriptionListResponse>(url)

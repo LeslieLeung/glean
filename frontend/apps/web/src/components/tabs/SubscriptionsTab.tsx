@@ -52,6 +52,7 @@ import { flattenFeedFolders } from '../../utils/feedFolders'
 import { apiErrorMessage } from '../../utils/apiError'
 
 const ALL = '__all__'
+const FAILED = '__failed__'
 const UNGROUPED = '__ungrouped__'
 
 function FolderBranch({
@@ -145,12 +146,14 @@ export function SubscriptionsTab() {
   const folders = flattenFeedFolders(feedFolders)
   const items = [
     { value: ALL, label: t('manager.allFeeds') },
+    { value: FAILED, label: t('manager.failed') },
     { value: UNGROUPED, label: t('manager.ungrouped') },
     ...folders.map((folder) => ({ value: folder.id, label: folder.path })),
   ]
   const currentFolder = folders.find((folder) => folder.id === selected)
   const subscriptions = useSubscriptions({
-    folder_id: selected === ALL ? undefined : selected === UNGROUPED ? null : selected,
+    folder_id: currentFolder?.id ?? (selected === UNGROUPED ? null : undefined),
+    failed_only: selected === FAILED,
     include_descendants: !!currentFolder,
     search: debouncedSearch,
     page,
@@ -182,6 +185,7 @@ export function SubscriptionsTab() {
       !foldersLoading &&
       !folderError &&
       selected !== ALL &&
+      selected !== FAILED &&
       selected !== UNGROUPED &&
       !currentFolder
     ) {
@@ -269,21 +273,24 @@ export function SubscriptionsTab() {
           aria-label={t('manager.folders')}
           className="hidden min-w-0 flex-col gap-1 border-r pr-3 lg:flex"
         >
-          {items.slice(0, 2).map((item) => (
-            <Button
-              key={item.value}
-              size="sm"
-              variant="ghost"
-              className={cn(
-                'text-muted-foreground hover:text-foreground justify-start',
-                selected === item.value &&
-                  'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
-              )}
-              aria-current={selected === item.value ? 'page' : undefined}
-              onClick={() => chooseFolder(item.value)}
-            >
-              {item.label}
-            </Button>
+          {items.slice(0, 3).map((item) => (
+            <div key={item.value} className="flex items-center gap-1">
+              {item.value === UNGROUPED && <span className="size-8 shrink-0" />}
+              <Button
+                size="sm"
+                variant="ghost"
+                className={cn(
+                  'text-muted-foreground hover:text-foreground min-w-0 flex-1 justify-start',
+                  selected === item.value &&
+                    'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
+                )}
+                aria-current={selected === item.value ? 'page' : undefined}
+                onClick={() => chooseFolder(item.value)}
+              >
+                {item.value === UNGROUPED && <Folder data-icon="inline-start" />}
+                <span className="truncate">{item.label}</span>
+              </Button>
+            </div>
           ))}
           {folderError ? (
             <Alert variant="error">
@@ -328,8 +335,7 @@ export function SubscriptionsTab() {
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-medium">
-              {currentFolder?.path ||
-                t(selected === ALL ? 'manager.allFeeds' : 'manager.ungrouped')}
+              {currentFolder?.path || items.find((item) => item.value === selected)?.label}
             </span>
             <span className="text-muted-foreground text-xs">
               {currentFolder && `${t('manager.includesChildren')} · `}
@@ -445,14 +451,20 @@ export function SubscriptionsTab() {
                     {t(
                       debouncedSearch
                         ? 'manageSubscriptions.noMatchingSubscriptions'
-                        : selected === ALL
-                          ? 'manageSubscriptions.noSubscriptionsYet'
-                          : 'manager.emptyFolder'
+                        : selected === FAILED
+                          ? 'manager.noFailedFeeds'
+                          : selected === ALL
+                            ? 'manageSubscriptions.noSubscriptionsYet'
+                            : 'manager.emptyFolder'
                     )}
                   </EmptyTitle>
                   <EmptyDescription>
                     {t(
-                      debouncedSearch ? 'manageSubscriptions.tryDifferentSearch' : 'empty.addFirst'
+                      debouncedSearch
+                        ? 'manageSubscriptions.tryDifferentSearch'
+                        : selected === FAILED
+                          ? 'manager.noFailedFeedsDescription'
+                          : 'empty.addFirst'
                     )}
                   </EmptyDescription>
                 </EmptyHeader>
@@ -460,9 +472,9 @@ export function SubscriptionsTab() {
                   <Button variant="outline" onClick={() => setSearch('')}>
                     {t('manager.clearSearch')}
                   </Button>
-                ) : (
+                ) : selected !== FAILED ? (
                   <Button onClick={() => setAdding(true)}>{t('actions.addFeed')}</Button>
-                )}
+                ) : null}
               </Empty>
             )}
           </div>

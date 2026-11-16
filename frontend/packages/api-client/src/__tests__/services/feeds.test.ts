@@ -41,6 +41,13 @@ describe('FeedService', () => {
     expect(mockClient.get).toHaveBeenCalledWith('/feeds?folder_id=')
   })
 
+  it('serializes failed filtering with search and pagination', async () => {
+    await service.getSubscriptions({ failed_only: true, search: 'test', page: 2 })
+    expect(mockClient.get).toHaveBeenCalledWith('/feeds?page=2&search=test&failed_only=true')
+    await service.getSubscriptions({ failed_only: false })
+    expect(mockClient.get).toHaveBeenLastCalledWith('/feeds')
+  })
+
   it('should sync all subscriptions without etag', async () => {
     const syncResponse = { items: [{ id: '1' }] }
     const headers = new Headers()
