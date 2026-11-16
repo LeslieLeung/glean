@@ -27,6 +27,7 @@ from glean_database.models import (
     BookmarkTag,
     Entry,
     Folder,
+    Subscription,
     Tag,
 )
 from glean_rss import strip_html_tags
@@ -225,7 +226,7 @@ class BookmarkService:
             asynchronously for URL bookmarks.
 
         Raises:
-            ValueError: If entry not found or validation fails.
+            ValueError: If entry not found, user not subscribed, or validation fails.
         """
         title = data.title[:500] if data.title else data.title
         excerpt = data.excerpt
@@ -251,6 +252,15 @@ class BookmarkService:
             entry = result.scalar_one_or_none()
             if not entry:
                 raise ValueError("Entry not found")
+
+            # Entry content is only visible to subscribers of its feed.
+            sub_stmt = select(Subscription).where(
+                Subscription.user_id == user_id, Subscription.feed_id == entry.feed_id
+            )
+            sub_result = await self.session.execute(sub_stmt)
+            if not sub_result.scalar_one_or_none():
+                raise ValueError("Not subscribed to this feed")
+
             title = title or entry.title
             # Use same logic as article list: content first, then summary
             if not excerpt:
