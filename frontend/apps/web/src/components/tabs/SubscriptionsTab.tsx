@@ -71,7 +71,22 @@ function FolderBranch({
       {nodes.map((node) => (
         <li key={node.id} className="min-w-0">
           <div className="flex items-center gap-1">
-            {node.children.length ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'text-muted-foreground hover:text-foreground min-w-0 flex-1 justify-start',
+                selected === node.id &&
+                  'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
+              )}
+              aria-current={selected === node.id ? 'page' : undefined}
+              onClick={() => onSelect(node.id)}
+              title={node.name}
+            >
+              <Folder data-icon="inline-start" />
+              <span className="truncate">{node.name}</span>
+            </Button>
+            {!!node.children.length && (
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -91,24 +106,7 @@ function FolderBranch({
               >
                 {collapsed.has(node.id) ? <ChevronRight /> : <ChevronDown />}
               </Button>
-            ) : (
-              <span className="size-8 shrink-0" />
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                'text-muted-foreground hover:text-foreground min-w-0 flex-1 justify-start',
-                selected === node.id &&
-                  'bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary'
-              )}
-              aria-current={selected === node.id ? 'page' : undefined}
-              onClick={() => onSelect(node.id)}
-              title={node.name}
-            >
-              <Folder data-icon="inline-start" />
-              <span className="truncate">{node.name}</span>
-            </Button>
           </div>
           {!collapsed.has(node.id) && !!node.children.length && (
             <div className="ml-3 border-l pl-1">
@@ -275,7 +273,6 @@ export function SubscriptionsTab() {
         >
           {items.slice(0, 3).map((item) => (
             <div key={item.value} className="flex items-center gap-1">
-              {item.value === UNGROUPED && <span className="size-8 shrink-0" />}
               <Button
                 size="sm"
                 variant="ghost"
