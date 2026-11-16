@@ -5,7 +5,7 @@ Provides endpoints for feed discovery, subscription management, and OPML import/
 """
 
 import asyncio
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from arq.connections import ArqRedis
@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 async def list_subscriptions(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
-    folder_id: str | None = None,
+    folder_id: UUID | Literal[""] | None = None,
     page: int = 1,
     per_page: int = 20,
     search: str | None = None,
@@ -70,7 +70,12 @@ async def list_subscriptions(
     page = max(1, page)
 
     return await feed_service.get_user_subscriptions_paginated(
-        current_user.id, page, per_page, folder_id, search, include_descendants
+        current_user.id,
+        page,
+        per_page,
+        str(folder_id) if folder_id is not None else None,
+        search,
+        include_descendants,
     )
 
 
