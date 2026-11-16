@@ -222,6 +222,9 @@
     "adding": "Adding..."
   },
   "manager": {
+    "failed": "Failed",
+    "noFailedFeeds": "No failed feeds",
+    "noFailedFeedsDescription": "No feeds currently have fetch failures.",
     "untitled": "Untitled feed",
     "allFeeds": "All feeds",
     "ungrouped": "Ungrouped",
