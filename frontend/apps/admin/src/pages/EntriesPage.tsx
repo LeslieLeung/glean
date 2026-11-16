@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { sanitizeArticleHtml } from '@glean/ui/utils'
 import { useEntries, useEntry, useDeleteEntry } from '../hooks/useEntries'
 import { useFeeds } from '../hooks/useFeeds'
 import {
@@ -305,12 +306,12 @@ export default function EntriesPage() {
             ) : selectedEntry?.content ? (
               <article
                 className="prose prose-invert prose-sm prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground prose-blockquote:border-primary prose-blockquote:text-foreground/80 prose-code:text-foreground prose-pre:bg-muted max-w-none"
-                dangerouslySetInnerHTML={{ __html: selectedEntry.content }}
+                dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(selectedEntry.content) }}
               />
             ) : selectedEntry?.summary ? (
               <article
                 className="prose prose-invert prose-sm prose-headings:font-display prose-headings:text-foreground prose-p:text-foreground/90 max-w-none"
-                dangerouslySetInnerHTML={{ __html: selectedEntry.summary }}
+                dangerouslySetInnerHTML={{ __html: sanitizeArticleHtml(selectedEntry.summary) }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">

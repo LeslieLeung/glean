@@ -123,6 +123,22 @@ describe('processHtmlContent', () => {
     // The entity should be preserved, not turned into an actual <img> tag
     expect(result).toContain('&lt;img&gt;')
   })
+
+  it('sanitizes event handlers after decoding plain text entities', () => {
+    const container = document.createElement('div')
+    container.innerHTML = processHtmlContent('&lt;img src=x onerror=alert(1)&gt;')
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('x')
+    expect(container.querySelector('[onerror]')).toBeNull()
+  })
+
+  it('applies the article allowlist after decoding plain text entities', () => {
+    const container = document.createElement('div')
+    container.innerHTML = processHtmlContent(
+      '&lt;svg&gt;&lt;circle&gt;&lt;/circle&gt;&lt;/svg&gt;&lt;p style="color:red"&gt;Text&lt;/p&gt;'
+    )
+    expect(container.querySelector('svg, [style]')).toBeNull()
+    expect(container.textContent).toBe('Text')
+  })
 })
 
 describe('stripFeedMetadataText', () => {
