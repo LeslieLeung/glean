@@ -102,6 +102,7 @@ export interface SubscriptionListParams {
   per_page?: number
   folder_id?: string | null
   search?: string
+  failed_only?: boolean
   include_descendants?: boolean
 }
 
