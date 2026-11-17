@@ -457,10 +457,10 @@ class TestBookmarkAPI:
         assert job_args[0] == data["id"]
 
     @pytest.mark.asyncio
-    async def test_create_bookmark_with_title_no_metadata_fetch(
+    async def test_create_bookmark_with_title_still_fetches_content(
         self, client: AsyncClient, auth_headers: dict, test_mock_redis
     ):
-        """Test creating a bookmark with title and excerpt does not trigger metadata fetch."""
+        """Custom metadata still permits fetching the full article body."""
         # Clear any previous jobs
         test_mock_redis.enqueued_jobs.clear()
 
@@ -480,8 +480,8 @@ class TestBookmarkAPI:
         assert data["title"] == "Complete Bookmark"
         assert data["excerpt"] == "This is a complete bookmark with all info"
 
-        # No metadata fetch should be queued
-        assert len(test_mock_redis.enqueued_jobs) == 0
+        # Custom metadata is preserved, but body extraction still runs.
+        assert test_mock_redis.enqueued_jobs == [("fetch_bookmark_metadata_task", (data["id"],))]
 
 
 class TestTagBatchOperations:
