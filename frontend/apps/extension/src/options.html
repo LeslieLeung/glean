@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-message="settings"></title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="options.js"></script>
+  </head>
+  <body>
+    <main class="settings">
+      <header>
+        <img src="icons/32.png" width="32" height="32" alt="" />
+        <h1 data-message="settings"></h1>
+      </header>
+      <form id="settings" novalidate>
+        <label for="instance" data-message="instance"></label>
+        <input
+          id="instance"
+          type="url"
+          placeholder="https://glean.example.com"
+          spellcheck="false"
+          required
+        />
+        <label for="key" data-message="apiKey"></label>
+        <input id="key" type="password" autocomplete="off" spellcheck="false" required />
+        <p class="hint" data-message="keyHelp"></p>
+        <div class="actions">
+          <button id="save" type="submit" data-message="connect" disabled></button>
+          <button id="disconnect" type="button" data-message="disconnect" hidden></button>
+        </div>
+      </form>
+      <p id="status" role="status"></p>
+    </main>
+  </body>
+</html>
