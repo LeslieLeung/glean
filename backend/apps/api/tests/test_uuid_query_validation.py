@@ -135,6 +135,51 @@ def test_every_tag_id_is_validated(
     query_app[1].get_bookmarks.assert_not_awaited()
 
 
+def test_feed_failure_filter_preserves_uuid_validation(
+    query_client: TestClient, query_app: tuple[FastAPI, AsyncMock]
+) -> None:
+    response = query_client.get(
+        "/api/feeds",
+        params={"folder_id": UUID_VALUE, "include_descendants": "true", "failed_only": "true"},
+    )
+
+    assert response.status_code == 200
+    query_app[1].get_user_subscriptions_paginated.assert_awaited_once_with(
+        UUID_VALUE, 1, 20, UUID_VALUE, None, True, True
+    )
+
+
+def test_bookmark_library_filters_preserve_uuid_validation(
+    query_client: TestClient, query_app: tuple[FastAPI, AsyncMock]
+) -> None:
+    response = query_client.get(
+        "/api/bookmarks",
+        params={
+            "folder_id": UUID_VALUE,
+            "tag_ids": UUID_VALUE,
+            "search": "annotation",
+            "sort": "relevance",
+            "order": "asc",
+            "unfiled": "true",
+            "source_type": "external",
+        },
+    )
+
+    assert response.status_code == 200
+    query_app[1].get_bookmarks.assert_awaited_once_with(
+        user_id=UUID_VALUE,
+        page=1,
+        per_page=20,
+        folder_id=UUID_VALUE,
+        tag_ids=[UUID_VALUE],
+        search="annotation",
+        sort="relevance",
+        order="asc",
+        unfiled=True,
+        source_type="external",
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path", ["/api/feeds", "/api/feeds?include_descendants=true", "/api/entries"]

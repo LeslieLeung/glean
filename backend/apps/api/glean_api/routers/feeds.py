@@ -50,6 +50,7 @@ async def list_subscriptions(
     per_page: int = 20,
     search: str | None = None,
     include_descendants: bool = False,
+    failed_only: bool = False,
 ) -> SubscriptionListResponse:
     """
     Get paginated user subscriptions.
@@ -61,6 +62,7 @@ async def list_subscriptions(
         page: Page number (1-indexed, default 1).
         per_page: Items per page (default 20, max 100).
         search: Optional search query to filter by title or URL.
+        failed_only: Only include feeds with unresolved fetch failures.
 
     Returns:
         Paginated list of user subscriptions.
@@ -76,6 +78,7 @@ async def list_subscriptions(
         str(folder_id) if folder_id is not None else None,
         search,
         include_descendants,
+        failed_only,
     )
 
 

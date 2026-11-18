@@ -108,6 +108,54 @@ describe('Manage Feeds', () => {
     expect(pickers[pickers.length - 1]).toHaveTextContent('Tech')
   })
 
+  it('filters failed feeds across folders and combines the filter with search', async () => {
+    renderTab()
+    await screen.findByText('My Feed')
+    const failed = screen.getByRole('button', { name: 'manager.failed' })
+    const buttons = Array.from(screen.getByRole('navigation').querySelectorAll('button'))
+    expect(buttons.slice(0, 3).map((button) => button.textContent)).toEqual([
+      'manager.allFeeds',
+      'manager.failed',
+      'manager.ungrouped',
+    ])
+    fireEvent.click(failed)
+    await waitFor(() => {
+      expect(feedService.getSubscriptions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ failed_only: true, folder_id: undefined, page: 1 })
+      )
+      expect(failed).toHaveAttribute('aria-current', 'page')
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'manager.search' }), {
+      target: { value: 'My Feed' },
+    })
+    await waitFor(() =>
+      expect(feedService.getSubscriptions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ failed_only: true, search: 'My Feed', page: 1 })
+      )
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'manager.allFeeds' }))
+    await waitFor(() =>
+      expect(feedService.getSubscriptions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ failed_only: false, folder_id: undefined })
+      )
+    )
+  })
+
+  it('shows a dedicated empty state for failed feeds', async () => {
+    vi.mocked(feedService.getSubscriptions).mockResolvedValue({
+      items: [],
+      page: 1,
+      per_page: 10,
+      total: 0,
+      total_pages: 1,
+    })
+    renderTab()
+    fireEvent.click(screen.getByRole('button', { name: 'manager.failed' }))
+    expect(await screen.findByText('manager.noFailedFeeds')).toBeInTheDocument()
+    expect(screen.getByText('manager.noFailedFeedsDescription')).toBeInTheDocument()
+    expect(screen.queryByText('manager.emptyFolder')).not.toBeInTheDocument()
+  })
+
   it('distinguishes ungrouped from all feeds in the query', async () => {
     renderTab()
     await screen.findByText('My Feed')

@@ -1,5 +1,9 @@
 import type {
   Bookmark,
+  BookmarkNote,
+  BookmarkAnnotation,
+  AnnotationAnchor,
+  AnnotationColor,
   BookmarkListResponse,
   CreateBookmarkRequest,
   UpdateBookmarkRequest,
@@ -10,9 +14,11 @@ export interface BookmarkListParams {
   page?: number
   per_page?: number
   folder_id?: string
+  unfiled?: boolean
+  source_type?: 'rss' | 'external'
   tag_ids?: string[]
   search?: string
-  sort?: 'created_at' | 'title'
+  sort?: 'created_at' | 'title' | 'relevance'
   order?: 'asc' | 'desc'
 }
 
@@ -31,6 +37,8 @@ export class BookmarkService {
     const searchParams = new URLSearchParams()
     if (params.page) searchParams.set('page', String(params.page))
     if (params.per_page) searchParams.set('per_page', String(params.per_page))
+    if (params.unfiled) searchParams.set('unfiled', 'true')
+    if (params.source_type) searchParams.set('source_type', params.source_type)
     if (params.folder_id) searchParams.set('folder_id', params.folder_id)
     if (params.tag_ids?.length) {
       params.tag_ids.forEach((id) => searchParams.append('tag_ids', id))
@@ -71,6 +79,48 @@ export class BookmarkService {
    */
   async deleteBookmark(bookmarkId: string): Promise<void> {
     await this.client.delete(`/bookmarks/${bookmarkId}`)
+  }
+
+  async retryContent(id: string): Promise<Bookmark> {
+    return this.client.post<Bookmark>(`/bookmarks/${id}/retry`)
+  }
+
+  async restoreBookmark(id: string): Promise<Bookmark> {
+    return this.client.post<Bookmark>(`/bookmarks/${id}/restore`)
+  }
+
+  async getNote(id: string): Promise<BookmarkNote> {
+    return this.client.get<BookmarkNote>(`/bookmarks/${id}/note`)
+  }
+
+  async saveNote(id: string, body: string, revision: number): Promise<BookmarkNote> {
+    return this.client.put<BookmarkNote>(`/bookmarks/${id}/note`, { body, revision })
+  }
+
+  async getAnnotations(id: string): Promise<BookmarkAnnotation[]> {
+    return this.client.get<BookmarkAnnotation[]>(`/bookmarks/${id}/annotations`)
+  }
+
+  async createAnnotation(
+    id: string,
+    data: AnnotationAnchor & { body: string; color: AnnotationColor }
+  ): Promise<BookmarkAnnotation> {
+    return this.client.post<BookmarkAnnotation>(`/bookmarks/${id}/annotations`, data)
+  }
+
+  async updateAnnotation(
+    id: string,
+    annotationId: string,
+    data: { body: string; color: AnnotationColor; revision: number }
+  ): Promise<BookmarkAnnotation> {
+    return this.client.patch<BookmarkAnnotation>(
+      `/bookmarks/${id}/annotations/${annotationId}`,
+      data
+    )
+  }
+
+  async deleteAnnotation(id: string, annotationId: string, revision: number): Promise<void> {
+    await this.client.delete(`/bookmarks/${id}/annotations/${annotationId}?revision=${revision}`)
   }
 
   /**
