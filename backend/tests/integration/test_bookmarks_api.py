@@ -30,6 +30,7 @@ async def private_entry(db_session: AsyncSession, test_feed: Feed) -> Entry:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("supply_metadata", [False, True])
+@pytest.mark.parametrize("existing_source", [None, "external", "entry"])
 async def test_create_bookmark_rejects_unsubscribed_entry(
     client: AsyncClient,
     auth_headers: dict[str, str],
@@ -38,12 +39,23 @@ async def test_create_bookmark_rejects_unsubscribed_entry(
     private_entry: Entry,
     test_mock_redis,
     supply_metadata: bool,
+    existing_source: str | None,
 ) -> None:
     """Neither another user's subscription nor a different feed grants access."""
     other_feed = Feed(url="https://example.com/other-feed.xml", title="Other feed")
     db_session.add(other_feed)
     await db_session.flush()
     db_session.add(Subscription(user_id=test_user.id, feed_id=other_feed.id))
+    existing = None
+    if existing_source:
+        existing = Bookmark(
+            user_id=test_user.id,
+            url=private_entry.url,
+            entry_id=private_entry.id if existing_source == "entry" else None,
+            title="Previously saved title",
+            excerpt="Previously saved excerpt",
+        )
+        db_session.add(existing)
     await db_session.commit()
 
     entry_response = await client.get(f"/api/entries/{private_entry.id}", headers=auth_headers)
@@ -62,7 +74,13 @@ async def test_create_bookmark_rejects_unsubscribed_entry(
     count = await db_session.scalar(
         select(func.count()).select_from(Bookmark).where(Bookmark.user_id == test_user.id)
     )
-    assert count == 0
+    assert count == (1 if existing else 0)
+    if existing:
+        await db_session.refresh(existing)
+        assert existing.title == "Previously saved title"
+        assert existing.excerpt == "Previously saved excerpt"
+        assert existing.content is None
+        assert existing.entry_id == (private_entry.id if existing_source == "entry" else None)
     assert test_mock_redis.enqueued_jobs == []
 
 
@@ -80,6 +98,8 @@ async def test_create_bookmark_from_subscribed_entry(
     db_session.add(Subscription(user_id=test_user.id, feed_id=private_entry.feed_id))
     if use_summary:
         private_entry.content = None
+    else:
+        private_entry.summary = None
     await db_session.commit()
 
     response = await client.post(
@@ -90,6 +110,7 @@ async def test_create_bookmark_from_subscribed_entry(
     assert bookmark["entry_id"] == private_entry.id
     assert bookmark["user_id"] == test_user.id
     assert bookmark["title"] == private_entry.title
+    assert bookmark["content"] == private_entry.content
     assert bookmark["excerpt"] == (
         "Private entry summary" if use_summary else "Private entry content"
     )
