@@ -3,6 +3,12 @@
   "extends": ["config:recommended"],
   "packageRules": [
     {
+      "description": "Match pnpm's default 24-hour dependency release cooldown.",
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "1 day",
+      "internalChecksFilter": "strict"
+    },
+    {
       "description": "Locked torch and numpy wheels have no CPython 3.15 builds.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["python"],
