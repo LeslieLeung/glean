@@ -4,7 +4,7 @@ Entries router.
 Provides endpoints for reading and managing feed entries.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -28,8 +28,8 @@ async def list_entries(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
     score_service: Annotated[object, Depends(get_score_service)],  # ScoreService | None
-    feed_id: str | None = None,
-    folder_id: str | None = None,
+    feed_id: UUID | Literal[""] | None = None,
+    folder_id: UUID | Literal[""] | None = None,
     is_read: bool | None = None,
     is_liked: bool | None = None,
     read_later: bool | None = None,
@@ -58,8 +58,8 @@ async def list_entries(
     """
     return await entry_service.get_entries(
         user_id=current_user.id,
-        feed_id=feed_id,
-        folder_id=folder_id,
+        feed_id=str(feed_id) if feed_id is not None else None,
+        folder_id=str(folder_id) if folder_id is not None else None,
         is_read=is_read,
         is_liked=is_liked,
         read_later=read_later,

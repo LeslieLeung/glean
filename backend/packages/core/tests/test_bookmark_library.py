@@ -46,7 +46,7 @@ async def setup_library(session: AsyncSession):
         content="<p>Preserved body</p>",
         summary="Useful summary",
     )
-    session.add(entry)
+    session.add_all([entry, Subscription(user_id=user.id, feed_id=feed.id)])
     await session.commit()
     return user, other, feed, entry
 
@@ -204,11 +204,10 @@ async def test_bookmark_api_retry_restore_and_filters(client, auth_headers, test
 
 async def test_external_bookmark_state_is_shared_by_matching_rss_articles(db_session):
     from glean_core.services.entry_service import EntryService
-    from glean_database.models import Subscription
 
     user, _, feed, entry = await setup_library(db_session)
     duplicate_entry = Entry(feed_id=feed.id, url=entry.url, title="Same address")
-    db_session.add_all([duplicate_entry, Subscription(user_id=user.id, feed_id=feed.id)])
+    db_session.add(duplicate_entry)
     await db_session.commit()
     bookmarks = BookmarkService(db_session)
     saved, _ = await bookmarks.create_bookmark(user.id, BookmarkCreate(url=entry.url))
@@ -225,7 +224,7 @@ async def test_linkless_entries_do_not_share_bookmark_state(db_session: AsyncSes
     user, _, feed, entry = await setup_library(db_session)
     entry.url = ""
     other = Entry(feed_id=feed.id, url="", title="Other linkless entry")
-    db_session.add_all([other, Subscription(user_id=user.id, feed_id=feed.id)])
+    db_session.add(other)
     await db_session.commit()
     service = BookmarkService(db_session)
     saved, _ = await service.create_bookmark(user.id, BookmarkCreate(entry_id=entry.id))

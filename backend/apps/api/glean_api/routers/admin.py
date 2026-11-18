@@ -7,7 +7,7 @@ Provides endpoints for administrative operations.
 import contextlib
 from datetime import UTC, datetime, timedelta
 from math import ceil
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
@@ -564,7 +564,7 @@ async def list_entries(
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    feed_id: str | None = Query(None, description="Filter by feed"),
+    feed_id: UUID | Literal[""] | None = Query(None, description="Filter by feed"),
     search: str | None = Query(None, description="Search in title"),
     sort: str = Query("created_at", description="Sort field"),
     order: str = Query("desc", description="Sort order"),
@@ -588,7 +588,7 @@ async def list_entries(
     entries, total = await admin_service.list_entries(
         page=page,
         per_page=per_page,
-        feed_id=feed_id,
+        feed_id=str(feed_id) if feed_id is not None else None,
         search=search,
         sort=sort,
         order=order,
