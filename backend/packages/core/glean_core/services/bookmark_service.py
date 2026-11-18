@@ -37,6 +37,7 @@ from glean_database.models import (
     Entry,
     Feed,
     Folder,
+    Subscription,
     Tag,
     User,
 )
@@ -342,7 +343,7 @@ class BookmarkService:
             needs_metadata_fetch is True when a saved body is not yet available.
 
         Raises:
-            ValueError: If entry not found or validation fails.
+            ValueError: If entry not found, user not subscribed, or validation fails.
         """
         # Serialize creates per owner, including cross-source duplicates.
         await self.session.execute(select(User.id).where(User.id == user_id).with_for_update())
@@ -354,6 +355,15 @@ class BookmarkService:
             entry = await self.session.get(Entry, data.entry_id)
             if not entry:
                 raise ValueError("Entry not found")
+
+            # Entry content is only visible to subscribers of its feed.
+            sub_stmt = select(Subscription).where(
+                Subscription.user_id == user_id, Subscription.feed_id == entry.feed_id
+            )
+            sub_result = await self.session.execute(sub_stmt)
+            if not sub_result.scalar_one_or_none():
+                raise ValueError("Not subscribed to this feed")
+
             url = entry.url
             source_name = await self.session.scalar(
                 select(Feed.title).where(Feed.id == entry.feed_id)
