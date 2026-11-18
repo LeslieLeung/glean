@@ -41,8 +41,8 @@ async def get_bookmarks(
     bookmark_service: Annotated[BookmarkService, Depends(get_bookmark_service)],
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    folder_id: str | None = Query(None, description="Filter by folder"),
-    tag_ids: list[str] | None = Query(None, description="Filter by tags"),
+    folder_id: UUID | Literal[""] | None = Query(None, description="Filter by folder"),
+    tag_ids: list[UUID] | None = Query(None, description="Filter by tags"),
     search: str | None = Query(
         None, max_length=500, description="Search article content, notes and annotations"
     ),
@@ -72,8 +72,8 @@ async def get_bookmarks(
         user_id=current_user.id,
         page=page,
         per_page=per_page,
-        folder_id=folder_id,
-        tag_ids=tag_ids,
+        folder_id=str(folder_id) if folder_id is not None else None,
+        tag_ids=[str(tag_id) for tag_id in tag_ids] if tag_ids is not None else None,
         search=search,
         sort=sort,
         order=order,
