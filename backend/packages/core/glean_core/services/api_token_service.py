@@ -16,7 +16,7 @@ from glean_core.schemas.api_token import (
     APITokenListResponse,
     APITokenResponse,
 )
-from glean_database.models import APIToken
+from glean_database.models import APIToken, User
 
 
 class APITokenService:
@@ -100,10 +100,15 @@ class APITokenService:
 
         prefix = plain_token[:16]
 
-        # Find tokens with matching prefix
-        stmt = select(APIToken).where(
-            APIToken.token_prefix == prefix,
-            APIToken.is_revoked.is_(False),
+        # Check the owner on every verification, including tokens issued before suspension.
+        stmt = (
+            select(APIToken)
+            .join(User, APIToken.user_id == User.id)
+            .where(
+                APIToken.token_prefix == prefix,
+                APIToken.is_revoked.is_(False),
+                User.is_active.is_(True),
+            )
         )
         result = await self.session.execute(stmt)
         tokens = result.scalars().all()

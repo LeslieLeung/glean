@@ -30,6 +30,36 @@ def _jwt_config() -> JWTConfig:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("has_mapping", [False, True])
+async def test_login_with_provider_rejects_disabled_user(
+    db_session, monkeypatch: pytest.MonkeyPatch, has_mapping: bool
+) -> None:
+    """Neither existing provider mappings nor email linking may bypass suspension."""
+    user = User(email="oidc.user@example.com", is_active=False)
+    db_session.add(user)
+    await db_session.flush()
+    if has_mapping:
+        db_session.add(
+            UserAuthProvider(
+                user_id=user.id,
+                provider_id="oidc",
+                provider_user_id="oidc-user-123",
+            )
+        )
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "glean_core.auth.providers.auth_factory.AuthProviderFactory.create",
+        lambda *_args, **_kwargs: _FakeProvider(),
+    )
+    service = AuthService(db_session, _jwt_config(), provider_configs={"oidc": {"enabled": True}})
+
+    with pytest.raises(ValueError, match="Account is disabled"):
+        await service.login_with_provider("oidc", {"code": "valid-code"})
+    assert user.last_login_at is None
+
+
+@pytest.mark.asyncio
 async def test_login_with_provider_creates_user_and_mapping(
     db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

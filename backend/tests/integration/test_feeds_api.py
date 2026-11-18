@@ -57,6 +57,82 @@ class TestListSubscriptions:
 
         assert response.status_code == 401
 
+    @pytest.mark.asyncio
+    async def test_failed_filter_pagination_search_and_recovery(
+        self, client, auth_headers, test_user, db_session
+    ):
+        from glean_database.models import Feed, Folder, Subscription, User
+
+        folder = Folder(user_id=test_user.id, name="Tech", type="feed")
+        other_user = User()
+        db_session.add_all([folder, other_user])
+        await db_session.flush()
+        feeds = [
+            Feed(url="https://example.com/retry", title="Retry", error_count=1),
+            Feed(url="https://example.com/stopped", title="Stopped", status="error"),
+            Feed(url="https://example.com/disabled", title="Disabled", status="disabled"),
+            Feed(url="https://example.com/message", title="Message", fetch_error_message="404"),
+            Feed(url="https://example.com/healthy", title="Healthy", fetch_error_message=""),
+            Feed(url="https://example.com/pending", title="Pending"),
+            Feed(url="https://example.com/private", title="Private", error_count=1),
+        ]
+        db_session.add_all(feeds)
+        await db_session.flush()
+        db_session.add_all(
+            [
+                Subscription(
+                    user_id=other_user.id if i == 6 else test_user.id,
+                    feed_id=feed.id,
+                    folder_id=folder.id if i == 0 else None,
+                    custom_title="Custom Retry" if i == 0 else None,
+                )
+                for i, feed in enumerate(feeds)
+            ]
+        )
+        await db_session.commit()
+
+        pages = []
+        for page in (1, 2):
+            response = await client.get(
+                "/api/feeds",
+                headers=auth_headers,
+                params={"failed_only": "true", "per_page": 2, "page": page},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 4
+            assert data["total_pages"] == 2
+            assert len(data["items"]) == 2
+            pages.extend(item["feed_id"] for item in data["items"])
+        assert set(pages) == {feed.id for feed in feeds[:4]}
+
+        for search in ("Custom Retry", "https://example.com/retry"):
+            response = await client.get(
+                "/api/feeds",
+                headers=auth_headers,
+                params={"failed_only": "true", "search": search},
+            )
+            assert response.json()["total"] == 1
+            assert response.json()["items"][0]["feed_id"] == feeds[0].id
+        ungrouped = await client.get(
+            "/api/feeds",
+            headers=auth_headers,
+            params={"failed_only": "true", "folder_id": ""},
+        )
+        assert ungrouped.json()["total"] == 3
+        all_feeds = await client.get("/api/feeds", headers=auth_headers)
+        assert all_feeds.json()["total"] == 6
+
+        feeds[0].error_count = 0
+        await db_session.commit()
+        recovered = await client.get(
+            "/api/feeds",
+            headers=auth_headers,
+            params={"failed_only": "true", "search": "Retry"},
+        )
+        assert recovered.json()["total"] == 0
+        assert recovered.json()["items"] == []
+
 
 class TestGetSubscription:
     """Test getting a specific subscription."""

@@ -8,6 +8,7 @@ from .admin import AdminRole, AdminUser, SystemConfig
 from .api_token import APIToken
 from .base import Base, TimestampMixin
 from .bookmark import Bookmark
+from .bookmark_knowledge import BookmarkAnnotation, BookmarkNote
 from .entry import Entry
 from .entry_embedding import EntryEmbedding
 from .feed import Feed, FeedStatus
@@ -42,6 +43,8 @@ __all__ = [
     "FolderType",
     "Tag",
     "Bookmark",
+    "BookmarkAnnotation",
+    "BookmarkNote",
     "BookmarkFolder",
     "BookmarkTag",
     "UserEntryTag",

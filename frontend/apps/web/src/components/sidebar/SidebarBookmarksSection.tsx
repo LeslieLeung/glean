@@ -80,7 +80,9 @@ export function SidebarBookmarksSection({
             onClick={onToggleBookmarkSection}
             className="text-muted-foreground/60 hover:text-muted-foreground flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wider uppercase transition-colors md:px-3 md:text-xs"
             aria-label={
-              isBookmarkSectionExpanded ? 'Collapse bookmarks section' : 'Expand bookmarks section'
+              isBookmarkSectionExpanded
+                ? t('sidebar.collapseBookmarks')
+                : t('sidebar.expandBookmarks')
             }
           >
             <ChevronRight
@@ -114,6 +116,14 @@ export function SidebarBookmarksSection({
             title={t('bookmarks.allBookmarks')}
           />
 
+          <SidebarItem
+            icon={<FolderOpen />}
+            label={t('bookmarks:library.unfiled')}
+            isActive={isBookmarksPage && currentBookmarkFolderId === 'unfiled'}
+            onClick={() => onSelectFolder('unfiled')}
+            isSidebarCollapsed={!isSidebarOpen && !isMobileSidebarOpen}
+            title={t('bookmarks:library.unfiled')}
+          />
           {(isSidebarOpen || isMobileSidebarOpen) && bookmarkFolders.length > 0 && (
             <div className="space-y-0.5">
               {bookmarkFolders.map((folder) => (
@@ -204,17 +214,10 @@ function SidebarBookmarkFolderItem({
             : 'text-muted-foreground hover:bg-accent hover:text-foreground hover:scale-[1.01]'
         )}
       >
-        <button onClick={onToggle} className="touch-target-none flex h-5 items-center gap-2.5">
-          {hasChildren ? (
-            <ChevronRight
-              className={cn(
-                'h-3 w-3 shrink-0 transition-transform duration-200',
-                isExpanded && 'rotate-90'
-              )}
-            />
-          ) : (
-            <span className="w-3" />
-          )}
+        <button
+          onClick={() => onSelect(folder.id)}
+          className="touch-target-none flex h-5 min-w-0 flex-1 items-center gap-3 text-left"
+        >
           <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
             <Folder
               className={cn(
@@ -229,13 +232,23 @@ function SidebarBookmarkFolderItem({
               )}
             />
           </span>
+          <span className="truncate">{folder.name}</span>
         </button>
-        <button
-          onClick={() => onSelect(folder.id)}
-          className="touch-target-none h-5 min-w-0 flex-1 truncate text-left"
-        >
-          {folder.name}
-        </button>
+        {hasChildren && (
+          <button
+            onClick={onToggle}
+            className="touch-target-none flex h-5 w-5 shrink-0 items-center justify-center"
+            aria-expanded={isExpanded}
+            aria-label={t(
+              isExpanded ? 'feeds:manager.collapseFolder' : 'feeds:manager.expandFolder',
+              { name: folder.name }
+            )}
+          >
+            <ChevronRight
+              className={cn('h-3 w-3 transition-transform duration-200', isExpanded && 'rotate-90')}
+            />
+          </button>
+        )}
 
         <Menu>
           <MenuTrigger
@@ -247,16 +260,16 @@ function SidebarBookmarkFolderItem({
           <MenuPopup align="end">
             <MenuItem onClick={onCreateSubfolder}>
               <FolderPlus className="h-4 w-4" />
-              <span>{t('actions.createSubfolder')}</span>
+              <span>{t('feeds:actions.createSubfolder')}</span>
             </MenuItem>
             <MenuItem onClick={() => setShowRenameDialog(true)}>
               <Pencil className="h-4 w-4" />
-              <span>{t('common.rename')}</span>
+              <span>{t('feeds:common.rename')}</span>
             </MenuItem>
             <MenuSeparator />
             <MenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
               <Trash2 className="h-4 w-4" />
-              <span>{t('common.delete')}</span>
+              <span>{t('feeds:common.delete')}</span>
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -286,20 +299,20 @@ function SidebarBookmarkFolderItem({
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('dialogs.deleteFolder.title')}</AlertDialogTitle>
+            <AlertDialogTitle>{t('feeds:dialogs.deleteFolder.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('dialogs.deleteFolder.description', { name: folder.name })}
+              {t('bookmarks:dialogs.deleteFolder.description', { name: folder.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogClose className={buttonVariants({ variant: 'ghost' })}>
-              {t('common.cancel')}
+              {t('feeds:common.cancel')}
             </AlertDialogClose>
             <AlertDialogClose
               className={buttonVariants({ variant: 'destructive' })}
               onClick={handleDeleteFolder}
             >
-              {t('common.delete')}
+              {t('feeds:common.delete')}
             </AlertDialogClose>
           </AlertDialogFooter>
         </AlertDialogPopup>
@@ -308,11 +321,11 @@ function SidebarBookmarkFolderItem({
       <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
         <DialogPopup>
           <DialogHeader>
-            <DialogTitle>{t('dialogs.renameFolder.title')}</DialogTitle>
+            <DialogTitle>{t('feeds:dialogs.renameFolder.title')}</DialogTitle>
           </DialogHeader>
           <div className="px-6 py-4">
             <div className="space-y-2">
-              <Label htmlFor="rename-bookmark-folder">{t('dialogs.createFolder.name')}</Label>
+              <Label htmlFor="rename-bookmark-folder">{t('feeds:dialogs.renameFolder.name')}</Label>
               <Input
                 id="rename-bookmark-folder"
                 value={renameFolderName}
@@ -327,10 +340,10 @@ function SidebarBookmarkFolderItem({
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowRenameDialog(false)}>
-              {t('common.cancel')}
+              {t('feeds:common.cancel')}
             </Button>
             <Button onClick={handleRenameFolder} disabled={!renameFolderName.trim() || isRenaming}>
-              {isRenaming ? t('common.saving') : t('common.save')}
+              {isRenaming ? t('feeds:common.saving') : t('feeds:common.save')}
             </Button>
           </DialogFooter>
         </DialogPopup>
