@@ -2,7 +2,7 @@
  * HTML utility functions.
  */
 
-import DOMPurify from 'dompurify'
+import { sanitizeArticleHtml } from '@glean/ui/utils'
 
 /**
  * Strip HTML tags from a string and return plain text.
@@ -205,66 +205,7 @@ export function processHtmlContent(html: string | null | undefined): string {
     // Content has HTML tags - sanitize to prevent XSS attacks
     // DOMPurify removes dangerous elements (script, iframe with javascript:, etc.)
     // while keeping safe HTML tags for article content
-    return DOMPurify.sanitize(html, {
-      // Allow safe tags for article content
-      ALLOWED_TAGS: [
-        'p',
-        'br',
-        'div',
-        'span',
-        'a',
-        'img',
-        'strong',
-        'em',
-        'b',
-        'i',
-        'u',
-        's',
-        'code',
-        'pre',
-        'blockquote',
-        'h1',
-        'h2',
-        'h3',
-        'h4',
-        'h5',
-        'h6',
-        'ul',
-        'ol',
-        'li',
-        'table',
-        'thead',
-        'tbody',
-        'tr',
-        'th',
-        'td',
-        'hr',
-        'figure',
-        'figcaption',
-        'picture',
-        'source',
-      ],
-      // Allow safe attributes
-      ALLOWED_ATTR: [
-        'href',
-        'src',
-        'alt',
-        'title',
-        'width',
-        'height',
-        'class',
-        'id',
-        'data-src',
-        'srcset',
-        'sizes',
-        'loading',
-        'decoding',
-        'type',
-        'media',
-      ],
-      // Allow data URIs for images (base64 encoded images)
-      ALLOW_DATA_ATTR: true,
-    })
+    return sanitizeArticleHtml(html)
   }
 
   // For plain text content, decode HTML entities
@@ -281,5 +222,5 @@ export function processHtmlContent(html: string | null | undefined): string {
     .join('')
 
   // Sanitize even plain text content to be safe
-  return DOMPurify.sanitize(wrapped)
+  return sanitizeArticleHtml(wrapped)
 }
