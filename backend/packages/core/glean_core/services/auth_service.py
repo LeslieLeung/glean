@@ -212,6 +212,9 @@ class AuthService:
         if not user:
             raise ValueError("User not found")
 
+        if not user.is_active:
+            raise ValueError("Account is disabled")
+
         return UserResponse.model_validate(user)
 
     async def login_with_provider(
@@ -241,6 +244,9 @@ class AuthService:
 
         # Find or create user
         user = await self._find_or_create_oauth_user(provider_id, auth_result)
+
+        if not user.is_active:
+            raise ValueError("Account is disabled")
 
         # Update auth provider mapping
         await self._update_auth_provider(user.id, provider_id, auth_result)
