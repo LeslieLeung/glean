@@ -169,7 +169,7 @@ services:
 
   # Milvus services
   milvus-etcd:
-    image: quay.io/coreos/etcd:v3.7.3
+    image: quay.io/coreos/etcd:v3.7.4
     container_name: glean-milvus-etcd
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
