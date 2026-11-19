@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glean</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body>
+    <main class="popup">
+      <header>
+        <img src="icons/32.png" width="32" height="32" alt="" />
+        <h1>Glean</h1>
+        <button
+          id="settings"
+          class="settings-button"
+          type="button"
+          data-message="settings"
+        ></button>
+      </header>
+      <section id="capture" hidden>
+        <div id="page" class="page" hidden>
+          <p id="page-title"></p>
+          <p id="page-host" class="hint"></p>
+          <button id="bookmark" type="button" data-message="bookmark"></button>
+        </div>
+        <form id="subscription" novalidate>
+          <label for="feed-url" data-message="feedUrl"></label>
+          <input
+            id="feed-url"
+            type="url"
+            placeholder="https://example.com/feed.xml"
+            spellcheck="false"
+            required
+          />
+          <button id="subscribe" type="submit" data-message="subscribe"></button>
+        </form>
+      </section>
+      <p id="status" role="status"></p>
+    </main>
+  </body>
+</html>

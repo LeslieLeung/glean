@@ -1,0 +1,86 @@
+{
+  "extensionDescription": {
+    "message": "将 RSS 订阅和文章收藏保存到你的 Glean 实例。"
+  },
+  "settings": {
+    "message": "Glean 设置"
+  },
+  "instance": {
+    "message": "Glean 实例地址"
+  },
+  "apiKey": {
+    "message": "API Key"
+  },
+  "keyHelp": {
+    "message": "在 Glean 的「设置 → API 令牌」中创建密钥。"
+  },
+  "connect": {
+    "message": "连接并保存"
+  },
+  "disconnect": {
+    "message": "断开连接"
+  },
+  "connecting": {
+    "message": "正在验证连接…"
+  },
+  "connected": {
+    "message": "已连接到 Glean。"
+  },
+  "disconnected": {
+    "message": "已断开与 Glean 的连接。"
+  },
+  "invalidInstance": {
+    "message": "请输入完整的 Glean 实例地址（HTTP 或 HTTPS）。"
+  },
+  "invalidKey": {
+    "message": "API Key 无效、已过期或已撤销，请检查 Glean 设置。"
+  },
+  "permissionNeeded": {
+    "message": "请在扩展设置中授权访问你的 Glean 实例。"
+  },
+  "connectionFailed": {
+    "message": "无法连接到 Glean，请检查实例地址和网络连接。"
+  },
+  "unsupportedInstance": {
+    "message": "请检查实例地址，并将 Glean 升级到支持浏览器扩展的版本。"
+  },
+  "requestFailed": {
+    "message": "Glean 未能完成请求，请稍后重试。"
+  },
+  "alreadySubscribed": {
+    "message": "你已订阅该源。"
+  },
+  "feedNotFound": {
+    "message": "未找到订阅源，可以直接填入 RSS 或 Atom 地址。"
+  },
+  "invalidPage": {
+    "message": "请输入有效的 HTTP 或 HTTPS 页面或订阅源地址（最多 2,048 个字符）。"
+  },
+  "bookmark": {
+    "message": "收藏当前页面"
+  },
+  "feedUrl": {
+    "message": "网站或订阅源地址"
+  },
+  "subscribe": {
+    "message": "添加订阅"
+  },
+  "setupNeeded": {
+    "message": "请打开设置，连接你的 Glean 实例。"
+  },
+  "noPage": {
+    "message": "打开网页即可收藏，也可以在下方输入订阅源地址。"
+  },
+  "discovering": {
+    "message": "正在查找订阅源…"
+  },
+  "subscribed": {
+    "message": "已添加订阅。"
+  },
+  "saving": {
+    "message": "正在保存收藏…"
+  },
+  "bookmarked": {
+    "message": "已收藏。"
+  }
+}

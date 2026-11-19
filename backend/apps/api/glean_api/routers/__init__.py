@@ -10,6 +10,7 @@ from . import (
     auth,
     bookmarks,
     entries,
+    extension,
     feeds,
     folders,
     preference,
@@ -29,6 +30,6 @@ __all__ = [
     # M3 routers
     "preference",
     "system",
-    # MCP routers
     "api_tokens",
+    "extension",
 ]

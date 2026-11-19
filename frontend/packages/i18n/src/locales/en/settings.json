@@ -136,12 +136,12 @@
   },
   "apiTokens": {
     "title": "API Tokens",
-    "desc": "Create long-lived API tokens for MCP server access",
-    "description": "Generate tokens to authenticate with the MCP server for AI assistants and other integrations.",
+    "desc": "Create API tokens for the browser extension and MCP clients",
+    "description": "Use API tokens to connect the Glean browser extension or an MCP client.",
     "createToken": "Create Token",
-    "createDescription": "Create a new API token for MCP authentication.",
+    "createDescription": "Create a new API token for the browser extension or an MCP client.",
     "tokenName": "Token Name",
-    "tokenNamePlaceholder": "My Claude Desktop Token",
+    "tokenNamePlaceholder": "Glean Browser Extension",
     "expiresIn": "Expires In",
     "expiration": {
       "never": "Never expires",
