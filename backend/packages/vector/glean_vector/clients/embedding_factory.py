@@ -7,7 +7,6 @@ from glean_vector.config import EmbeddingConfig
 from .providers import (
     EmbeddingProvider,
     OpenAIProvider,
-    SentenceTransformerProvider,
     VolcEngineProvider,
 )
 
@@ -22,8 +21,6 @@ class EmbeddingProviderFactory:
     # Registry of available providers
     _PROVIDERS = {
         "openai": OpenAIProvider,
-        "sentence-transformers": SentenceTransformerProvider,
-        "sentence_transformers": SentenceTransformerProvider,  # Alias
         "volc-engine": VolcEngineProvider,
         "volc_engine": VolcEngineProvider,  # Alias
         "volcengine": VolcEngineProvider,  # Alias
@@ -37,7 +34,7 @@ class EmbeddingProviderFactory:
         Create an embedding provider.
 
         Args:
-            provider: Provider name (e.g., 'openai', 'sentence-transformers')
+            provider: Provider name (e.g., 'openai', 'volc-engine')
                      If None, reads from config
             config: Embedding configuration. If None, uses global config
             **kwargs: Additional provider-specific configuration
@@ -63,9 +60,9 @@ class EmbeddingProviderFactory:
             >>> # Custom configuration
             >>> from glean_vector.config import EmbeddingConfig
             >>> custom_config = EmbeddingConfig(
-            ...     provider="sentence-transformers",
-            ...     model="all-mpnet-base-v2",
-            ...     dimension=768
+            ...     provider="openai",
+            ...     model="text-embedding-3-small",
+            ...     dimension=1536
             ... )
             >>> provider = EmbeddingProviderFactory.create(config=custom_config)
         """
@@ -95,13 +92,13 @@ class EmbeddingProviderFactory:
         cls, provider: str, config: EmbeddingConfig, overrides: dict[str, Any]
     ) -> dict[str, Any]:
         """Build provider configuration from config and overrides."""
-        base_config = {
+        base_config: dict[str, Any] = {
             "model": config.model,
             "dimension": config.dimension,
         }
 
         # Add provider-specific config
-        if provider in ("openai",) or provider in ("volc-engine", "volc_engine", "volcengine"):
+        if provider in ("openai", "volc-engine", "volc_engine", "volcengine"):
             openai_config: dict[str, str | int | None] = {
                 "api_key": config.api_key,
                 "base_url": config.base_url,
@@ -109,14 +106,7 @@ class EmbeddingProviderFactory:
                 "max_retries": config.max_retries,
                 "batch_size": config.batch_size,
             }
-            base_config.update(openai_config)  # type: ignore[arg-type]
-        elif provider in ("sentence-transformers", "sentence_transformers"):
-            st_config: dict[str, bool | int | None] = {
-                "device": None,  # Auto-detect
-                "normalize_embeddings": True,
-                "batch_size": config.batch_size,
-            }
-            base_config.update(st_config)  # type: ignore[arg-type]
+            base_config.update(openai_config)
 
         # Apply overrides
         base_config.update(overrides)

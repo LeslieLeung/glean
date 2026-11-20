@@ -38,25 +38,8 @@ import {
 } from 'lucide-react'
 
 const PROVIDERS = [
-  { value: 'sentence-transformers', label: 'Sentence Transformers (Local)' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'volc-engine', label: 'VolcEngine' },
-]
-
-// Popular Sentence Transformer models (dimension will be auto-inferred by backend)
-const SENTENCE_TRANSFORMER_MODELS = [
-  { value: 'all-MiniLM-L6-v2', label: 'all-MiniLM-L6-v2' },
-  { value: 'all-mpnet-base-v2', label: 'all-mpnet-base-v2' },
-  {
-    value: 'paraphrase-multilingual-MiniLM-L12-v2',
-    label: 'paraphrase-multilingual-MiniLM-L12-v2',
-  },
-  {
-    value: 'paraphrase-multilingual-mpnet-base-v2',
-    label: 'paraphrase-multilingual-mpnet-base-v2',
-  },
-  { value: 'distiluse-base-multilingual-cased-v2', label: 'distiluse-base-multilingual-cased-v2' },
-  { value: 'custom', label: 'Custom Model...' },
 ]
 
 // OpenAI embedding models (dimension will be auto-inferred by backend)
@@ -67,8 +50,7 @@ const OPENAI_MODELS = [
   { value: 'custom', label: 'Custom Model...' },
 ]
 
-const DEFAULT_PROVIDER = 'sentence-transformers'
-const DEFAULT_SENTENCE_MODEL = SENTENCE_TRANSFORMER_MODELS[0]
+const DEFAULT_PROVIDER = 'openai'
 const DEFAULT_OPENAI_MODEL = OPENAI_MODELS.find((m) => m.value !== 'custom') ?? OPENAI_MODELS[0]
 
 function StatusBadge({ status }: { status?: VectorizationStatus }) {
@@ -136,12 +118,27 @@ export default function SettingsPage() {
 
   const [form, setForm] = useState<EmbeddingConfigUpdatePayload>({
     provider: DEFAULT_PROVIDER,
-    model: DEFAULT_SENTENCE_MODEL.value,
+    model: DEFAULT_OPENAI_MODEL.value,
   })
+
+  const storedProvider = config?.provider.toLowerCase().replace('_', '-')
+  const usesLegacyLocalProvider = storedProvider === 'sentence-transformers'
 
   // Initialize form when config loads
   useEffect(() => {
     if (config) {
+      if (usesLegacyLocalProvider) {
+        setForm({
+          enabled: false,
+          provider: DEFAULT_PROVIDER,
+          model: DEFAULT_OPENAI_MODEL.value,
+          base_url: null,
+          rate_limit: config.rate_limit,
+        })
+        setUseCustomModel(false)
+        return
+      }
+
       const provider = config.provider || DEFAULT_PROVIDER
 
       // Set base_url with defaults for providers that need it
@@ -153,17 +150,12 @@ export default function SettingsPage() {
       setForm({
         enabled: config.enabled,
         provider,
-        model: config.model || DEFAULT_SENTENCE_MODEL.value,
+        model: config.model || DEFAULT_OPENAI_MODEL.value,
         base_url: baseUrl,
         rate_limit: config.rate_limit,
       })
 
-      if (provider === 'sentence-transformers') {
-        const isPredefined = SENTENCE_TRANSFORMER_MODELS.some(
-          (m) => m.value === config.model && m.value !== 'custom'
-        )
-        setUseCustomModel(!isPredefined)
-      } else if (provider === 'openai') {
+      if (provider === 'openai') {
         const isPredefined = OPENAI_MODELS.some(
           (m) => m.value === config.model && m.value !== 'custom'
         )
@@ -172,7 +164,7 @@ export default function SettingsPage() {
         setUseCustomModel(false)
       }
     }
-  }, [config])
+  }, [config, usesLegacyLocalProvider])
 
   const percentDone = useMemo(() => {
     const total = statusData?.progress?.total || 0
@@ -188,16 +180,6 @@ export default function SettingsPage() {
 
   const handleProviderChange = (provider: string) => {
     setUseCustomModel(false)
-
-    if (provider === 'sentence-transformers') {
-      setForm((prev) => ({
-        ...prev,
-        provider,
-        model: DEFAULT_SENTENCE_MODEL.value,
-        base_url: null,
-      }))
-      return
-    }
 
     if (provider === 'openai') {
       setForm((prev) => ({
@@ -237,9 +219,6 @@ export default function SettingsPage() {
 
   // Check if current model is a predefined one
   const isPredefinedModel = useMemo(() => {
-    if (form.provider === 'sentence-transformers') {
-      return SENTENCE_TRANSFORMER_MODELS.some((m) => m.value === form.model && m.value !== 'custom')
-    }
     if (form.provider === 'openai') {
       return OPENAI_MODELS.some((m) => m.value === form.model && m.value !== 'custom')
     }
@@ -344,6 +323,17 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent>
                 <form className="space-y-5" onSubmit={handleSubmit}>
+                  {usesLegacyLocalProvider && (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        {t(
+                          'admin:settings.embedding.localProviderRemoved',
+                          'Local embedding has been removed. Configure a remote provider and enable vectorization to rebuild your embeddings.'
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   {/* Enable/Disable Toggle */}
                   <div className="border-border bg-muted/40 flex items-center justify-between rounded-lg border p-4">
                     <div className="flex-1 space-y-0.5">
@@ -389,37 +379,7 @@ export default function SettingsPage() {
 
                   <div className="space-y-2">
                     <Label htmlFor="model">{t('admin:settings.embedding.model', 'Model')}</Label>
-                    {form.provider === 'sentence-transformers' ? (
-                      <div className="space-y-2">
-                        <select
-                          id="model"
-                          className="border-border bg-background text-foreground w-full rounded-md border px-3 py-2 text-sm"
-                          value={
-                            useCustomModel ? 'custom' : isPredefinedModel ? form.model : 'custom'
-                          }
-                          onChange={(e) => handleModelSelect(e.target.value)}
-                          disabled={isAnyLoading}
-                        >
-                          {SENTENCE_TRANSFORMER_MODELS.map((m) => (
-                            <option key={m.value} value={m.value}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                        {(useCustomModel || !isPredefinedModel) && (
-                          <Input
-                            id="custom-model"
-                            placeholder={t(
-                              'admin:settings.embedding.customModelPlaceholder',
-                              'Enter custom model name'
-                            )}
-                            value={form.model || ''}
-                            onChange={(e) => handleChange('model', e.target.value)}
-                            disabled={isAnyLoading}
-                          />
-                        )}
-                      </div>
-                    ) : form.provider === 'openai' ? (
+                    {form.provider === 'openai' ? (
                       <div className="space-y-2">
                         <select
                           id="model"
@@ -457,56 +417,51 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  {/* API Key and Base URL - only show for providers that need them */}
-                  {form.provider !== 'sentence-transformers' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label htmlFor="api_key">
-                          {t('admin:settings.embedding.apiKey', 'API Key')}
-                          {config?.api_key_set && (
-                            <span className="ml-2 text-xs text-green-500">
-                              ({t('admin:settings.embedding.apiKeySet', 'configured')})
-                            </span>
-                          )}
-                        </Label>
-                        <Input
-                          id="api_key"
-                          type="password"
-                          value={form.api_key ?? ''}
-                          onChange={(e) => handleChange('api_key', e.target.value || null)}
-                          placeholder={t(
-                            'admin:settings.embedding.apiKeyPlaceholder',
-                            'Enter new API key to update'
-                          )}
-                          disabled={isAnyLoading}
-                        />
-                      </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="api_key">
+                      {t('admin:settings.embedding.apiKey', 'API Key')}
+                      {config?.api_key_set && (
+                        <span className="ml-2 text-xs text-green-500">
+                          ({t('admin:settings.embedding.apiKeySet', 'configured')})
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      id="api_key"
+                      type="password"
+                      value={form.api_key ?? ''}
+                      onChange={(e) => handleChange('api_key', e.target.value || null)}
+                      placeholder={t(
+                        'admin:settings.embedding.apiKeyPlaceholder',
+                        'Enter new API key to update'
+                      )}
+                      disabled={isAnyLoading}
+                    />
+                  </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="base_url">
-                          {t('admin:settings.embedding.baseUrl', 'Base URL')}
-                          {form.provider === 'volc-engine' && (
-                            <span className="text-muted-foreground ml-1 text-xs">
-                              ({t('admin:settings.embedding.required', 'required')})
-                            </span>
-                          )}
-                        </Label>
-                        <Input
-                          id="base_url"
-                          value={form.base_url || ''}
-                          onChange={(e) => handleChange('base_url', e.target.value || null)}
-                          placeholder={
-                            form.provider === 'volc-engine'
-                              ? 'https://ark.cn-beijing.volces.com/api/v3/'
-                              : form.provider === 'openai'
-                                ? 'https://api.openai.com/v1'
-                                : ''
-                          }
-                          disabled={isAnyLoading}
-                        />
-                      </div>
-                    </>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="base_url">
+                      {t('admin:settings.embedding.baseUrl', 'Base URL')}
+                      {form.provider === 'volc-engine' && (
+                        <span className="text-muted-foreground ml-1 text-xs">
+                          ({t('admin:settings.embedding.required', 'required')})
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      id="base_url"
+                      value={form.base_url || ''}
+                      onChange={(e) => handleChange('base_url', e.target.value || null)}
+                      placeholder={
+                        form.provider === 'volc-engine'
+                          ? 'https://ark.cn-beijing.volces.com/api/v3/'
+                          : form.provider === 'openai'
+                            ? 'https://api.openai.com/v1'
+                            : ''
+                      }
+                      disabled={isAnyLoading}
+                    />
+                  </div>
 
                   <div className="space-y-2">
                     <Label>{t('admin:settings.embedding.rateLimit', 'Rate limit (rpm)')}</Label>
@@ -574,33 +529,6 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  {/* Validation In Progress */}
-                  {testMutation.isPending && form.provider === 'sentence-transformers' && (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertTitle>
-                        {t(
-                          'admin:settings.embedding.validatingInProgress',
-                          'Validation in Progress'
-                        )}
-                      </AlertTitle>
-                      <AlertDescription>
-                        <p className="text-sm">
-                          {t(
-                            'admin:settings.embedding.modelDownloadNotice',
-                            'If this is your first time using this model, it may take several minutes to download from HuggingFace. Please be patient.'
-                          )}
-                        </p>
-                        <p className="text-muted-foreground mt-2 text-xs">
-                          {t(
-                            'admin:settings.embedding.downloadTimeout',
-                            'The validation will timeout after 10 minutes. If validation fails due to timeout, the model may still be downloading in the background.'
-                          )}
-                        </p>
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
                   {/* Validation Error */}
                   {testMutation.isError && (
                     <Alert variant="error">
@@ -608,17 +536,7 @@ export default function SettingsPage() {
                       <AlertTitle>
                         {t('admin:settings.embedding.validationError', 'Validation Error')}
                       </AlertTitle>
-                      <AlertDescription>
-                        {String(testMutation.error)}
-                        {form.provider === 'sentence-transformers' && (
-                          <p className="mt-2 text-xs">
-                            {t(
-                              'admin:settings.embedding.modelDownloadTip',
-                              'Tip: If the error is timeout-related, the model might still be downloading. Try again after a few minutes.'
-                            )}
-                          </p>
-                        )}
-                      </AlertDescription>
+                      <AlertDescription>{String(testMutation.error)}</AlertDescription>
                     </Alert>
                   )}
 
@@ -692,22 +610,12 @@ export default function SettingsPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {config.status === 'validating' && (
-                      <>
-                        <p className="text-muted-foreground text-sm">
-                          {t(
-                            'admin:settings.embedding.validatingConnection',
-                            'Validating provider connection...'
-                          )}
-                        </p>
-                        {config.provider === 'sentence-transformers' && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400">
-                            {t(
-                              'admin:settings.embedding.downloadingModel',
-                              'Note: First-time validation may take several minutes as the model needs to be downloaded from HuggingFace.'
-                            )}
-                          </p>
+                      <p className="text-muted-foreground text-sm">
+                        {t(
+                          'admin:settings.embedding.validatingConnection',
+                          'Validating provider connection...'
                         )}
-                      </>
+                      </p>
                     )}
 
                     {config.status === 'rebuilding' && statusData && (
@@ -756,12 +664,6 @@ export default function SettingsPage() {
                     )}
                   </p>
                   <ul className="list-inside list-disc space-y-1">
-                    <li>
-                      {t(
-                        'admin:settings.embedding.infoLocal',
-                        'Sentence Transformers runs locally (no API key needed)'
-                      )}
-                    </li>
                     <li>
                       {t(
                         'admin:settings.embedding.infoOpenAI',

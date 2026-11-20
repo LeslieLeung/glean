@@ -1,7 +1,7 @@
 # Backend Dockerfile for Glean API and Worker
 # Supports both API server and background worker modes
 
-# Locked native wheels (torch 2.9.1, numpy, and friends) stop at CPython 3.14.
+# Locked NumPy wheels support up to CPython 3.14.
 FROM python:3.14-slim
 
 # Build arguments
@@ -34,7 +34,7 @@ COPY scripts/ scripts/
 RUN chmod +x scripts/*.sh 2>/dev/null || true
 
 # Install dependencies
-RUN uv sync --all-packages --no-dev
+RUN uv sync --locked --all-packages --no-dev --no-cache
 
 # Expose API port
 EXPOSE 8000

@@ -18,8 +18,8 @@ def _embedding_config() -> EmbeddingConfig:
     return EmbeddingConfig(
         enabled=True,
         status=VectorizationStatus.IDLE,
-        provider="sentence-transformers",
-        model="all-MiniLM-L6-v2",
+        provider="openai",
+        model="text-embedding-3-small",
         dimension=384,
     )
 

@@ -3,7 +3,7 @@ import { logger } from '@glean/logger'
 
 const api = axios.create({
   baseURL: '/api/admin',
-  timeout: 300000, // 5 minutes default timeout (for model downloads)
+  timeout: 300000,
 })
 
 let isRefreshing = false
