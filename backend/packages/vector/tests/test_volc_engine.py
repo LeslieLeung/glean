@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from glean_vector.clients.providers import VolcEngineProvider
+from glean_vector.services.validation_service import EmbeddingValidationService
 
 
 @pytest.fixture
@@ -90,6 +91,18 @@ async def test_provider_initialization_with_custom_base_url(volc_config):
     assert provider.base_url == "https://custom-api.example.com"
 
     await provider.close()
+
+
+@pytest.mark.asyncio
+async def test_infer_volcengine_dimension(mock_ark_response_single):
+    with patch("volcenginesdkarkruntime.Ark") as ark:
+        ark.return_value.embeddings.create.return_value = mock_ark_response_single
+        result = await EmbeddingValidationService().infer_dimension(
+            provider="volc-engine", model="doubao-embedding", api_key="test-key"
+        )
+
+    assert result.success
+    assert result.details["dimension"] == 1024
 
 
 @pytest.mark.asyncio

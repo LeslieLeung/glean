@@ -399,30 +399,14 @@ pgvector Compose 文件会设置 `VECTOR_BACKEND=pgvector`。Milvus Compose 文�
 
 ### Embedding 配置
 
-偏好学习和智能推荐功能所需配置：
+向量化默认关闭。若要使用偏好学习和智能推荐，请在**管理后台 → Embedding 设置**中配置提供商并启用向量化。
 
-| 变量                   | 默认值                  | 说明                                              |
-| ---------------------- | ----------------------- | ------------------------------------------------- |
-| `EMBEDDING_PROVIDER`   | `sentence-transformers` | 提供商：sentence-transformers、openai、volc-engine |
-| `EMBEDDING_MODEL`      | `all-MiniLM-L6-v2`      | 模型名称                                          |
-| `EMBEDDING_DIMENSION`  | `384`                   | 向量维度（必须匹配模型）                          |
-| `EMBEDDING_API_KEY`    | -                       | API 密钥（用于 openai/volc-engine）               |
-| `EMBEDDING_BASE_URL`   | -                       | 自定义 API 端点（可选）                           |
-| `EMBEDDING_BATCH_SIZE` | `20`                    | embedding 生成批次大小                            |
-| `EMBEDDING_MAX_RETRIES`| `3`                     | 失败请求最大重试次数                              |
-| `EMBEDDING_TIMEOUT`    | `30`                    | 请求超时时间（秒）                                |
+| 提供商 | 配置 |
+| --- | --- |
+| OpenAI | API Key 和模型名，例如 `text-embedding-3-small`。可通过自定义 Base URL 连接 OpenAI 兼容服务。 |
+| 火山引擎 | API Key（或 `ARK_API_KEY`）和模型接入点 ID。 |
 
-**支持的提供商：**
-- **sentence-transformers** - 本地 embedding 模型（无需 API 密钥）
-  - 模型：`all-MiniLM-L6-v2` (384维)、`paraphrase-multilingual-MiniLM-L12-v2` (384维)
-- **openai** - OpenAI embedding API
-  - 模型：`text-embedding-3-small` (1536维)、`text-embedding-3-large` (3072维)
-  - 需要：`EMBEDDING_API_KEY`
-- **volc-engine** - 火山引擎/字节跳动 embedding API
-  - 模型：`doubao-embedding` (1024维)
-  - 需要：`EMBEDDING_API_KEY` 或 `ARK_API_KEY`
-
-完整配置参考请见 [.env.example](.env.example)。
+升级时，使用内置 Sentence Transformers 的配置会自动停用。选择远程提供商并启用向量化后，系统会为新模型重建向量。升级迁移会保留已有的向量数据。
 
 ## 管理员账号管理
 
