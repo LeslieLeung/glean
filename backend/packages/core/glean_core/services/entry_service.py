@@ -28,6 +28,7 @@ from glean_database.models import (
     UserEntry,
 )
 
+from .entry_dedup import linkless_entry_id, url_user_entry_id
 from .preference_dirty_service import mark_preferences_dirty
 
 logger = get_logger(__name__)
@@ -102,6 +103,9 @@ class EntryService:
         """
         Get entries for a user with filtering and pagination.
 
+        Exact matching non-empty URLs appear once within the selected feeds/folders,
+        preferring the earliest subscription. State is shared by URL per user.
+
         Args:
             user_id: User identifier.
             feed_id: Optional feed filter.
@@ -133,6 +137,25 @@ class EntryService:
         if not feed_ids:
             return EntryListResponse(items=[], total=0, page=page, per_page=per_page, total_pages=0)
 
+        # Pick one stable representative per URL within the requested scope,
+        # before counting, scoring or paginating. Earlier subscriptions win.
+        candidates = (
+            select(
+                Entry.id.label("entry_id"),
+                func.row_number()
+                .over(
+                    partition_by=(Entry.url, linkless_entry_id()),
+                    order_by=(Subscription.created_at, Entry.created_at, Entry.id),
+                )
+                .label("url_rank"),
+            )
+            .join(Subscription, Subscription.feed_id == Entry.feed_id)
+            .where(Subscription.user_id == user_id, Entry.feed_id.in_(feed_ids))
+        )
+        if feed_id:
+            candidates = candidates.where(Entry.feed_id == feed_id)
+        ranked_entries = candidates.subquery()
+        unique_ids = select(ranked_entries.c.entry_id).where(ranked_entries.c.url_rank == 1)
         jev_config = await TypedConfigService(self.session).get(JevConfig)
 
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
@@ -163,9 +186,9 @@ class EntryService:
             .join(Feed, Entry.feed_id == Feed.id)
             .outerjoin(
                 UserEntry,
-                (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
-            .where(Entry.feed_id.in_(feed_ids))
+            .where(Entry.id.in_(unique_ids))
         )
 
         # Apply filters
@@ -365,7 +388,7 @@ class EntryService:
             .join(Feed, Entry.feed_id == Feed.id)
             .outerjoin(
                 UserEntry,
-                (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
             .where(Entry.id == entry_id)
         )
@@ -443,7 +466,9 @@ class EntryService:
             raise ValueError("Not subscribed to this feed")
 
         # Get or create UserEntry
-        stmt = select(UserEntry).where(UserEntry.entry_id == entry_id, UserEntry.user_id == user_id)
+        stmt = select(UserEntry).where(
+            UserEntry.id == url_user_entry_id(user_id, entry.url, entry.id)
+        )
         result = await self.session.execute(stmt)
         user_entry = result.scalar_one_or_none()
 
@@ -555,18 +580,24 @@ class EntryService:
             return
 
         # Get all entries
-        entries_stmt = select(Entry.id).where(Entry.feed_id.in_(feed_ids))
+        entries_stmt = (
+            select(Entry.id, Entry.url)
+            .where(Entry.feed_id.in_(feed_ids))
+            .order_by(Entry.created_at, Entry.id)
+        )
         if feed_id:
             entries_stmt = entries_stmt.where(Entry.feed_id == feed_id)
 
         result = await self.session.execute(entries_stmt)
-        entry_ids = [row[0] for row in result.all()]
+        entry_ids_by_article: dict[tuple[str, str | None], str] = {}
+        for entry_id, url in result.all():
+            entry_ids_by_article.setdefault((url, None if url else entry_id), entry_id)
 
         # Update or create UserEntry records
         now = datetime.now(UTC)
-        for entry_id in entry_ids:
+        for (url, _), entry_id in entry_ids_by_article.items():
             stmt = select(UserEntry).where(
-                UserEntry.entry_id == entry_id, UserEntry.user_id == user_id
+                UserEntry.id == url_user_entry_id(user_id, url, entry_id)
             )
             result = await self.session.execute(stmt)
             user_entry = result.scalar_one_or_none()

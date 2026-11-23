@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys
-from glean_database.models import Bookmark, Feed, UserEntry, UserPreferenceStats
+from glean_database.models import Bookmark, Entry, Feed, UserEntry, UserPreferenceStats
 
+from .entry_dedup import url_user_entry_id
 from .preference_dirty_service import mark_preferences_dirty
 
 
@@ -48,7 +49,11 @@ class PreferenceService:
         stats = result.scalar_one_or_none()
 
         # Get counts from UserEntry
-        result = await self.db.execute(select(UserEntry).where(UserEntry.user_id == user_id))
+        result = await self.db.execute(
+            select(UserEntry)
+            .join(Entry, Entry.id == UserEntry.entry_id)
+            .where(UserEntry.user_id == user_id, UserEntry.id == url_user_entry_id(user_id))
+        )
         user_entries = result.scalars().all()
 
         total_likes = sum(1 for ue in user_entries if ue.is_liked is True)

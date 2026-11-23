@@ -10,6 +10,7 @@ from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys
+from glean_core.services.entry_dedup import url_user_entry_id
 from glean_database.models import Bookmark, Entry, UserEntry, UserPreferenceStats
 from glean_vector.clients.vector_store import VectorStoreClient
 from glean_vector.config import preference_config
@@ -318,6 +319,7 @@ class PreferenceService:
             select(UserEntry, Entry)
             .join(Entry, UserEntry.entry_id == Entry.id)
             .where(UserEntry.user_id == user_id)
+            .where(UserEntry.id == url_user_entry_id(user_id))
             .where(UserEntry.is_liked.is_not(None))
         )
         bookmark_result = await self.db.execute(
