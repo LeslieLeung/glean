@@ -4,7 +4,7 @@
 Glean is a monorepo for a self-hosted RSS reader and personal knowledge tool. Backend code lives in `backend/`: `apps/api` is the FastAPI service, `apps/worker` contains arq jobs, and `packages/` holds shared Python packages for `database`, `core`, `rss`, and `vector`. Frontend code lives in `frontend/`: `apps/web` is the React/Vite app and Electron entry, `apps/admin` is the dashboard, and `packages/` holds shared `ui`, `api-client`, `types`, `i18n`, and `logger` workspaces. Static assets are in `asset/`, docs in `docs/`, and scripts in `scripts/`.
 
 ## Build, Test, and Development Commands
-- `make setup`: run the full local setup.
+- Follow the [local setup instructions](DEVELOPMENT.md#local-setup) for dependencies, configuration, and migrations.
 - `make up` / `make down`: start or stop Docker development infrastructure.
 - `make api`, `make worker`, `make web`, `make admin`: run individual services locally.
 - `make dev-all`: run API, worker, web, and admin together.

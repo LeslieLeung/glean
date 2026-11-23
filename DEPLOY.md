@@ -1,5 +1,7 @@
 # Glean Deployment Guide
 
+[简体中文](DEPLOY.zh-CN.md)
+
 This guide provides comprehensive instructions for deploying Glean in production environments.
 
 ## Table of Contents
@@ -583,8 +585,6 @@ docker exec -it glean-postgres pg_isready -U glean
 **Password validation failed**:
 - Ensure password meets all requirements (8+ chars, mixed case, number, special char)
 - Check for unsupported special characters
-
-For more detailed admin setup instructions, see [docs/admin-setup.md](docs/admin-setup.md).
 
 ## Updating Glean
 

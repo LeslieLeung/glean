@@ -122,8 +122,7 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 For all configuration options, see [.env.example](.env.example).
 
 Configure article AI detection and custom content categories under **Jev Classification**
-in the admin panel. After applying `make db-upgrade` and restarting the API and worker,
-enter your Jev server and API key, test the connection, and enable detection.
+in the admin panel. Enter your Jev server and API key, test the connection, and enable detection.
 Results appear on reader list cards.
 
 ## Docker Images
@@ -187,58 +186,12 @@ to migrate with one script, including backup, restore, resumable execution, and 
 - PostgreSQL / Redis / arq (task queue)
 
 **Frontend:**
-- React 18 / TypeScript / Vite
+- React 19 / TypeScript / Vite
 - Tailwind CSS / Zustand / TanStack Query
 
 ## Development
 
-See **[DEVELOPMENT.md](./DEVELOPMENT.md)** for complete development setup instructions.
-
-Quick start:
-
-```bash
-# Clone and setup
-git clone https://github.com/LeslieLeung/glean.git
-cd glean
-npm install
-
-# Start infrastructure
-make up
-
-# Initialize database (first time only)
-make db-upgrade
-
-# Install pre-commit hooks (optional but recommended)
-make pre-commit-install
-
-# Start all services
-make dev-all
-
-# Access:
-# - Web: http://localhost:3000
-# - Admin: http://localhost:3001
-# - API Docs: http://localhost:8000/api/docs
-```
-
-### Pre-commit Hooks
-
-The project uses pre-commit hooks to ensure code quality:
-
-```bash
-# Install hooks (one-time setup)
-make pre-commit-install
-
-# Run hooks manually on all files
-make pre-commit-run
-
-# Uninstall hooks (if needed)
-make pre-commit-uninstall
-```
-
-Hooks automatically run on commit and check:
-- Backend: ruff format, ruff linter, pyright type checking
-- Frontend: ESLint, Prettier formatting
-- General: trailing whitespace, file endings, YAML/JSON/TOML validation
+To run Glean from source, follow the [local setup instructions](DEVELOPMENT.md#local-setup).
 
 ## Roadmap
 
@@ -256,6 +209,7 @@ Hooks automatically run on commit and check:
 
 - **[Development Guide](./DEVELOPMENT.md)** - Set up your development environment
 - **[Deployment Guide](./DEPLOY.md)** - Production deployment details
+- **[pgvector Migration Guide](MIGRATE_PGVECTOR.md)** - Move an existing Milvus deployment to pgvector
 
 ## Contributing
 
