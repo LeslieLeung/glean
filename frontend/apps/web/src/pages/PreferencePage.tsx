@@ -35,6 +35,7 @@ import {
 import { format } from 'date-fns'
 import { useUIStore } from '../stores/uiStore'
 import { useTranslation } from '@glean/i18n'
+import { JevDisplaySettings } from '../components/JevDisplaySettings'
 
 /**
  * Preference statistics page.
@@ -113,6 +114,10 @@ export default function PreferencePage() {
             <p className="text-muted-foreground text-sm">{t('preferences.desc')}</p>
           </div>
         </div>
+      </div>
+
+      <div className="mb-6">
+        <JevDisplaySettings />
       </div>
 
       {/* Loading state */}

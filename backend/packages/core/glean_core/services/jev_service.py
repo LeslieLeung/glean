@@ -106,9 +106,4 @@ def classification_for_display(
     if not config.enabled or not raw:
         return None
     result = EntryClassification.model_validate(raw)
-    return result.model_copy(
-        update={
-            "show_confidence": config.show_confidence,
-            "content": result.content if config.classify_content else None,
-        }
-    )
+    return result if config.classify_content else result.model_copy(update={"content": None})

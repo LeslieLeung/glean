@@ -1,8 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClassificationBadge } from '../../components/ClassificationBadge'
+import { useAuthStore } from '../../stores/authStore'
+import { createMockUser } from '../helpers/mockData'
 import type { EntryClassification } from '@glean/types'
 
+beforeEach(() => useAuthStore.getState().setUser(null))
 afterEach(cleanup)
 
 const result: EntryClassification = {
@@ -10,22 +13,55 @@ const result: EntryClassification = {
   score: 0.9,
   model_id: 'jev-test',
   content: { label: 'original', name: 'Original', confidence: 0.85 },
-  show_confidence: false,
 }
 
 describe('ClassificationBadge', () => {
-  it('shows the combined label and exposes both confidence scores', () => {
+  it('shows both labels without confidence by default', () => {
     render(<ClassificationBadge result={result} />)
-    expect(screen.getByText('Human - Original')).toBeTruthy()
-    expect(screen.getByTitle('Human: 90.0% · Original: 85.0% · jev-test')).toBeTruthy()
+    expect(screen.getByText('Human')).toBeTruthy()
+    expect(screen.getByText('Original')).toBeTruthy()
+    expect(screen.queryByText(/%/)).toBeNull()
+    expect(screen.queryByTitle(/%/)).toBeNull()
   })
 
-  it('supports AI-only results and optional visible confidence', () => {
-    render(
-      <ClassificationBadge
-        result={{ ...result, label: 'ai', score: 0.8, content: null, show_confidence: true }}
-      />
+  it('shows each score alongside its own label when confidence is enabled', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_confidence: true } }))
+    render(<ClassificationBadge result={result} />)
+    expect(screen.getByText('Human 90.0%')).toBeTruthy()
+    expect(screen.getByTitle('Original 85.0%').textContent).toContain('85.0%')
+  })
+
+  it('hides AI detection independently', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_ai_label: false } }))
+    render(<ClassificationBadge result={result} />)
+    expect(screen.queryByText('Human')).toBeNull()
+    expect(screen.getByText('Original')).toBeTruthy()
+  })
+
+  it('hides the content type independently', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_content_type: false } }))
+    render(<ClassificationBadge result={result} />)
+    expect(screen.getByText('Human')).toBeTruthy()
+    expect(screen.queryByText('Original')).toBeNull()
+  })
+
+  it('renders nothing when both labels are disabled', () => {
+    useAuthStore.getState().setUser(
+      createMockUser({
+        settings: {
+          show_jev_ai_label: false,
+          show_jev_content_type: false,
+          show_jev_confidence: true,
+        },
+      })
     )
+    const { container } = render(<ClassificationBadge result={result} />)
+    expect(container.textContent).toBe('')
+  })
+
+  it('supports results without a content classification', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_confidence: true } }))
+    render(<ClassificationBadge result={{ ...result, label: 'ai', score: 0.8, content: null }} />)
     expect(screen.getByText('AI 80.0%')).toBeTruthy()
   })
 

@@ -122,6 +122,13 @@
       "modelStrengthDesc": "Based on your feedback history",
       "lastUpdated": "Last updated: {{date}}"
     },
+    "jev": {
+      "title": "Jev labels",
+      "showAI": "Show AI detection label",
+      "showContentType": "Show content type label",
+      "showConfidence": "Show confidence on visible labels",
+      "saveError": "Could not save Jev display preferences."
+    },
     "displaySettings": {
       "title": "Display Settings",
       "desc": "Customize how preferences are shown",

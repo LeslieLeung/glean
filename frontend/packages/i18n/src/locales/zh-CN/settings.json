@@ -122,6 +122,13 @@
       "modelStrengthDesc": "基于你的反馈历史",
       "lastUpdated": "上次更新：{{date}}"
     },
+    "jev": {
+      "title": "Jev 标签",
+      "showAI": "显示 AI 检测标签",
+      "showContentType": "显示内容类型标签",
+      "showConfidence": "显示可见标签的置信度",
+      "saveError": "无法保存 Jev 展示偏好。"
+    },
     "displaySettings": {
       "title": "显示设置",
       "desc": "自定义偏好显示方式",

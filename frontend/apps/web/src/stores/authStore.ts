@@ -117,21 +117,20 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   updateSettings: async (settings) => {
-    set({ isLoading: true, error: null })
+    set({ error: null })
+    const currentUser = useAuthStore.getState().user
     try {
-      const currentUser = useAuthStore.getState().user
       const mergedSettings = {
         ...currentUser?.settings,
         ...settings,
       }
       const user = await authService.updateUser({ settings: mergedSettings })
-      set({
-        user,
-        isLoading: false,
-      })
+      if (useAuthStore.getState().user?.id === currentUser?.id) {
+        set({ user })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update settings'
-      set({ error: message, isLoading: false })
+      set({ error: message })
       throw error
     }
   },

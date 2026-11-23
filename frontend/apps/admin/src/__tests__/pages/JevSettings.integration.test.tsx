@@ -11,7 +11,6 @@ const { save, test, reclassify, config } = vi.hoisted(() => {
     content_prompt: 'Choose one category.',
     categories: [{ id: 'original', label: 'Original', description: 'First-hand writing' }],
     min_text_length: 200,
-    show_confidence: false,
   }
   return {
     save: vi.fn(),

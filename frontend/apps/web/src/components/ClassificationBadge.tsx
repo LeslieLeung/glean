@@ -1,28 +1,39 @@
 import { Badge } from '@glean/ui'
 import type { EntryClassification } from '@glean/types'
+import { useAuthStore } from '../stores/authStore'
 
 export function ClassificationBadge({ result }: { result?: EntryClassification | null }) {
+  const settings = useAuthStore((state) => state.user?.settings)
   if (!result) return null
-  const label = result.label === 'human' ? 'Human' : 'AI'
-  const confidence = `${(result.score * 100).toFixed(1)}%`
-  const text = [result.show_confidence ? `${label} ${confidence}` : label, result.content?.name]
-    .filter(Boolean)
-    .join(' - ')
-  const details = [
-    `${label}: ${confidence}`,
-    result.content && `${result.content.name}: ${(result.content.confidence * 100).toFixed(1)}%`,
-    result.model_id,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+
+  const showAI = settings?.show_jev_ai_label ?? true
+  const content = settings?.show_jev_content_type === false ? null : result.content
+  const showConfidence = settings?.show_jev_confidence === true
+  if (!showAI && !content) return null
+
+  const aiLabel = result.label === 'human' ? 'Human' : 'AI'
+  const aiConfidence = showConfidence ? ` ${(result.score * 100).toFixed(1)}%` : ''
+  const contentConfidence =
+    showConfidence && content ? ` ${(content.confidence * 100).toFixed(1)}%` : ''
 
   return (
-    <Badge
-      variant={result.label === 'human' ? 'success' : 'warning'}
-      className="max-w-full min-w-0 shrink"
-      title={details}
-    >
-      <span className="truncate">{text}</span>
-    </Badge>
+    <>
+      {showAI && (
+        <Badge variant={result.label === 'human' ? 'success' : 'warning'}>
+          {aiLabel}
+          {aiConfidence}
+        </Badge>
+      )}
+      {content && (
+        <Badge
+          variant="secondary"
+          className="max-w-full min-w-0 shrink"
+          title={content.name + contentConfidence}
+        >
+          <span className="truncate">{content.name}</span>
+          {contentConfidence && <span className="shrink-0">{contentConfidence.trim()}</span>}
+        </Badge>
+      )}
+    </>
   )
 }

@@ -6,7 +6,7 @@ import pytest
 
 from glean_core.schemas.jev import JevConfig
 from glean_core.services import TypedConfigService
-from glean_database.models import Entry, Feed, Subscription
+from glean_database.models import Entry, Feed, Subscription, SystemConfig
 
 
 async def test_jev_requires_admin(client, auth_headers):
@@ -88,6 +88,7 @@ async def classified_entry(db_session, test_user):
             "label": "human",
             "score": 0.9,
             "model_id": "jev-test",
+            "show_confidence": False,
             "content": {"label": "original", "name": "Original", "confidence": 0.85},
         },
     )
@@ -96,22 +97,30 @@ async def classified_entry(db_session, test_user):
     return entry
 
 
-async def test_results_reach_list_detail_and_follow_display_settings(
+async def test_legacy_config_and_results_keep_both_scores(
     client, admin_headers, auth_headers, db_session, classified_entry
 ):
     service = TypedConfigService(db_session)
-    await service.set(JevConfig, JevConfig(enabled=True, api_key="test-key", show_confidence=True))
+    config = JevConfig(enabled=True, api_key="test-key")
+    db_session.add(SystemConfig(key="jev", value={**config.model_dump(), "show_confidence": True}))
+    await db_session.commit()
+    response = await client.get("/api/admin/jev/config", headers=admin_headers)
+    assert response.status_code == 200
+    assert response.json()["enabled"] is True
+    assert "show_confidence" not in response.json()
+    assert "show_confidence" not in response.json()["defaults"]
     response = await client.get("/api/entries", headers=auth_headers)
     assert response.status_code == 200
     result = response.json()["items"][0]["classification"]
     assert result["content"]["name"] == "Original"
-    assert result["show_confidence"] is True
+    assert result["score"] == 0.9
+    assert result["content"]["confidence"] == 0.85
+    assert "show_confidence" not in result
     response = await client.get(f"/api/entries/{classified_entry.id}", headers=auth_headers)
     assert response.json()["classification"] == result
-    await service.update(JevConfig, classify_content=False, show_confidence=False)
+    await service.update(JevConfig, classify_content=False)
     response = await client.get("/api/entries", headers=auth_headers)
     assert response.json()["items"][0]["classification"]["content"] is None
-    assert response.json()["items"][0]["classification"]["show_confidence"] is False
     await service.update(JevConfig, enabled=False)
     response = await client.get("/api/entries", headers=auth_headers)
     assert response.json()["items"][0]["classification"] is None

@@ -33,6 +33,7 @@ import {
 import { format } from 'date-fns'
 import { useUIStore } from '../../stores/uiStore'
 import { useTranslation } from '@glean/i18n'
+import { JevDisplaySettings } from '../JevDisplaySettings'
 
 /**
  * Preference tab component for Settings.
@@ -136,6 +137,8 @@ export function PreferenceTab() {
         </div>
         <Switch checked={showPreferenceScore} onCheckedChange={setShowPreferenceScore} />
       </div>
+
+      <JevDisplaySettings />
 
       {/* Stats Grid */}
       {isLoading ? (
