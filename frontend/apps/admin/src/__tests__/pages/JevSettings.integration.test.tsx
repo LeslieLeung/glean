@@ -1,7 +1,6 @@
-// Exercise the admin form with the existing shared UI/React test environment.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import JevSettingsPage from '../../../../admin/src/pages/JevSettingsPage'
+import JevSettingsPage from '../../pages/JevSettingsPage'
 
 const { save, test, reclassify, config } = vi.hoisted(() => {
   const settings = {
@@ -26,7 +25,7 @@ vi.mock('@glean/i18n', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-vi.mock('../../../../admin/src/hooks/useJevConfig', () => ({
+vi.mock('../../hooks/useJevConfig', () => ({
   useJevConfig: () => ({ data: config }),
   useSaveJevConfig: () => ({ mutateAsync: save, isPending: false }),
   useTestJevConfig: () => ({ mutateAsync: test, isPending: false }),
