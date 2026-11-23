@@ -122,8 +122,7 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 所有配置选项请参见 [.env.example](.env.example)。
 
 文章 AI 检测和自定义内容分类可在管理面板的 **Jev 分类** 中配置。
-执行 `make db-upgrade` 并重启 API 和 Worker 后，填写 Jev 服务器和 API 密钥，
-测试连接并启用检测，结果会显示在阅读列表卡片上。
+填写 Jev 服务器和 API 密钥，测试连接并启用检测，结果会显示在阅读列表卡片上。
 
 ## Docker 镜像
 
@@ -186,35 +185,12 @@ IMAGE_TAG=v0.3.0-alpha.1 docker compose up -d
 - PostgreSQL / Redis / arq（任务队列）
 
 **前端：**
-- React 18 / TypeScript / Vite
+- React 19 / TypeScript / Vite
 - Tailwind CSS / Zustand / TanStack Query
 
 ## 开发指南
 
-完整的开发环境配置请参阅 **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
-
-快速开始：
-
-```bash
-# 克隆并配置
-git clone https://github.com/LeslieLeung/glean.git
-cd glean
-npm install
-
-# 启动基础设施
-make up
-
-# 初始化数据库（仅首次需要）
-make db-upgrade
-
-# 启动所有服务
-make dev-all
-
-# 访问：
-# - Web: http://localhost:3000
-# - 管理后台: http://localhost:3001
-# - API 文档: http://localhost:8000/api/docs
-```
+如需从源码运行 Glean，请参阅[本地搭建步骤](DEVELOPMENT.zh-CN.md#本地搭建)。
 
 ## 开发路线图
 
@@ -230,12 +206,14 @@ make dev-all
 
 ## 文档
 
-- **[开发指南](./DEVELOPMENT.md)** - 搭建开发环境
+- **[开发指南](DEVELOPMENT.zh-CN.md)** - 搭建开发环境
 - **[部署指南](./DEPLOY.zh-CN.md)** - 生产环境部署详情
+- **[pgvector 迁移指南](MIGRATE_PGVECTOR.zh-CN.md)** - 将现有 Milvus 部署迁移到 pgvector
+- **[订阅管理](docs/manage-feeds.md)** - 管理订阅、查看拉取状态和导入导出 OPML
 
 ## 参与贡献
 
-欢迎贡献！请先阅读 [开发指南](./DEVELOPMENT.md)。
+欢迎贡献！请先阅读[开发指南](DEVELOPMENT.zh-CN.md)。
 
 1. Fork 本仓库
 2. 创建功能分支

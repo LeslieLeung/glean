@@ -1,5 +1,7 @@
 # Glean 部署指南
 
+[English](DEPLOY.md)
+
 本指南提供了在生产环境中部署 Glean 的完整说明。
 
 ## 目录
@@ -572,8 +574,6 @@ docker exec -it glean-postgres pg_isready -U glean
 **密码验证失败**：
 - 确保密码满足所有要求（8+ 字符、大小写混合、数字、特殊字符）
 - 检查是否使用了不支持的特殊字符
-
-更详细的管理员设置说明，请参阅 [docs/admin-setup.md](docs/admin-setup.md)。
 
 ## 更新 Glean
 
@@ -1222,7 +1222,7 @@ server {
 ## 其他资源
 
 - **文档**: [README.zh-CN.md](README.zh-CN.md)
-- **开发指南**: [DEVELOPMENT.md](DEVELOPMENT.md)
+- **开发指南**: [DEVELOPMENT.zh-CN.md](DEVELOPMENT.zh-CN.md)
 - **问题追踪**: [GitHub Issues](https://github.com/LeslieLeung/glean/issues)
 - **Discord 社区**: [加入 Discord](https://discord.gg/KMKC4sRVSJ)
 

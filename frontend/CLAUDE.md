@@ -25,7 +25,7 @@ frontend/
 ## Technology Stack
 
 - **Language**: TypeScript (strict)
-- **Framework**: React 18 + Vite
+- **Framework**: React 19 + Vite
 - **State/Cache**: Zustand + TanStack Query
 - **Styling**: Tailwind CSS
 - **Package Manager**: pnpm + Turborepo

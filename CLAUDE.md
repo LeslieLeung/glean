@@ -11,14 +11,10 @@ For frontend-specific development guidance, see [frontend/CLAUDE.md](frontend/CL
 
 ## Quick Start
 
+Follow the [local setup instructions](DEVELOPMENT.md#local-setup) to install dependencies, configure the database, and start the app.
+
 ```bash
-# Start infrastructure (PostgreSQL + Redis + Milvus)
-make up
-
-# Start all services (API + Worker + Web)
-make dev-all
-
-# Or run services individually
+# Run services individually
 make api             # FastAPI server (http://localhost:8000)
 make worker          # arq background worker
 make web             # React web app (http://localhost:3000)
@@ -141,7 +137,7 @@ cd frontend && pnpm install
 | Layer       | Backend                                | Frontend                 |
 | ----------- | -------------------------------------- | ------------------------ |
 | Language    | Python 3.11+ (strict pyright)          | TypeScript (strict)      |
-| Framework   | FastAPI                                | React 18 + Vite          |
+| Framework   | FastAPI                                | React 19 + Vite          |
 | Database    | SQLAlchemy 2.0 (async) + PostgreSQL 16 | -                        |
 | State/Cache | Redis 7 + arq                          | Zustand + TanStack Query |
 | Styling     | -                                      | Tailwind CSS             |
@@ -240,9 +236,8 @@ cd frontend/apps/web && pnpm test
 - Feed: https://ameow.xyz/feed.xml
 
 **Admin Account**:
-- See [docs/admin-setup.md](docs/admin-setup.md) for detailed setup instructions
-- Quick setup: `python backend/scripts/create-admin.py`
-- Docker setup: Set `CREATE_ADMIN=true` in `.env` or use `docker exec -it glean-backend /app/scripts/create-admin-docker.sh`
+- [Create a local admin account](DEVELOPMENT.md#local-admin-account)
+- [Manage admin accounts in Docker](DEPLOY.md#admin-account-management)
 - Default credentials (development only): admin / Admin123!
 - Dashboard URL: http://localhost:3001
 
