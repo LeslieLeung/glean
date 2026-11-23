@@ -14,8 +14,7 @@ from glean_vector.config import preference_config
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     """Cosine similarity in [-1, 1], robust to non-unit-length vectors.
 
-    Entry embeddings are stored verbatim from the provider; while OpenAI and the
-    sentence-transformer backend return unit vectors, other providers may not.
+    Entry embeddings are stored verbatim and their norms can vary by provider.
     Normalising here keeps the downstream score math (which assumes a [-1, 1]
     range) correct regardless of provider. For unit vectors this equals the dot
     product, so it is a no-op for the common case.

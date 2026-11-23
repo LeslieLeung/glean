@@ -9,11 +9,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core.published_at import effective_published_at
 from glean_database.models.admin import AdminRole, AdminUser
+from glean_database.models.api_token import APIToken
 from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
 from glean_database.models.subscription import Subscription
@@ -161,6 +162,13 @@ class AdminService:
             return None
 
         user.is_active = is_active
+        if not is_active:
+            # Commit suspension and revocation together. Reactivation must not restore tokens.
+            await self.session.execute(
+                update(APIToken)
+                .where(APIToken.user_id == user_id, APIToken.is_revoked.is_(False))
+                .values(is_revoked=True)
+            )
         await self.session.commit()
         await self.session.refresh(user)
         return user

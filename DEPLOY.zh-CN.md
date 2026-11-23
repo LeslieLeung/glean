@@ -20,12 +20,12 @@
 
 ## 快速部署
 
-### 使用 pgvector（推荐）
+默认部署使用 PostgreSQL 的 pgvector 扩展存储向量。
 
-使用 PostgreSQL 内置的 pgvector 扩展进行向量存储，无需额外的基础设施：
+### 默认：pgvector
 
 ```bash
-# 下载 pgvector 版本
+# 下载默认 Compose 文件
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # 创建 .env 文件并配置管理员凭据（可选但推荐）
@@ -56,12 +56,12 @@ docker compose up -d
 2. 修改默认密码
 3. 配置生产环境的其他环境变量（参见[环境配置](#环境配置)）
 
-### 使用 Milvus
+### 可选：Milvus
 
-使用独立的 Milvus 向量数据库进行向量存储：
+需要独立向量数据库时，使用 Milvus Compose 文件：
 
 ```bash
-# 下载 docker-compose.yml
+# 下载 Milvus Compose 文件
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
 
 # 创建 .env 文件并配置管理员凭据（可选但推荐）
@@ -156,8 +156,8 @@ docker compose up -d
 # 创建部署目录
 mkdir -p ~/glean && cd ~/glean
 
-# 下载 docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.yml -o docker-compose.yml
+# 下载默认的 pgvector Compose 文件
+curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/docker-compose.pgvector.yml -o docker-compose.yml
 
 # 下载环境变量模板
 curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example -o .env
@@ -243,9 +243,9 @@ docker compose logs backend | grep "Admin Account Created"
 > worker，再一起启动新版 API 和 worker。在 embedding 状态恢复为 `idle` 前请保留
 > 原向量库；切换向量后端或 embedding 模型可能触发完整重建。
 
-### 使用 pgvector（推荐）
+### 默认：pgvector
 
-使用带 pgvector 扩展的 PostgreSQL 进行向量存储（共 6 个服务）。使用 `docker-compose.pgvector.yml` 配置。
+使用带 pgvector 扩展的 PostgreSQL 进行向量存储（共 6 个服务）。对应文件是 `docker-compose.pgvector.yml`。
 
 **服务：**
 
@@ -282,9 +282,9 @@ WITH (m = 16, ef_construction = 64);
 
 pgvector 的 `vector` HNSW 操作符类最多支持 2,000 维。对于更高维度的模型，Glean 仍可使用精确的顺序搜索，但不会创建 HNSW 索引。
 
-### 使用 Milvus
+### 可选：Milvus
 
-使用独立的 Milvus 向量数据库（共 9 个服务）。使用 `docker-compose.yml` 配置。
+使用独立的 Milvus 向量数据库（共 9 个服务）。对应文件是 `docker-compose.yml`。
 
 **核心服务：**
 
@@ -366,14 +366,16 @@ pgvector 的 `vector` HNSW 操作符类最多支持 2,000 维。对于更高维�
 
 支持两种向量后端：
 
-- `pgvector`（`docker-compose.pgvector.yml`，**推荐** — 无需额外基础设施）
-- `milvus`（`docker-compose.yml` — 适合偏好独立向量数据库的用户）
+- `pgvector`（`docker-compose.pgvector.yml`，默认部署）
+- `milvus`（`docker-compose.yml`，独立向量数据库）
 
 **后端选择器：**
 
-| 变量             | 默认值   | 说明                              |
-| ---------------- | -------- | --------------------------------- |
-| `VECTOR_BACKEND` | `milvus` | 向量后端（`pgvector` 或 `milvus`）|
+| 变量             | 默认值     | 说明                              |
+| ---------------- | ---------- | --------------------------------- |
+| `VECTOR_BACKEND` | `pgvector` | 向量后端（`pgvector` 或 `milvus`）|
+
+pgvector Compose 文件会设置 `VECTOR_BACKEND=pgvector`。Milvus Compose 文件会设置 `milvus`。
 
 **pgvector 配置（VECTOR_BACKEND=pgvector）：**
 
@@ -397,30 +399,14 @@ pgvector 的 `vector` HNSW 操作符类最多支持 2,000 维。对于更高维�
 
 ### Embedding 配置
 
-偏好学习和智能推荐功能所需配置：
+向量化默认关闭。若要使用偏好学习和智能推荐，请在**管理后台 → Embedding 设置**中配置提供商并启用向量化。
 
-| 变量                   | 默认值                  | 说明                                              |
-| ---------------------- | ----------------------- | ------------------------------------------------- |
-| `EMBEDDING_PROVIDER`   | `sentence-transformers` | 提供商：sentence-transformers、openai、volc-engine |
-| `EMBEDDING_MODEL`      | `all-MiniLM-L6-v2`      | 模型名称                                          |
-| `EMBEDDING_DIMENSION`  | `384`                   | 向量维度（必须匹配模型）                          |
-| `EMBEDDING_API_KEY`    | -                       | API 密钥（用于 openai/volc-engine）               |
-| `EMBEDDING_BASE_URL`   | -                       | 自定义 API 端点（可选）                           |
-| `EMBEDDING_BATCH_SIZE` | `20`                    | embedding 生成批次大小                            |
-| `EMBEDDING_MAX_RETRIES`| `3`                     | 失败请求最大重试次数                              |
-| `EMBEDDING_TIMEOUT`    | `30`                    | 请求超时时间（秒）                                |
+| 提供商 | 配置 |
+| --- | --- |
+| OpenAI | API Key 和模型名，例如 `text-embedding-3-small`。可通过自定义 Base URL 连接 OpenAI 兼容服务。 |
+| 火山引擎 | API Key（或 `ARK_API_KEY`）和模型接入点 ID。 |
 
-**支持的提供商：**
-- **sentence-transformers** - 本地 embedding 模型（无需 API 密钥）
-  - 模型：`all-MiniLM-L6-v2` (384维)、`paraphrase-multilingual-MiniLM-L12-v2` (384维)
-- **openai** - OpenAI embedding API
-  - 模型：`text-embedding-3-small` (1536维)、`text-embedding-3-large` (3072维)
-  - 需要：`EMBEDDING_API_KEY`
-- **volc-engine** - 火山引擎/字节跳动 embedding API
-  - 模型：`doubao-embedding` (1024维)
-  - 需要：`EMBEDDING_API_KEY` 或 `ARK_API_KEY`
-
-完整配置参考请见 [.env.example](.env.example)。
+升级时，使用内置 Sentence Transformers 的配置会自动停用。选择远程提供商并启用向量化后，系统会为新模型重建向量。升级迁移会保留已有的向量数据。
 
 ## 管理员账号管理
 

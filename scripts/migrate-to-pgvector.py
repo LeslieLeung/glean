@@ -11,12 +11,15 @@ from __future__ import annotations
 import argparse
 import copy
 import fcntl
+import hashlib
+import io
 import json
 import os
 import re
 import secrets
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import unquote, urlparse
@@ -39,6 +42,16 @@ COUNT_SQL = (
 )
 EMBEDDING_SQL = "SELECT COALESCE(value->>'status', '') FROM system_configs WHERE key='embedding'"
 PG_SHELL = 'exec "$@" -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+DEFAULT_COMPOSE_FILES = (
+    "compose.yaml",
+    "compose.yml",
+    "docker-compose.yaml",
+    "docker-compose.yml",
+    "compose.override.yaml",
+    "compose.override.yml",
+    "docker-compose.override.yaml",
+    "docker-compose.override.yml",
+)
 
 
 class MigrationError(Exception):
@@ -51,12 +64,14 @@ def run(
     capture: bool = False,
     input_file: BinaryIO | None = None,
     output_file: BinaryIO | None = None,
+    environment: dict[str, str] | None = None,
 ) -> str:
     result = subprocess.run(
         args,
         check=True,
         stdin=input_file,
         stdout=subprocess.PIPE if capture else output_file,
+        env=environment,
     )
     return result.stdout.decode().strip() if capture else ""
 
@@ -70,6 +85,90 @@ def save_json(path: Path, value: Any) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     temporary.replace(path)
+
+
+def save_bytes(path: Path, value: bytes, mode: int = 0o600) -> None:
+    temporary = path.with_name(path.name + ".pgvector.tmp")
+    with temporary.open("wb") as stream:
+        os.chmod(temporary, mode)
+        stream.write(value)
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.replace(path)
+
+
+def file_digest(path: Path) -> str | None:
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise MigrationError(f"Expected a regular deployment file: {path}")
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+
+
+def yaml_block(lines: list[str], path: tuple[str, ...]) -> tuple[int, int]:
+    """Locate a mapping block in our template or Compose's canonical YAML output."""
+    start, end = 0, len(lines)
+    for depth, key in enumerate(path):
+        indent = depth * 2
+        pattern = re.compile(rf"^{' ' * indent}{re.escape(key)}:")
+        found = next((i for i in range(start, end) if pattern.match(lines[i])), None)
+        if found is None:
+            return end, end
+        start = found
+        end = next(
+            (
+                i
+                for i in range(start + 1, end)
+                if lines[i].strip() and len(lines[i]) - len(lines[i].lstrip()) <= indent
+            ),
+            end,
+        )
+    return start, end
+
+
+def patch_yaml(
+    document: str, rendered: str, path: tuple[str, ...], *, remove_if_missing: bool = False
+) -> str:
+    """Copy only a changed field, leaving the template's other text untouched."""
+    lines, source = document.splitlines(keepends=True), rendered.splitlines(keepends=True)
+    start, end = yaml_block(lines, path)
+    first, last = yaml_block(source, path)
+    if first == last and not remove_if_missing:
+        raise MigrationError(f"Cannot locate Compose field: {'.'.join(path)}")
+    lines[start:end] = source[first:last]
+    return "".join(lines)
+
+
+def remove_yaml_field(document: str, path: tuple[str, ...]) -> str:
+    lines = document.splitlines(keepends=True)
+    start, end = yaml_block(lines, path)
+    del lines[start:end]
+    return "".join(lines)
+
+
+def update_dotenv(document: str, values: dict[str, str]) -> str:
+    """Update assignments without leaving stale duplicates or losing other settings."""
+    pending = dict(values)
+    assignment = re.compile(
+        r"""(?m)^[ \t]*(?:export[ \t]+)?([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*"""
+        r"""(?:"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\r\n]*)[ \t]*(?:\#[^\r\n]*)?$"""
+    )
+
+    def replace(match: re.Match[str]) -> str:
+        key = match[1]
+        if key not in values:
+            return match[0]
+        if key not in pending:
+            return ""
+        value = pending.pop(key)
+        return f"{key}={json.dumps(value.replace('$', '$$'), ensure_ascii=False)}"
+
+    result = assignment.sub(replace, document).rstrip() + "\n"
+    if pending:
+        result += "\n# Updated by migrate-to-pgvector.py finalize.\n"
+        result += "".join(
+            f"{key}={json.dumps(value.replace('$', '$$'), ensure_ascii=False)}\n"
+            for key, value in sorted(pending.items())
+        )
+    return result
 
 
 def compose_dollars(value: Any, *, escape: bool) -> Any:
@@ -359,6 +458,10 @@ class Migration:
             "volume_names": volume_names,
             "original_volume_names": original_volumes,
             "skip_pull": args.skip_pull,
+            "source_files": [
+                os.path.abspath(name) for name in args.compose or ["docker-compose.yml"]
+            ],
+            "env_files": [os.path.abspath(args.env_file)] if args.env_file else [],
         }
         self.compose(True, "config", "--quiet")
         self.advance("prepared")
@@ -453,12 +556,322 @@ class Migration:
         print("Migration complete. Check Admin > Settings > Embedding until idle.")
         print("Embedding regeneration runs in the background and may incur provider charges.")
         print(f"Backups and active Compose configuration: {self.directory}")
+        print("After verifying the migration, run finalize to install ordinary Compose files.")
+
+    def deployment_files(self) -> dict[str, bytes | None]:
+        """Only these default entry points are replaced; custom inputs are archived."""
+        files: dict[str, bytes | None] = dict.fromkeys(DEFAULT_COMPOSE_FILES)
+        files["docker-compose.yml"] = (self.directory / "deployment.compose.yml").read_bytes()
+        files[".env"] = (self.directory / "deployment.env").read_bytes()
+        return files
+
+    def prepare_deployment(self, args: argparse.Namespace) -> None:
+        """Keep the release template and its variables; patch deployment-specific fields."""
+        output = self.directory / "deployment.compose.yml"
+        env_path = self.directory / "deployment.env"
+        prepared = self.directory / "deployment-files.json"
+        if prepared.exists():
+            expected = json.loads(prepared.read_text())
+            if expected != {"compose": file_digest(output), "env": file_digest(env_path)}:
+                raise MigrationError(
+                    "Prepared deployment files changed; restore them before retrying."
+                )
+            return
+        template_path = (
+            args.template or Path(__file__).resolve().parents[1] / "docker-compose.pgvector.yml"
+        )
+        if not template_path.is_file():
+            raise MigrationError(
+                "Download the release's docker-compose.pgvector.yml or supply finalize --template PATH."
+            )
+        template = template_path.read_text()
+        target = compose_dollars(
+            json.loads((self.directory / "pgvector.compose.json").read_text()), escape=False
+        )
+        target["name"] = self.state["project"]
+        # Reuse the template's logical volume keys while keeping the actual new volumes.
+        for service, logical, mount_path in (
+            ("postgres", "postgres_data", "/var/lib/postgresql/data"),
+            ("redis", "redis_data", "/data"),
+        ):
+            mount = data_mount(target, service, mount_path)
+            old_key = mount["source"]
+            if old_key != logical:
+                target["volumes"][logical] = target["volumes"].pop(old_key)
+                for config in target["services"].values():
+                    for item in config.get("volumes", []):
+                        if item.get("type") == "volume" and item.get("source") == old_key:
+                            item["source"] = logical
+            # The volumes already exist, with labels from the migration's logical keys.
+            target["volumes"][logical] = {
+                "name": self.state["volume_names"][service],
+                "external": True,
+            }
+
+        values = {
+            "COMPOSE_FILE": "docker-compose.yml",
+            "COMPOSE_PROJECT_NAME": self.state["project"],
+            "IMAGE_TAG": self.state["image_tag"],
+            "VECTOR_BACKEND": "pgvector",
+            "PGVECTOR_DATABASE_URL": "",
+        }
+        # Map template environment references back to the actual migrated values.
+        candidates: dict[str, set[str]] = {}
+        section = ""
+        for line in template.splitlines():
+            match = re.fullmatch(r"  ([\w-]+):", line)
+            if match:
+                section = match[1]
+            binding = re.fullmatch(r"      ([\w]+): \$\{([\w]+)(?::-[^}]*)?\}", line)
+            if binding and section in target["services"]:
+                key, variable = binding.groups()
+                actual = target["services"][section].get("environment", {}).get(key)
+                if actual is not None:
+                    candidates.setdefault(variable, set()).add(str(actual))
+        for variable, options in candidates.items():
+            values[variable] = next(iter(options)) if len(options) == 1 else ""
+        for service, variable in (("web", "WEB_PORT"), ("admin", "ADMIN_PORT")):
+            ports = target["services"][service].get("ports", [])
+            if len(ports) == 1 and isinstance(ports[0], dict) and ports[0].get("target") == 80:
+                values[variable] = str(ports[0]["published"])
+
+        deployment = Path(self.state["deployment_directory"])
+        sources = [str(deployment / ".env"), *self.state.get("env_files", [])]
+        if args.env_file:
+            sources.append(os.path.abspath(args.env_file))
+        environment = ""
+        for name in dict.fromkeys(sources):
+            path = Path(name)
+            if file_digest(path) is not None:
+                environment += path.read_text().rstrip() + "\n"
+        save_bytes(env_path, update_dotenv(environment, values).encode())
+
+        candidate = self.directory / "template.compose.yml"
+        save_bytes(candidate, template.encode())
+        command = [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(deployment),
+            "--project-name",
+            self.state["project"],
+            "--env-file",
+            str(env_path),
+        ]
+        variables = set(re.findall(r"\$\{(\w+)", template)) | values.keys()
+        render_environment = {
+            key: value for key, value in os.environ.items() if key not in variables
+        }
+
+        def render(path: Path, output_format: str) -> str:
+            return run(
+                [*command, "-f", str(path), "config", "--format", output_format],
+                capture=True,
+                environment=render_environment,
+            )
+
+        base = compose_dollars(
+            json.loads(render(candidate, "json")),
+            escape=False,
+        )
+        adjusted = self.directory / "template-target.compose.json"
+        save_json(adjusted, compose_dollars(target, escape=True))
+        target = compose_dollars(
+            json.loads(render(adjusted, "json")),
+            escape=False,
+        )
+        rendered = render(adjusted, "yaml") + "\n"
+        document = template.replace(
+            "docker compose -f docker-compose.pgvector.yml", "docker compose"
+        )
+        for service, config in target["services"].items():
+            original_service: dict[str, Any] = base["services"][service]
+            for key in original_service.keys() - config.keys():
+                document = remove_yaml_field(document, ("services", service, key))
+            for key, value in config.items():
+                original: Any = original_service.get(key)
+                if key == "environment":
+                    original_environment: dict[str, Any] = original or {}
+                    if not original_environment:
+                        document = patch_yaml(document, rendered, ("services", service, key))
+                        continue
+                    for setting in original_environment.keys() - value.keys():
+                        document = remove_yaml_field(document, ("services", service, key, setting))
+                    for setting, actual in value.items():
+                        if actual != original_environment.get(setting):
+                            document = patch_yaml(
+                                document, rendered, ("services", service, key, setting)
+                            )
+                elif value != original:
+                    document = patch_yaml(
+                        document,
+                        rendered,
+                        ("services", service, key),
+                        remove_if_missing=value is None or value in ({}, []),
+                    )
+        for key in ("volumes", "networks", "configs", "secrets"):
+            for name in base.get(key, {}).keys() - target.get(key, {}).keys():
+                document = remove_yaml_field(document, (key, name))
+            for name, value in target.get(key, {}).items():
+                if value != base.get(key, {}).get(name):
+                    path = (key, name) if key in base else (key,)
+                    document = patch_yaml(document, rendered, path)
+                    if key not in base:
+                        break
+        # Validate before publishing the cached installation files or archiving originals.
+        save_bytes(candidate, document.encode())
+        installed = compose_dollars(
+            json.loads(render(candidate, "json")),
+            escape=False,
+        )
+        for service, config in target["services"].items():
+            actual_service: dict[str, Any] = installed["services"][service]
+            for key in config.keys() | actual_service.keys():
+                if config.get(key) != actual_service.get(key):
+                    raise MigrationError(
+                        f"Template did not preserve migrated setting: {service}.{key}"
+                    )
+        for key in ("volumes", "networks", "configs", "secrets"):
+            if installed.get(key, {}) != target.get(key, {}):
+                raise MigrationError(f"Template did not preserve migrated {key}.")
+        save_bytes(output, document.encode())
+        save_json(prepared, {"compose": file_digest(output), "env": file_digest(env_path)})
+
+    def deployment_backup(self, args: argparse.Namespace) -> dict[str, Any]:
+        archive = self.directory / "deployment-backup.tar.gz"
+        deployment = Path(self.state["deployment_directory"])
+        if not archive.exists():
+            if self.state.get("deployment_backup"):
+                raise MigrationError(
+                    "Saved deployment backup is missing; restore it before retrying."
+                )
+            paths = {deployment / name for name in self.deployment_files()}
+            source_files: list[str] = self.state.get("source_files", []) + self.state.get(
+                "env_files", []
+            )
+            additional_compose: list[str] = args.compose or []
+            source_files += [os.path.abspath(name) for name in additional_compose]
+            if args.env_file:
+                source_files.append(os.path.abspath(args.env_file))
+            for name in source_files:
+                paths.add(Path(os.path.abspath(name)))
+            manifest: dict[str, Any] = {"deployment_directory": str(deployment), "files": []}
+            temporary = archive.with_suffix(".tmp")
+            with temporary.open("wb") as stream:
+                os.chmod(temporary, 0o600)
+                with tarfile.open(fileobj=stream, mode="w:gz") as bundle:
+                    for index, path in enumerate(sorted(paths)):
+                        digest = file_digest(path)
+                        member = None
+                        mode = 0o600
+                        if digest is not None:
+                            member = (
+                                f"deployment/{path.relative_to(deployment)}"
+                                if path.is_relative_to(deployment)
+                                else f"external/{index}/{path.name}"
+                            )
+                            mode = path.stat().st_mode & 0o777
+                            bundle.add(path, arcname=member, recursive=False)
+                        manifest["files"].append(
+                            {"path": str(path), "member": member, "sha256": digest, "mode": mode}
+                        )
+                    payload = json.dumps(manifest, indent=2).encode()
+                    info = tarfile.TarInfo("manifest.json")
+                    info.size = len(payload)
+                    info.mode = 0o600
+                    bundle.addfile(info, io.BytesIO(payload))
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.replace(archive)
+        # Read every member before touching deployment files, including on retries.
+        with tarfile.open(archive, "r:gz") as bundle:
+            manifest_file = bundle.extractfile("manifest.json")
+            if manifest_file is None:
+                raise MigrationError("Deployment backup has no manifest.")
+            manifest = json.load(manifest_file)
+            if manifest["deployment_directory"] != str(deployment):
+                raise MigrationError("Deployment backup belongs to a different directory.")
+            for item in manifest["files"]:
+                if item["member"] is not None:
+                    member_file = bundle.extractfile(item["member"])
+                    if (
+                        member_file is None
+                        or hashlib.sha256(member_file.read()).hexdigest() != item["sha256"]
+                    ):
+                        raise MigrationError("Deployment backup failed its integrity check.")
+        return manifest
+
+    def check_deployment_files(self, manifest: dict[str, Any]) -> None:
+        originals = {item["path"]: item for item in manifest["files"]}
+        deployment = Path(self.state["deployment_directory"])
+        for name, content in self.deployment_files().items():
+            path = deployment / name
+            installed_digest = hashlib.sha256(content).hexdigest() if content is not None else None
+            if file_digest(path) not in {originals[str(path)]["sha256"], installed_digest}:
+                raise MigrationError(
+                    f"Deployment file changed after backup; preserve your edits first: {path}"
+                )
+
+    def finalize(self, args: argparse.Namespace) -> None:
+        if self.state["phase"] != "complete":
+            raise MigrationError("Complete the migration before running finalize.")
+        if self.state.get("finalized"):
+            print("Deployment files already installed; use docker compose normally.")
+            return
+        if os.environ.get("COMPOSE_FILE") or os.environ.get("COMPOSE_PROJECT_NAME"):
+            raise MigrationError(
+                "Unset shell COMPOSE_FILE and COMPOSE_PROJECT_NAME before finalize."
+            )
+        self.compose(True, "config", "--quiet")
+        self.prepare_deployment(args)
+        manifest = self.deployment_backup(args)
+        self.check_deployment_files(manifest)
+        # Persist the backup checkpoint before replacing any original file.
+        self.state["deployment_backup"] = str(self.directory / "deployment-backup.tar.gz")
+        save_json(self.state_path, self.state)
+        deployment = Path(self.state["deployment_directory"])
+        for name, content in self.deployment_files().items():
+            path = deployment / name
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                save_bytes(path, content)
+        self.state["finalized"] = True
+        save_json(self.state_path, self.state)
+        print(f"Original deployment files archived: {self.state['deployment_backup']}")
+        print(
+            f"Deployment files installed in {deployment}; use docker compose up -d, logs, ps, or down."
+        )
+
+    def restore_deployment_files(self) -> None:
+        if not self.state.get("deployment_backup") or self.state.get("deployment_files_restored"):
+            return
+        manifest = self.deployment_backup(argparse.Namespace(compose=None, env_file=None))
+        self.check_deployment_files(manifest)
+        originals = {item["path"]: item for item in manifest["files"]}
+        deployment = Path(self.state["deployment_directory"])
+        with tarfile.open(self.state["deployment_backup"], "r:gz") as bundle:
+            for name in self.deployment_files():
+                path = deployment / name
+                item = originals[str(path)]
+                if item["member"] is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    stream = bundle.extractfile(item["member"])
+                    if stream is None:
+                        raise MigrationError("Deployment backup is missing an original file.")
+                    save_bytes(path, stream.read(), item["mode"])
+        self.state["deployment_files_restored"] = True
+        save_json(self.state_path, self.state)
 
     def rollback(self) -> None:
         phase = self.state["phase"]
         if phase == "rolled_back":
             print("Already rolled back.")
             return
+        if self.state.get("deployment_backup") and not self.state.get("deployment_files_restored"):
+            manifest = self.deployment_backup(argparse.Namespace(compose=None, env_file=None))
+            self.check_deployment_files(manifest)
         if phase != "rollback_started":
             self.state["rollback_from"] = phase
             self.advance("rollback_started")
@@ -466,6 +879,7 @@ class Migration:
         if PHASES.index(self.state["rollback_from"]) >= PHASES.index("old_stopped"):
             self.compose(True, "down", "--timeout", "120")
         self.compose(False, "up", "-d", "--wait", "--wait-timeout", "300", "--pull", "never")
+        self.restore_deployment_files()
         self.advance("rolled_back")
         print("Rollback complete. Original images, PostgreSQL, Redis, and Milvus are active.")
 
@@ -489,6 +903,23 @@ def parser() -> argparse.ArgumentParser:
     migrate.add_argument("--skip-pull", action="store_true", help="Use already downloaded images")
     commands.add_parser("rollback", help="Restore the original images and volumes")
     commands.add_parser("status", help="Show the saved migration phase")
+    finalize = commands.add_parser(
+        "finalize",
+        help="Archive original deployment files and install the migrated Compose configuration",
+    )
+    finalize.add_argument(
+        "--compose",
+        action="append",
+        help="Additional original Compose file to archive (for older migration state)",
+    )
+    finalize.add_argument(
+        "--env-file", help="Additional original env file to archive (for older migration state)"
+    )
+    finalize.add_argument(
+        "--template",
+        type=Path,
+        help="Release pgvector Compose template (default: docker-compose.pgvector.yml beside scripts/)",
+    )
     compose = commands.add_parser(
         "compose", help="Run Compose against the active saved configuration"
     )
@@ -515,6 +946,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Image tag: {migration.state['image_tag']}")
             print(f"Phase: {migration.state['phase']}")
             print(f"State and backups: {directory}")
+            installed = bool(migration.state.get("finalized")) and not migration.state.get(
+                "deployment_files_restored", False
+            )
+            print(f"Deployment files installed: {installed}")
             return 0
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         with (directory / "lock").open("a") as lock:
@@ -534,6 +969,8 @@ def main(argv: list[str] | None = None) -> int:
                 migration.migrate()
             elif args.action == "rollback":
                 migration.rollback()
+            elif args.action == "finalize":
+                migration.finalize(args)
             else:
                 arguments = args.arguments
                 if arguments[:1] == ["--"]:
@@ -546,7 +983,13 @@ def main(argv: list[str] | None = None) -> int:
                         "Finish migration/rollback before using the compose helper."
                     )
                 migration.compose(phase == "complete", *arguments)
-    except (MigrationError, OSError, ValueError, subprocess.CalledProcessError) as error:
+    except (
+        MigrationError,
+        OSError,
+        ValueError,
+        tarfile.TarError,
+        subprocess.CalledProcessError,
+    ) as error:
         # CalledProcessError includes argv; keep resolved credentials out of diagnostics.
         message = (
             f"Docker command failed (exit {error.returncode})."
@@ -556,13 +999,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error: {message}", file=sys.stderr)
         if (directory / "state.json").exists():
             print(
-                "Saved state retained. Fix the error and rerun migrate, or run rollback.",
+                "Saved state retained. Fix the error and retry the same command, or run rollback.",
                 file=sys.stderr,
             )
         return 1
     except KeyboardInterrupt:
         print(
-            "Interrupted. Saved checkpoints are retained; rerun migrate or rollback.",
+            "Interrupted. Saved checkpoints are retained; retry the same command or run rollback.",
             file=sys.stderr,
         )
         return 130

@@ -168,6 +168,7 @@ class FeedService:
         folder_id: str | None = None,
         search: str | None = None,
         include_descendants: bool = False,
+        failed_only: bool = False,
     ) -> SubscriptionListResponse:
         """
         Get paginated subscriptions for a user.
@@ -179,6 +180,7 @@ class FeedService:
             folder_id: Optional folder filter. If provided, returns only subscriptions in that folder.
                        Use empty string "" to get ungrouped subscriptions (folder_id is None).
             search: Optional search query to filter by title or URL.
+            failed_only: Only include feeds with unresolved fetch failures.
 
         Returns:
             Paginated subscription list response.
@@ -208,10 +210,20 @@ class FeedService:
                     )
             base_stmt = base_stmt.where(Subscription.folder_id.in_(folder_ids))
 
+        # Join once so failure filtering and search can be combined before pagination.
+        if search or failed_only:
+            base_stmt = base_stmt.join(Subscription.feed)
+        if failed_only:
+            base_stmt = base_stmt.where(
+                (Feed.error_count > 0)
+                | (Feed.status.in_(["error", "disabled"]))
+                | (Feed.fetch_error_message.is_not(None) & (Feed.fetch_error_message != ""))
+            )
+
         # Apply search filter if provided
         if search:
             search_term = f"%{search.lower()}%"
-            base_stmt = base_stmt.join(Subscription.feed).where(
+            base_stmt = base_stmt.where(
                 (func.lower(Subscription.custom_title).like(search_term))
                 | (func.lower(Feed.title).like(search_term))
                 | (func.lower(Feed.url).like(search_term))

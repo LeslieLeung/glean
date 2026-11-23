@@ -10,8 +10,8 @@
     "markUnread": "标记未读",
     "readLater": "稍后阅读",
     "savedForLater": "已保存稍后阅读",
-    "archive": "归档",
-    "archived": "已归档",
+    "archive": "收藏",
+    "archived": "已收藏",
     "openOriginal": "打开原文",
     "open": "打开",
     "close": "关闭",
@@ -55,7 +55,9 @@
   },
   "article": {
     "noContent": "没有可用内容",
-    "viewOriginal": "查看原文"
+    "viewOriginal": "查看原文",
+    "back": "返回",
+    "openMenu": "打开菜单"
   },
   "outline": {
     "title": "文章目录",

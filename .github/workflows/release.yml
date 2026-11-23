@@ -184,12 +184,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 12.16.1
+          version: 12.21.0
 
       - name: Get pnpm store directory
         shell: bash
@@ -281,8 +281,8 @@ jobs:
             ## Quick Start
 
             ```bash
-            # Download docker-compose.yml
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
+            # Download the default pgvector compose file
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.pgvector.yml -o docker-compose.yml
 
             # Start Glean
             docker compose up -d

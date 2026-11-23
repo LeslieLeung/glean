@@ -7,7 +7,7 @@ Provides endpoints for administrative operations.
 import contextlib
 from datetime import UTC, datetime, timedelta
 from math import ceil
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
@@ -37,6 +37,7 @@ from glean_core.schemas.admin import (
 )
 from glean_core.services import AdminService, FeedDeletionEffects, TypedConfigService
 from glean_database.session import get_session
+from glean_vector.clients.embedding_factory import EmbeddingProviderFactory
 from glean_vector.config import (
     embedding_model_fingerprint,
     vector_backend_config,
@@ -564,7 +565,7 @@ async def list_entries(
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    feed_id: str | None = Query(None, description="Filter by feed"),
+    feed_id: UUID | Literal[""] | None = Query(None, description="Filter by feed"),
     search: str | None = Query(None, description="Search in title"),
     sort: str = Query("created_at", description="Sort field"),
     order: str = Query("desc", description="Sort order"),
@@ -588,7 +589,7 @@ async def list_entries(
     entries, total = await admin_service.list_entries(
         page=page,
         per_page=per_page,
-        feed_id=feed_id,
+        feed_id=str(feed_id) if feed_id is not None else None,
         search=search,
         sort=sort,
         order=order,
@@ -678,6 +679,14 @@ async def batch_entry_operation(
 # =========================
 # Embedding configuration
 # =========================
+def _require_embedding_provider(provider: str) -> None:
+    if provider.lower() not in EmbeddingProviderFactory.list_providers():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported embedding provider. Select OpenAI or VolcEngine.",
+        )
+
+
 @router.get("/embedding/config")
 async def get_embedding_config(
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
@@ -712,6 +721,7 @@ async def test_embedding_provider(
     """
     from glean_vector.services.validation_service import EmbeddingValidationService
 
+    _require_embedding_provider(request.provider or "")
     validation_service = EmbeddingValidationService()
 
     # Infer dimension from provider
@@ -774,6 +784,8 @@ async def update_embedding_config(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=("Embedding config fields cannot be null: " + ", ".join(invalid_null_fields)),
         )
+
+    _require_embedding_provider(updates.get("provider", current.provider))
 
     rebuild_fields = {"provider", "model", "dimension", "base_url"}
     config_changed = any(
@@ -918,6 +930,7 @@ async def enable_embedding(
     config_service = TypedConfigService(session)
     config = await config_service.get(EmbeddingConfig)
 
+    _require_embedding_provider(config.provider)
     if config.enabled:
         return TypedEmbeddingConfigResponse.from_config(config)
 
@@ -1077,6 +1090,7 @@ async def trigger_embedding_rebuild(
             detail="Vectorization is not enabled",
         )
 
+    _require_embedding_provider(config.provider)
     if config.status in (
         VectorizationStatus.VALIDATING,
         VectorizationStatus.REBUILDING,

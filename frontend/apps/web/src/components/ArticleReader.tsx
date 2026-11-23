@@ -1,3 +1,7 @@
+import { useBookmarkStore } from '../stores/bookmarkStore'
+import { useFolderStore } from '../stores/folderStore'
+import { useTagStore } from '../stores/tagStore'
+import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
@@ -18,9 +22,10 @@ import {
   Menu as MenuIcon,
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { processHtmlContent } from '../lib/html'
+import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ArticleOutline } from './ArticleOutline'
+import { BookmarkKnowledge } from './BookmarkKnowledge'
 import { PreferenceButtons } from './EntryActions/PreferenceButtons'
 
 /**
@@ -46,6 +51,7 @@ function useAnimationTrigger(isActive: boolean | null | undefined, animationClas
 }
 
 interface ArticleReaderProps {
+  bookmarkId?: string
   entry: EntryWithState
   onClose?: () => void
   isFullscreen?: boolean
@@ -62,6 +68,7 @@ interface ArticleReaderProps {
   showFullscreenButton?: boolean
   /** Hide read/unread status actions (for bookmarks page) */
   hideReadStatus?: boolean
+  onBookmarkChange?: () => void
 }
 
 /**
@@ -144,12 +151,14 @@ function useScrollHide(scrollContainerRef: React.RefObject<HTMLDivElement | null
  */
 export function ArticleReader({
   entry,
+  bookmarkId,
   onClose,
   isFullscreen = false,
   onToggleFullscreen,
   showCloseButton,
   showFullscreenButton,
   hideReadStatus = false,
+  onBookmarkChange,
 }: ArticleReaderProps) {
   const { t } = useTranslation('reader')
   const queryClient = useQueryClient()
@@ -159,7 +168,13 @@ export function ArticleReader({
     window.dispatchEvent(new CustomEvent('openMobileSidebar'))
   }
   const updateMutation = useUpdateEntryState()
-  const contentRef = useContentRenderer(entry.content || entry.summary || undefined)
+  const articleHtml = (() => {
+    const source = entry.content || entry.summary
+    if (!source) return ''
+    const stripped = stripFeedMetadataHtml(processHtmlContent(source))
+    return articleHtmlHasContent(stripped) ? stripped : ''
+  })()
+  const contentRef = useContentRenderer(articleHtml || undefined)
   const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -195,22 +210,33 @@ export function ArticleReader({
     })
   }
 
+  const [bookmarkError, setBookmarkError] = useState(false)
   const handleToggleBookmark = async () => {
+    setBookmarkError(false)
     setIsBookmarking(true)
     try {
       if (entry.is_bookmarked && entry.bookmark_id) {
         // Remove bookmark
         await bookmarkService.deleteBookmark(entry.bookmark_id)
+        showBookmarkNotice('removed', entry.bookmark_id)
       } else {
         // Create bookmark
-        await bookmarkService.createBookmark({
+        const saved = await bookmarkService.createBookmark({
           entry_id: entry.id,
         })
+        showBookmarkNotice(saved.already_exists ? 'duplicate' : 'saved', saved.id)
       }
+      onBookmarkChange?.()
+      await Promise.all([
+        useBookmarkStore.getState().fetchBookmarks(),
+        useFolderStore.getState().fetchFolders('bookmark'),
+        useTagStore.getState().fetchTags(),
+      ])
       // Invalidate queries to refetch with updated is_bookmarked status
       await queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
       await queryClient.invalidateQueries({ queryKey: entryKeys.detail(entry.id) })
     } catch (err) {
+      setBookmarkError(true)
       console.error('Failed to toggle bookmark:', err)
     } finally {
       setIsBookmarking(false)
@@ -219,6 +245,11 @@ export function ArticleReader({
 
   return (
     <div className="bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      {bookmarkError && (
+        <p role="alert" className="text-destructive p-2">
+          {t('bookmarks:library.failed')}
+        </p>
+      )}
       {/* Mobile Header - auto-hide on scroll */}
       {isMobile && (
         <div
@@ -229,14 +260,18 @@ export function ArticleReader({
           <div className="flex h-14 items-center gap-2 px-4">
             {shouldShowCloseButton && onClose ? (
               <button
+                type="button"
                 onClick={onClose}
+                aria-label={t('article.back')}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleOpenMenu}
+                aria-label={t('article.openMenu')}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
                 <MenuIcon className="h-5 w-5" />
@@ -320,17 +355,23 @@ export function ArticleReader({
               </Button>
             )}
 
-            <PreferenceButtons entry={entry} />
+            {!hideReadStatus && (
+              <>
+                <PreferenceButtons entry={entry} />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleToggleReadLater}
-              className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
-            >
-              <Clock className="h-4 w-4" />
-              <span>{entry.read_later ? t('actions.savedForLater') : t('actions.readLater')}</span>
-            </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleToggleReadLater}
+                  className={`action-btn ${readLaterAnimation} ${entry.read_later ? 'text-primary' : 'text-muted-foreground'}`}
+                >
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    {entry.read_later ? t('actions.savedForLater') : t('actions.readLater')}
+                  </span>
+                </Button>
+              </>
+            )}
 
             <Button
               variant="ghost"
@@ -346,6 +387,15 @@ export function ArticleReader({
               )}
               <span>{entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}</span>
             </Button>
+            {bookmarkId && (
+              <BookmarkKnowledge
+                key={bookmarkId}
+                bookmarkId={bookmarkId}
+                contentRef={contentRef}
+                contentKey={articleHtml}
+                canHighlight={!!entry.content}
+              />
+            )}
           </div>
         </div>
       )}
@@ -369,17 +419,11 @@ export function ArticleReader({
               </div>
             )}
 
-            {entry.content ? (
+            {articleHtml ? (
               <article
                 ref={contentRef}
                 className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.content) }}
-              />
-            ) : entry.summary ? (
-              <article
-                ref={contentRef}
-                className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: processHtmlContent(entry.summary) }}
+                dangerouslySetInnerHTML={{ __html: articleHtml }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -400,12 +444,12 @@ export function ArticleReader({
           </div>
         </div>
 
-        {(entry.content || entry.summary) && (
+        {articleHtml && (
           <ArticleOutline
             key={`${entry.id}-${isMobile}`}
             contentRef={contentRef}
             scrollContainerRef={scrollContainerRef}
-            contentKey={entry.content || entry.summary || ''}
+            contentKey={articleHtml}
             isMobile={isMobile}
           />
         )}
@@ -441,17 +485,21 @@ export function ArticleReader({
               </button>
             )}
 
-            <PreferenceButtons entry={entry} mobileStyle />
+            {!hideReadStatus && (
+              <>
+                <PreferenceButtons entry={entry} mobileStyle />
 
-            <button
-              onClick={handleToggleReadLater}
-              className={`action-btn action-btn-mobile ${readLaterAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
-                entry.read_later ? 'text-primary' : 'text-muted-foreground'
-              }`}
-            >
-              <Clock className="h-5 w-5" />
-              <span className="text-[10px]">{t('filters.readLater')}</span>
-            </button>
+                <button
+                  onClick={handleToggleReadLater}
+                  className={`action-btn action-btn-mobile ${readLaterAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+                    entry.read_later ? 'text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  <Clock className="h-5 w-5" />
+                  <span className="text-[10px]">{t('filters.readLater')}</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={handleToggleBookmark}
@@ -469,6 +517,16 @@ export function ArticleReader({
                 {entry.is_bookmarked ? t('actions.archived') : t('actions.archive')}
               </span>
             </button>
+            {bookmarkId && (
+              <BookmarkKnowledge
+                key={bookmarkId}
+                bookmarkId={bookmarkId}
+                contentRef={contentRef}
+                contentKey={articleHtml}
+                canHighlight={!!entry.content}
+                mobile
+              />
+            )}
           </div>
         </div>
       )}

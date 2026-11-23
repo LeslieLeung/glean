@@ -9,13 +9,15 @@ from math import isfinite
 from typing import TYPE_CHECKING, Any, cast
 
 from arq.connections import ArqRedis
-from sqlalchemy import desc, func, select
+from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from glean_core import RedisKeys, get_logger
 from glean_core.published_at import effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
+from glean_core.schemas.jev import JevConfig
+from glean_core.services.jev_service import classification_for_display
+from glean_core.services.typed_config_service import TypedConfigService
 from glean_database.models import (
     Bookmark,
     Entry,
@@ -154,16 +156,20 @@ class EntryService:
             candidates = candidates.where(Entry.feed_id == feed_id)
         ranked_entries = candidates.subquery()
         unique_ids = select(ranked_entries.c.entry_id).where(ranked_entries.c.url_rank == 1)
+        jev_config = await TypedConfigService(self.session).get(JevConfig)
 
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
-        bookmark_source = aliased(Entry)
         bookmark_id_subq = (
             select(Bookmark.id)
-            .join(bookmark_source, bookmark_source.id == Bookmark.entry_id)
             .where(Bookmark.user_id == user_id)
-            .where(bookmark_source.url == Entry.url)
-            .order_by(Bookmark.created_at.desc(), Bookmark.id)
+            .where(
+                or_(
+                    Bookmark.entry_id == Entry.id,
+                    and_(Entry.url != "", Bookmark.url == Entry.url),
+                )
+            )
             .correlate(Entry)
+            .order_by(Bookmark.created_at, Bookmark.id)
             .limit(1)
             .scalar_subquery()
         )
@@ -254,6 +260,12 @@ class EntryService:
                     author=entry.author,
                     content=entry.content,
                     summary=entry.summary,
+                    classification=classification_for_display(
+                        entry.classification_result, jev_config
+                    ),
+                    classification_status=entry.classification_status
+                    if jev_config.enabled
+                    else None,
                     published_at=effective_published_at(entry.published_at, entry.created_at),
                     created_at=entry.created_at,
                     is_read=bool(user_entry.is_read) if user_entry else False,
@@ -301,6 +313,12 @@ class EntryService:
                         author=entry.author,
                         content=entry.content,
                         summary=entry.summary,
+                        classification=classification_for_display(
+                            entry.classification_result, jev_config
+                        ),
+                        classification_status=entry.classification_status
+                        if jev_config.enabled
+                        else None,
                         published_at=effective_published_at(entry.published_at, entry.created_at),
                         created_at=entry.created_at,
                         is_read=bool(user_entry.is_read) if user_entry else False,
@@ -341,15 +359,20 @@ class EntryService:
         Raises:
             ValueError: If entry not found or user not subscribed.
         """
+        jev_config = await TypedConfigService(self.session).get(JevConfig)
+
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
-        bookmark_source = aliased(Entry)
         bookmark_id_subq = (
             select(Bookmark.id)
-            .join(bookmark_source, bookmark_source.id == Bookmark.entry_id)
             .where(Bookmark.user_id == user_id)
-            .where(bookmark_source.url == Entry.url)
-            .order_by(Bookmark.created_at.desc(), Bookmark.id)
+            .where(
+                or_(
+                    Bookmark.entry_id == Entry.id,
+                    and_(Entry.url != "", Bookmark.url == Entry.url),
+                )
+            )
             .correlate(Entry)
+            .order_by(Bookmark.created_at, Bookmark.id)
             .limit(1)
             .scalar_subquery()
         )
@@ -393,6 +416,8 @@ class EntryService:
             author=entry.author,
             content=entry.content,
             summary=entry.summary,
+            classification=classification_for_display(entry.classification_result, jev_config),
+            classification_status=entry.classification_status if jev_config.enabled else None,
             published_at=effective_published_at(entry.published_at, entry.created_at),
             created_at=entry.created_at,
             is_read=bool(user_entry.is_read) if user_entry else False,

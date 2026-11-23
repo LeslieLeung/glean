@@ -414,13 +414,13 @@ def _default_policy() -> SSRFPolicy:
     """Build the default policy, allowing self-hosters to opt into private access.
 
     Environment variables (secure defaults):
-        GLEAN_SSRF_ALLOW_PRIVATE: if truthy, allow private IPs and localhost
+        SSRF_ALLOW_PRIVATE: if truthy, allow private IPs and localhost
             (cloud metadata endpoints remain blocked).
-        GLEAN_SSRF_ALLOWED_HOSTS: comma-separated hostnames to allowlist (DNS/IP
+        SSRF_ALLOWED_HOSTS: comma-separated hostnames to allowlist (DNS/IP
             validation is skipped for these hosts).
     """
-    allow_private = _env_flag("GLEAN_SSRF_ALLOW_PRIVATE")
-    allowed_hosts_raw = os.environ.get("GLEAN_SSRF_ALLOWED_HOSTS", "")
+    allow_private = _env_flag("SSRF_ALLOW_PRIVATE")
+    allowed_hosts_raw = os.environ.get("SSRF_ALLOWED_HOSTS", "")
     allowed_hosts = frozenset(h.strip().lower() for h in allowed_hosts_raw.split(",") if h.strip())
 
     return SSRFPolicy(

@@ -5,8 +5,9 @@ This module defines the Entry model for storing feed entries (articles).
 """
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, generate_uuid
@@ -63,6 +64,13 @@ class Entry(Base, TimestampMixin):
     embedding_error: Mapped[str | None] = mapped_column(Text)
     embedding_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     word_count: Mapped[int | None] = mapped_column(Integer)
+
+    classification_status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", nullable=False, index=True
+    )
+    classification_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    classification_error: Mapped[str | None] = mapped_column(Text)
+    classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
     feed = relationship("Feed", back_populates="entries")

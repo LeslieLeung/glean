@@ -25,6 +25,11 @@ class _ScalarResult:
         return self._value
 
 
+class _ConfigResult:
+    def scalar_one_or_none(self):
+        return None
+
+
 @pytest.mark.asyncio
 async def test_smart_view_can_page_beyond_the_old_five_page_window() -> None:
     now = datetime.now(UTC)
@@ -40,12 +45,15 @@ async def test_smart_view_can_page_beyond_the_old_five_page_window() -> None:
             summary=None,
             published_at=now - timedelta(minutes=index),
             created_at=now,
+            classification_result=None,
+            classification_status="pending",
         )
         rows.append((entry, None, None, "Example", None))
 
     session = AsyncMock()
     session.execute.side_effect = [
         _RowsResult([("feed-1",)]),
+        _ConfigResult(),
         _ScalarResult(120),
         _RowsResult(rows),
     ]

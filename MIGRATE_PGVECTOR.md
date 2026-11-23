@@ -24,14 +24,16 @@ upgraded together. Keep external access closed during the maintenance window.
   Keep your normal independent deployment backups; retained local volumes are
   not an off-machine backup.
 
-If you deployed by downloading only a Compose file, first download the script
-from the release you are installing:
+If you deployed by downloading only a Compose file, first download the script and
+pgvector template from the release you are installing:
 
 ```bash
 release_ref='RELEASE_GIT_TAG'
 mkdir -p scripts
 curl -fSL "https://raw.githubusercontent.com/LeslieLeung/glean/${release_ref}/scripts/migrate-to-pgvector.py" \
   -o scripts/migrate-to-pgvector.py
+curl -fSL "https://raw.githubusercontent.com/LeslieLeung/glean/${release_ref}/docker-compose.pgvector.yml" \
+  -o docker-compose.pgvector.yml
 ```
 
 ## Optional prerequisite check
@@ -108,8 +110,69 @@ restored together. Do not roll back by changing only an image tag.
 
 ## Running the migrated deployment
 
-The original Compose and `.env` files are unchanged. Use the script's Compose
-helper to operate the saved active configuration:
+After completing and verifying the migration, run this handoff command once from
+the original deployment directory:
+
+```bash
+python3 scripts/migrate-to-pgvector.py finalize
+```
+
+This does not restart containers or change data volumes. It archives the original
+deployment files to `.glean-pgvector-migration/deployment-backup.tar.gz`, verifies
+the backup, and then installs the new configuration:
+
+- The archive includes default Compose files, overrides, `.env`, and files passed
+  to `--compose` or `--env-file` during migration. It includes a manifest and
+  checksums, but no database dump or volume data.
+- `docker-compose.yml` is generated from the same release's
+  `docker-compose.pgvector.yml`, retaining comments and variables such as
+  `${IMAGE_TAG}`. The new PostgreSQL/Redis volume names and any custom fields
+  from the migrated deployment are applied to the template. These two volumes
+  are declared external to reuse the existing migrated data.
+- `.env` retains comments and custom options from the original environment files,
+  with image versions, ports, credentials, Compose file selection, and project
+  name updated to match the migrated deployment.
+  Other default Compose/override files are removed after archiving so that old
+  configuration cannot load automatically. Custom input files remain unchanged
+  but are no longer deployment entry points.
+
+Then use ordinary commands, without the migration script or `-f`:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 backend worker
+docker compose up -d
+docker compose down
+```
+
+Continue editing template variables such as `IMAGE_TAG`, `WEB_PORT`, `ADMIN_PORT`,
+and credentials in `.env`, then run `docker compose up -d`. Custom settings not
+covered by the template remain in their corresponding Compose fields. Before
+installation, the generated configuration is checked against the migrated
+deployment to preserve data volumes and custom settings. The template defaults
+to `docker-compose.pgvector.yml` in the project root beside `scripts/`; use
+`finalize --template PATH` to supply the same release's template elsewhere.
+Archived files within the deployment directory are under `deployment/`; external
+custom input files are under `external/`. `manifest.json` records original paths.
+
+Rerun `finalize` after an interruption to resume without overwriting the original
+archive. Rerunning after success leaves subsequent manual edits intact. For
+migrations already completed with an older script, default files are still
+archived automatically. Supply custom input files missing from the old state:
+
+```bash
+python3 scripts/migrate-to-pgvector.py finalize \
+  --compose docker-compose.production.yml --env-file .env.production
+```
+
+`rollback` still works after finalization and also restores original deployment
+files and permissions. It refuses to overwrite manual edits to the installed
+default files; save those edits separately and return the files to their installed
+contents before rolling back. Unset shell `COMPOSE_FILE` and `COMPOSE_PROJECT_NAME`
+variables before finalizing so they cannot override the permanent selection.
+
+Before finalization, the original Compose and `.env` files remain unchanged. Use
+the script's Compose helper to operate the saved active configuration:
 
 ```bash
 python3 scripts/migrate-to-pgvector.py compose ps
@@ -120,13 +183,13 @@ python3 scripts/migrate-to-pgvector.py compose up -d
 State, the database dump, and configuration snapshots are stored in
 `.glean-pgvector-migration/`, with restricted permissions and a Git ignore rule.
 Do not remove it or the rollback image tags until the migration is accepted.
-Do not publish the snapshots: they contain credentials. Keep using the helper or
-consolidate the saved configuration into your permanent deployment configuration
-before returning to ordinary `docker compose` commands. The helper selects the
-old configuration after rollback.
+Snapshots, the archive, and the installed configuration contain credentials; do
+not publish them. Ordinary operations no longer depend on the state directory
+after finalization, but retain it and the rollback image tags while script-based
+rollback is needed. The helper selects the old configuration after rollback.
 
 An optional global `--state-dir PATH` changes the state location; supply it before
-`migrate`, `status`, `rollback`, or `compose` on every invocation. After rollback,
+`migrate`, `status`, `finalize`, `rollback`, or `compose` on every invocation. After rollback,
 use a new state directory for a new migration so that a fresh backup is taken.
 The script never deletes data volumes. Clean up old volumes explicitly only after
 accepting the migration and keeping an independent backup.

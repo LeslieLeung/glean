@@ -21,13 +21,15 @@ python3 scripts/migrate-to-pgvector.py migrate --image-tag RELEASE_IMAGE_TAG
 - 磁盘空间足够保存数据库备份、恢复后的数据库及新向量。保留日常独立备份；
   脚本保留的本机旧卷不等于异地备份。
 
-如果之前只下载了 Compose 文件，请先从目标发布版本下载脚本：
+如果之前只下载了 Compose 文件，请先从目标发布版本下载脚本和 pgvector 模板：
 
 ```bash
 release_ref='RELEASE_GIT_TAG'
 mkdir -p scripts
 curl -fSL "https://raw.githubusercontent.com/LeslieLeung/glean/${release_ref}/scripts/migrate-to-pgvector.py" \
   -o scripts/migrate-to-pgvector.py
+curl -fSL "https://raw.githubusercontent.com/LeslieLeung/glean/${release_ref}/docker-compose.pgvector.yml" \
+  -o docker-compose.pgvector.yml
 ```
 
 ## 可选：先检查环境
@@ -94,7 +96,55 @@ python3 scripts/migrate-to-pgvector.py rollback
 
 ## 迁移后如何管理部署
 
-原 Compose 和 `.env` 文件保持不变。后续使用脚本的 Compose 入口操作保存的当前配置：
+迁移和验证完成后，在原部署目录执行一次交接命令：
+
+```bash
+python3 scripts/migrate-to-pgvector.py finalize
+```
+
+这个命令不会重启容器，也不会修改数据卷。它先将原部署文件打包到
+`.glean-pgvector-migration/deployment-backup.tar.gz`，校验备份后再安装新配置：
+
+- 归档原来的默认 Compose 文件、override、`.env`，以及迁移时通过 `--compose`、
+  `--env-file` 指定的文件。归档包含文件清单和校验值，不包含数据库或数据卷。
+- 以同一发布版本的 `docker-compose.pgvector.yml` 为模板生成 `docker-compose.yml`，
+  保留注释和 `${IMAGE_TAG}` 等变量，补上迁移后的 PostgreSQL/Redis 数据卷名称，并按需
+  保留原部署的自定义字段。这两个数据卷声明为已有的外部卷，直接复用迁移后的数据。
+- 沿用原 `.env`（及迁移时指定的环境文件）中的注释和自定义选项，更新镜像版本、端口、
+  凭据、正式 Compose 文件和项目名等实际值。其他默认 Compose/override 文件在
+  归档后移除，避免自动加载旧配置。自定义文件保留原样，但不再作为部署入口。
+
+之后直接使用普通命令，无需迁移脚本，也无需 `-f`：
+
+```bash
+docker compose ps
+docker compose logs --tail=100 backend worker
+docker compose up -d
+docker compose down
+```
+
+后续仍可在 `.env` 中修改 `IMAGE_TAG`、`WEB_PORT`、`ADMIN_PORT`、凭据等模板变量，
+再执行 `docker compose up -d`。模板未覆盖的自定义设置保留在 Compose 文件的对应字段中。
+安装前会校验生成配置与迁移后的实际配置，确保数据卷及自定义设置一致。
+默认从脚本旁的项目根目录读取模板；可用 `finalize --template PATH` 指定同一发布版本的
+模板文件。归档中部署目录内的文件位于 `deployment/`，
+目录外的自定义输入文件位于 `external/`，`manifest.json` 记录其原路径。
+
+交接中断后重复执行 `finalize` 即可继续，原归档不会被覆盖；成功后重复执行也不会覆盖
+后续手工修改。若使用旧版脚本已经完成迁移，默认部署文件仍会自动归档；旧状态未记录的
+自定义输入文件可额外指定：
+
+```bash
+python3 scripts/migrate-to-pgvector.py finalize \
+  --compose docker-compose.production.yml --env-file .env.production
+```
+
+交接后仍可执行 `rollback`，脚本会同时恢复原部署文件及其权限。如果交接后的默认配置
+已被手工修改，脚本会拒绝覆盖；请先另行保存改动，恢复交接时的文件内容后再回滚。
+Shell 中如设置了 `COMPOSE_FILE` 或 `COMPOSE_PROJECT_NAME`，交接前需取消这些变量，
+避免覆盖正式配置的选择。
+
+交接前，原 Compose 和 `.env` 文件保持不变，可使用脚本的 Compose 入口管理当前配置：
 
 ```bash
 python3 scripts/migrate-to-pgvector.py compose ps
@@ -104,9 +154,9 @@ python3 scripts/migrate-to-pgvector.py compose up -d
 
 迁移状态、数据库备份和配置快照保存在 `.glean-pgvector-migration/`，有权限保护并已加入
 Git 忽略规则。确认迁移成功前，不要删除该目录或回滚镜像标签。
-快照包含凭据，请勿公开。继续使用该入口，或先将保存的配置整理为正式部署配置，
-再恢复普通 `docker compose` 操作。回滚后，该入口会自动使用旧配置。
+快照、归档和新部署配置包含凭据，请勿公开。交接后日常运维不再依赖状态目录，但在仍需
+脚本回滚时必须保留它及回滚镜像标签。回滚后，Compose 入口会自动使用旧配置。
 
 可选的全局参数 `--state-dir PATH` 可以指定其他状态目录；每次都需要放在 `migrate`、
-`status`、`rollback` 或 `compose` 前。回滚后重新迁移时，请指定新状态目录，重新备份。
+`status`、`finalize`、`rollback` 或 `compose` 前。回滚后重新迁移时，请指定新状态目录，重新备份。
 脚本不会删除任何数据卷。确认迁移成功且保有独立备份后，再手工清理旧卷。

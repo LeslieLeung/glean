@@ -68,6 +68,26 @@ def test_naive_datetimes_are_treated_as_utc() -> None:
     assert resolved == datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
 
+def test_stored_future_timestamp_is_replaced_on_a_later_refresh() -> None:
+    stored = datetime(2027, 1, 1, tzinfo=UTC)
+    refresh = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+
+    resolved = effective_published_at(stored, refresh, now=refresh)
+
+    assert resolved == refresh
+    assert publication_time_was_replaced(stored, resolved)
+
+
+def test_genuine_past_timestamp_survives_a_later_refresh() -> None:
+    stored = datetime(2026, 2, 1, 8, 0, tzinfo=UTC)
+    refresh = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+
+    resolved = effective_published_at(stored, refresh, now=refresh)
+
+    assert resolved == stored
+    assert not publication_time_was_replaced(stored, resolved)
+
+
 def test_sort_order_places_abnormal_dates_at_fetch_time() -> None:
     now = datetime(2026, 3, 10, 12, 0, tzinfo=UTC)
     undated = ("undated", None, now - timedelta(hours=1))

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quick test script for embedding generation with Sentence Transformers."""
+"""Quick test script for embedding generation against a configured remote provider."""
 
 import asyncio
 import time

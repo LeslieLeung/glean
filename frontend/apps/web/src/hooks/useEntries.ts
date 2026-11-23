@@ -34,6 +34,10 @@ export function useEntries(filters?: EntryFilters) {
   return useQuery({
     queryKey: entryKeys.list(filters || {}),
     queryFn: () => entryService.getEntries(filters),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((entry) => entry.classification_status === 'pending')
+        ? 5000
+        : false,
   })
 }
 
@@ -52,6 +56,12 @@ export function useInfiniteEntries(filters?: Omit<EntryFilters, 'page'>) {
       return undefined
     },
     initialPageParam: 1,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((entry) => entry.classification_status === 'pending')
+      )
+        ? 5000
+        : false,
   })
 }
 
@@ -94,9 +104,17 @@ export function useUpdateEntryState() {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
-            items: page.items.map((item) =>
-              item.id === variables.entryId ? { ...item, ...updatedEntry } : item
-            ),
+            items: page.items.map((item) => {
+              if (item.id !== variables.entryId) return item
+              return {
+                ...item,
+                ...updatedEntry,
+                // State updates come from the single-entry API, which does not
+                // compute a smart-view score and returns null. Keep the score
+                // already shown on the list card.
+                preference_score: updatedEntry.preference_score ?? item.preference_score,
+              }
+            }),
           })),
         }
       })

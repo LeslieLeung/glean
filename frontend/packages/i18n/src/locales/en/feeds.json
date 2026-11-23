@@ -1,5 +1,7 @@
 {
   "sidebar": {
+    "collapseBookmarks": "Collapse bookmarks section",
+    "expandBookmarks": "Expand bookmarks section",
     "feeds": "Feeds",
     "smart": "Smart",
     "allFeeds": "All Feeds",
@@ -112,7 +114,8 @@
     "markAllAsRead": "Mark All as Read",
     "refresh": "Refresh",
     "openInNewTab": "Open in New Tab",
-    "copyLink": "Copy Link"
+    "copyLink": "Copy Link",
+    "moreActions": "More actions"
   },
   "states": {
     "refreshing": "Refreshing...",
@@ -222,6 +225,9 @@
     "adding": "Adding..."
   },
   "manager": {
+    "failed": "Failed",
+    "noFailedFeeds": "No failed feeds",
+    "noFailedFeedsDescription": "No feeds currently have fetch failures.",
     "untitled": "Untitled feed",
     "allFeeds": "All feeds",
     "ungrouped": "Ungrouped",

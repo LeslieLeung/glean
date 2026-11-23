@@ -259,7 +259,10 @@ export default function SubscriptionsPage() {
 
             {/* Import/Export Menu */}
             <Menu>
-              <MenuTrigger className="border-border text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors">
+              <MenuTrigger
+                aria-label={t('contextMenu.moreActions')}
+                className="border-border text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm transition-colors"
+              >
                 <MoreHorizontal className="h-4 w-4" />
               </MenuTrigger>
               <MenuPopup align="end">
@@ -669,7 +672,10 @@ function SubscriptionRow({
 
       {/* Actions */}
       <Menu>
-        <MenuTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 w-8 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100">
+        <MenuTrigger
+          aria-label={t('contextMenu.moreActions')}
+          className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 w-8 items-center justify-center rounded-lg opacity-0 transition-all group-hover:opacity-100"
+        >
           <MoreHorizontal className="h-4 w-4" />
         </MenuTrigger>
         <MenuPopup align="end">

@@ -10,8 +10,8 @@
     "markUnread": "Mark Unread",
     "readLater": "Read Later",
     "savedForLater": "Saved for Later",
-    "archive": "Archive",
-    "archived": "Archived",
+    "archive": "Save",
+    "archived": "Saved",
     "openOriginal": "Open Original",
     "open": "Open",
     "close": "Close",
@@ -55,7 +55,9 @@
   },
   "article": {
     "noContent": "No content available",
-    "viewOriginal": "View Original Article"
+    "viewOriginal": "View Original Article",
+    "back": "Back",
+    "openMenu": "Open menu"
   },
   "outline": {
     "title": "Table of contents",

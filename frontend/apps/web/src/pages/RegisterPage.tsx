@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Rss, AlertCircle, Sparkles, Check } from 'lucide-react'
@@ -13,13 +13,19 @@ import { useTranslation } from '@glean/i18n'
 export default function RegisterPage() {
   const { t } = useTranslation('auth')
   const navigate = useNavigate()
-  const { register, isLoading, error, clearError } = useAuthStore()
+  const { register, isLoading, error, clearError, isAuthenticated, user } = useAuthStore()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [validationError, setValidationError] = useState('')
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate('/reader', { replace: true })
+    }
+  }, [isAuthenticated, navigate, user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,7 +68,7 @@ export default function RegisterPage() {
     return errorMsg
   }
 
-  const displayError = validationError || translateError(error)
+  const serverError = translateError(error)
 
   const features = [
     t('register.features.subscribe'),
@@ -72,7 +78,7 @@ export default function RegisterPage() {
   ]
 
   return (
-    <div className="bg-background relative flex min-h-screen overflow-hidden">
+    <div className="bg-background relative flex min-h-screen overflow-x-hidden overflow-y-auto">
       {/* Left side - Form */}
       <div className="relative flex flex-1 items-center justify-center px-4 py-12">
         {/* Background decorations */}
@@ -101,11 +107,17 @@ export default function RegisterPage() {
           <div className="glass rounded-2xl p-8 shadow-xl">
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Error message */}
-              {displayError && (
+              {validationError && (
+                <Alert variant="error">
+                  <AlertCircle />
+                  <AlertDescription>{validationError}</AlertDescription>
+                </Alert>
+              )}
+              {serverError && (
                 <Alert variant="error">
                   <AlertCircle />
                   <AlertTitle>{t('errors.registerFailed')}</AlertTitle>
-                  <AlertDescription>{displayError}</AlertDescription>
+                  <AlertDescription>{serverError}</AlertDescription>
                 </Alert>
               )}
 

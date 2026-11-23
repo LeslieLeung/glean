@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Settings,
   Languages,
+  ScanText,
 } from 'lucide-react'
 import {
   Button,
@@ -87,6 +88,11 @@ export function Layout() {
       path: '/system',
       label: t('admin:layout.nav.system'),
       icon: Settings,
+    },
+    {
+      path: '/jev',
+      label: t('admin:jev.title'),
+      icon: ScanText,
     },
   ]
 
