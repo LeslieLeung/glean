@@ -34,6 +34,10 @@ export function useEntries(filters?: EntryFilters) {
   return useQuery({
     queryKey: entryKeys.list(filters || {}),
     queryFn: () => entryService.getEntries(filters),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((entry) => entry.classification_status === 'pending')
+        ? 5000
+        : false,
   })
 }
 
@@ -52,6 +56,12 @@ export function useInfiniteEntries(filters?: Omit<EntryFilters, 'page'>) {
       return undefined
     },
     initialPageParam: 1,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.items.some((entry) => entry.classification_status === 'pending')
+      )
+        ? 5000
+        : false,
   })
 }
 

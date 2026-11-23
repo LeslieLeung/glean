@@ -73,6 +73,14 @@ export interface Subscription {
 }
 
 /** Feed entry (article) */
+export interface EntryClassification {
+  label: 'human' | 'ai'
+  score: number
+  model_id: string
+  content: { label: string; name: string; confidence: number } | null
+  show_confidence: boolean
+}
+
 export interface Entry {
   id: string
   feed_id: string
@@ -84,6 +92,8 @@ export interface Entry {
   summary: string | null
   published_at: string | null
   created_at: string
+  classification?: EntryClassification | null
+  classification_status?: 'pending' | 'done' | 'skipped' | 'failed' | null
 }
 
 /** Entry with user state */

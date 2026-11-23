@@ -8,6 +8,7 @@ import UsersPage from './pages/UsersPage'
 import FeedsPage from './pages/FeedsPage'
 import EntriesPage from './pages/EntriesPage'
 import SettingsPage from './pages/SettingsPage'
+import JevSettingsPage from './pages/JevSettingsPage'
 import RegistrationSettingsPage from './pages/RegistrationSettingsPage'
 
 const queryClient = new QueryClient({
@@ -39,6 +40,7 @@ function App() {
             <Route path="feeds" element={<FeedsPage />} />
             <Route path="entries" element={<EntriesPage />} />
             <Route path="embeddings" element={<SettingsPage />} />
+            <Route path="jev" element={<JevSettingsPage />} />
             <Route path="system" element={<RegistrationSettingsPage />} />
             <Route path="settings" element={<Navigate to="/embeddings" replace />} />
           </Route>
