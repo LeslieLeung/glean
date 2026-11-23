@@ -899,8 +899,9 @@ body {
       box-shadow: 0 2px 8px -2px hsl(0 0% 0% / 0.06);
     }
 
-    [data-theme="light"] .prose pre code {
-      color: hsl(220 25% 22%);
+  [data-theme="light"] .prose pre,
+  [data-theme="light"] .prose pre code {
+    color: hsl(220 25% 22%);
   }
 
   /* Inline code styling for light theme */
