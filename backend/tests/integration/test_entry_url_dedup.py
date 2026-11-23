@@ -365,3 +365,64 @@ async def test_preference_rebuild_uses_authoritative_url_reaction(
     stats = await CorePreferences(db_session, AsyncMock()).get_stats(test_user.id)
     assert stats["total_likes"] == int(reaction is True)
     assert stats["total_dislikes"] == int(reaction is False)
+
+
+async def test_mcp_readers_share_url_state(db_session, test_user, duplicate_articles, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from mcp.server.auth.middleware.auth_context import auth_context_var
+    from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
+    from mcp.server.auth.provider import AccessToken
+
+    from glean_api.mcp.tools import entries as mcp_entries
+    from glean_api.mcp.tools import subscriptions as mcp_subscriptions
+
+    feeds, entries, _ = duplicate_articles
+    day = entries[1].published_at.date().isoformat()
+
+    @asynccontextmanager
+    async def session_context():
+        yield db_session
+
+    monkeypatch.setattr(mcp_entries, "get_session_context", session_context)
+    monkeypatch.setattr(mcp_subscriptions, "get_session_context", session_context)
+
+    service = EntryService(db_session)
+    await service.update_entry_state(
+        entries[0].id, test_user.id, UpdateEntryStateRequest(is_read=False)
+    )
+    # Marking the copy read updates the row created for the original feed.
+    await service.update_entry_state(
+        entries[1].id, test_user.id, UpdateEntryStateRequest(is_read=True)
+    )
+
+    token = auth_context_var.set(
+        AuthenticatedUser(
+            AccessToken(
+                token="test-token", client_id="test-client", scopes=[f"user:{test_user.id}"]
+            )
+        )
+    )
+    try:
+        detail = await mcp_entries.get_entry(None, entries[1].id)  # type: ignore[arg-type]
+        assert detail["is_read"] is True
+
+        matches = await mcp_entries.search_entries(None, "Shared", feed_id=feeds[1].id)  # type: ignore[arg-type]
+        assert [(item["id"], item["is_read"]) for item in matches] == [(entries[1].id, True)]
+
+        unread = await mcp_entries.list_entries_by_date(
+            None,  # type: ignore[arg-type]
+            entries[3].published_at.date().isoformat(),
+            day,
+            feed_id=feeds[1].id,
+            is_read=False,
+        )
+        assert [item["id"] for item in unread] == [entries[3].id]
+
+        subscriptions = await mcp_subscriptions.list_subscriptions(None)  # type: ignore[arg-type]
+        assert {item["feed_id"]: item["unread_count"] for item in subscriptions} == {
+            feeds[0].id: 0,
+            feeds[1].id: 1,
+        }
+    finally:
+        auth_context_var.reset(token)

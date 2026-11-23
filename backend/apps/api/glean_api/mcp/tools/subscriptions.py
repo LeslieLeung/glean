@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from glean_core import get_logger
+from glean_core.services.entry_dedup import url_user_entry_id
 from glean_database.models import Entry, Subscription, UserEntry
 from glean_database.session import get_session_context
 
@@ -68,12 +69,12 @@ async def list_subscriptions(
         unread_counts_stmt = (
             select(
                 Entry.feed_id,
-                func.count(Entry.id).label("unread_count"),
+                func.count(func.distinct(Entry.url)).label("unread_count"),
             )
             .where(Entry.feed_id.in_(feed_ids))
             .outerjoin(
                 UserEntry,
-                (UserEntry.entry_id == Entry.id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
             .where((UserEntry.is_read.is_(False)) | (UserEntry.is_read.is_(None)))
             .group_by(Entry.feed_id)

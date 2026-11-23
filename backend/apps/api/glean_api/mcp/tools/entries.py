@@ -13,6 +13,7 @@ from sqlalchemy import desc, func, select
 
 from glean_core import get_logger
 from glean_core.published_at import effective_published_at
+from glean_core.services.entry_dedup import url_user_entry_id
 from glean_database.models import Entry, Feed, Subscription, UserEntry
 from glean_database.session import get_session_context
 
@@ -94,7 +95,7 @@ async def search_entries(
             .join(Feed, Entry.feed_id == Feed.id)
             .outerjoin(
                 UserEntry,
-                (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
             .where(Entry.feed_id.in_(feed_ids))
             .where(
@@ -171,7 +172,7 @@ async def get_entry(
             .join(Feed, Entry.feed_id == Feed.id)
             .outerjoin(
                 UserEntry,
-                (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
             .where(Entry.id == entry_id)
         )
@@ -277,7 +278,7 @@ async def list_entries_by_date(
             .join(Feed, Entry.feed_id == Feed.id)
             .outerjoin(
                 UserEntry,
-                (Entry.id == UserEntry.entry_id) & (UserEntry.user_id == user_id),
+                UserEntry.id == url_user_entry_id(user_id),
             )
             .where(Entry.feed_id.in_(feed_ids))
             .where(Entry.published_at >= start_dt)
