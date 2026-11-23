@@ -78,8 +78,8 @@ class VolcEngineProvider(EmbeddingProvider):
 
             embedding = response.data[0].embedding
 
-            # Validate dimension matches expected
-            if not self.validate_dimension(embedding):
+            # Dimension zero is reserved for the single-text inference probe.
+            if self.dimension != 0 and not self.validate_dimension(embedding):
                 raise ValueError(
                     f"Dimension mismatch: expected {self.dimension}, got {len(embedding)}"
                 )

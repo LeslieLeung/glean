@@ -48,7 +48,7 @@ class TestCheckVectorizationEnabled:
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )
@@ -70,7 +70,7 @@ class TestCheckVectorizationEnabled:
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.VALIDATING,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )
@@ -96,7 +96,7 @@ class TestCheckVectorizationEnabled:
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.ERROR,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
             last_error="Connection failed",
@@ -124,7 +124,7 @@ class TestCheckVectorizationEnabled:
             EmbeddingConfig(
                 enabled=True,
                 status=VectorizationStatus.IDLE,
-                provider="sentence-transformers",
+                provider="openai",
                 model="test-model",
                 dimension=384,
             )
@@ -149,7 +149,7 @@ class TestCheckVectorizationEnabled:
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.REBUILDING,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )
@@ -172,7 +172,7 @@ class TestCheckVectorizationEnabled:
                 status=VectorizationStatus.REBUILDING,
                 rebuild_id="rebuild-1",
                 rebuild_phase=EmbeddingRebuildPhase.PREFERENCES,
-                provider="sentence-transformers",
+                provider="openai",
                 model="test-model",
                 dimension=384,
             )
@@ -202,7 +202,7 @@ class TestUpdateUserPreference:
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.VALIDATING,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )
@@ -232,7 +232,7 @@ class TestUpdateUserPreference:
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )
@@ -269,7 +269,7 @@ class TestRebuildUserPreference:
         mock_config = EmbeddingConfig(
             enabled=True,
             status=VectorizationStatus.ERROR,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
             last_error="Provider unavailable",
@@ -298,7 +298,7 @@ class TestRebuildUserPreference:
         mock_config = EmbeddingConfig(
             enabled=False,
             status=VectorizationStatus.DISABLED,
-            provider="sentence-transformers",
+            provider="openai",
             model="test-model",
             dimension=384,
         )

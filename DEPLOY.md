@@ -410,30 +410,14 @@ When `PGVECTOR_DATABASE_URL` is left empty, Glean connects pgvector to `DATABASE
 
 ### Embedding Configuration
 
-Required for preference learning and smart recommendations:
+Vectorization is disabled by default. To enable preference learning and smart recommendations, configure a provider in **Admin → Embedding Settings**, then enable vectorization.
 
-| Variable               | Default                  | Description                                      |
-| ---------------------- | ------------------------ | ------------------------------------------------ |
-| `EMBEDDING_PROVIDER`   | `sentence-transformers`  | Provider: sentence-transformers, openai, volc-engine |
-| `EMBEDDING_MODEL`      | `all-MiniLM-L6-v2`       | Model name                                       |
-| `EMBEDDING_DIMENSION`  | `384`                    | Vector dimension (must match model)              |
-| `EMBEDDING_API_KEY`    | -                        | API key (for openai/volc-engine)                 |
-| `EMBEDDING_BASE_URL`   | -                        | Custom API endpoint (optional)                   |
-| `EMBEDDING_BATCH_SIZE` | `20`                     | Batch size for embedding generation              |
-| `EMBEDDING_MAX_RETRIES`| `3`                      | Max retries for failed requests                  |
-| `EMBEDDING_TIMEOUT`    | `30`                     | Request timeout in seconds                       |
+| Provider | Configuration |
+| --- | --- |
+| OpenAI | API key and model, such as `text-embedding-3-small`. Set a custom Base URL to use an OpenAI-compatible server. |
+| VolcEngine | API key (or `ARK_API_KEY`) and model endpoint ID. |
 
-**Supported providers:**
-- **sentence-transformers** - Local embedding models (no API key required)
-  - Models: `all-MiniLM-L6-v2` (384d), `paraphrase-multilingual-MiniLM-L12-v2` (384d)
-- **openai** - OpenAI embedding API
-  - Models: `text-embedding-3-small` (1536d), `text-embedding-3-large` (3072d)
-  - Requires: `EMBEDDING_API_KEY`
-- **volc-engine** - Volcengine/ByteDance embedding API
-  - Models: `doubao-embedding` (1024d)
-  - Requires: `EMBEDDING_API_KEY` or `ARK_API_KEY`
-
-For complete configuration reference, see [.env.example](.env.example).
+Upgrading disables configurations that used the built-in Sentence Transformers provider. Select a remote provider and enable vectorization to rebuild embeddings for the new model. The upgrade migration preserves existing vector data.
 
 ## Admin Account Management
 

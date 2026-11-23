@@ -18,8 +18,8 @@ def _embedding_config() -> EmbeddingConfig:
     config = EmbeddingConfig(
         enabled=True,
         status=VectorizationStatus.IDLE,
-        provider="sentence-transformers",
-        model="all-MiniLM-L6-v2",
+        provider="openai",
+        model="text-embedding-3-small",
         dimension=384,
         vector_backend=vector_backend_config.backend,
         vector_store_fingerprint=vector_store_fingerprint(),
@@ -70,8 +70,8 @@ async def test_cleanup_ensures_storage_before_first_milvus_delete() -> None:
 
     vector_client.ensure_collections.assert_awaited_once_with(
         384,
-        "sentence-transformers",
-        "all-MiniLM-L6-v2",
+        "openai",
+        "text-embedding-3-small",
     )
     vector_client.delete_entry_embedding.assert_awaited_once_with("entry-1")
     assert result["success"] is True

@@ -50,11 +50,11 @@ class EmbeddingValidationService:
             from glean_vector.clients.embedding_factory import EmbeddingProviderFactory
             from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 
-            # Build minimal settings (dimension will be set to a placeholder)
+            # A zero dimension lets the provider probe discover the actual size.
             settings = EmbeddingSettings(
                 provider=provider,
                 model=model,
-                dimension=1536,  # Placeholder, will be inferred
+                dimension=0,
                 api_key=api_key or "",
                 base_url=base_url,
             )

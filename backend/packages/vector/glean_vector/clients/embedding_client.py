@@ -25,7 +25,7 @@ class EmbeddingClient:
 
         >>> # Use custom config
         >>> from glean_vector.config import EmbeddingConfig
-        >>> config = EmbeddingConfig(provider="sentence-transformers", model="all-mpnet-base-v2")
+        >>> config = EmbeddingConfig(provider="openai", model="text-embedding-3-small")
         >>> client = EmbeddingClient(config=config)
     """
 

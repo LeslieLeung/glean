@@ -126,14 +126,7 @@ export function useValidateEmbedding() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      // Use longer timeout for validation as it may download models
-      const res = await api.post(
-        '/embedding/validate',
-        {},
-        {
-          timeout: 600000, // 10 minutes for model download
-        }
-      )
+      const res = await api.post('/embedding/validate')
       return res.data as ValidationResult
     },
     onSuccess: () => {
@@ -147,10 +140,7 @@ export function useTestEmbedding() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: EmbeddingConfigUpdatePayload) => {
-      // Use longer timeout for testing as it may download models
-      const res = await api.post('/embedding/test', payload, {
-        timeout: 600000, // 10 minutes for model download
-      })
+      const res = await api.post('/embedding/test', payload)
       return res.data as ValidationResult
     },
     onSuccess: () => {
