@@ -426,3 +426,30 @@ async def test_mcp_readers_share_url_state(db_session, test_user, duplicate_arti
         }
     finally:
         auth_context_var.reset(token)
+
+
+async def test_linkless_entries_keep_separate_read_state(db_session, test_user, duplicate_articles):
+    feeds, entries, _ = duplicate_articles
+    original, copy = entries[:2]
+    original.url = copy.url = ""
+    other = Entry(feed_id=feeds[1].id, url="", title="Another linkless article")
+    db_session.add(other)
+    await db_session.commit()
+
+    service = EntryService(db_session)
+    unread = await service.get_entries(test_user.id, is_read=False)
+    assert {item.id for item in unread.items} == {original.id, copy.id, other.id, entries[3].id}
+
+    await service.update_entry_state(copy.id, test_user.id, UpdateEntryStateRequest(is_read=True))
+    assert (await service.get_entry(copy.id, test_user.id)).is_read
+    assert not (await service.get_entry(original.id, test_user.id)).is_read
+    assert not (await service.get_entry(other.id, test_user.id)).is_read
+    subscriptions = await FeedService(db_session).get_user_subscriptions(test_user.id)
+    assert {sub.feed_id: sub.unread_count for sub in subscriptions} == {
+        feeds[0].id: 1,
+        feeds[1].id: 2,
+    }
+
+    await service.mark_all_read(test_user.id, feed_id=feeds[1].id)
+    unread = await service.get_entries(test_user.id, is_read=False)
+    assert [item.id for item in unread.items] == [original.id]

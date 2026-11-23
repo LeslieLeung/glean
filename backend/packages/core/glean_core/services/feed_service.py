@@ -27,7 +27,7 @@ from glean_database.models import (
     VectorCleanupPending,
 )
 
-from .entry_dedup import url_user_entry_id
+from .entry_dedup import count_distinct_articles, url_user_entry_id
 from .preference_dirty_service import get_feed_preference_user_ids, mark_preferences_dirty
 
 # Sentinel for unset values
@@ -84,7 +84,7 @@ class FeedService:
             # 1. Not in user_entries (never seen)
             # 2. In user_entries but is_read = False
             unread_stmt = (
-                select(func.count(func.distinct(Entry.url)))
+                select(count_distinct_articles())
                 .where(Entry.feed_id == sub.feed_id)
                 .outerjoin(
                     UserEntry,
@@ -255,7 +255,7 @@ class FeedService:
             # 1. Not in user_entries (never seen)
             # 2. In user_entries but is_read = False
             unread_stmt = (
-                select(func.count(func.distinct(Entry.url)))
+                select(count_distinct_articles())
                 .where(Entry.feed_id == sub.feed_id)
                 .outerjoin(
                     UserEntry,
@@ -471,6 +471,7 @@ class FeedService:
             .where(
                 UserEntry.user_id == user_id,
                 Entry.feed_id == feed_id,
+                Entry.url != "",
                 UserEntry.id == url_user_entry_id(user_id),
             )
         )

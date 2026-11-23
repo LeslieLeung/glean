@@ -28,7 +28,7 @@ from glean_database.models import (
     UserEntry,
 )
 
-from .entry_dedup import url_user_entry_id
+from .entry_dedup import linkless_entry_id, url_user_entry_id
 from .preference_dirty_service import mark_preferences_dirty
 
 logger = get_logger(__name__)
@@ -103,7 +103,7 @@ class EntryService:
         """
         Get entries for a user with filtering and pagination.
 
-        Exact matching URLs appear once within the selected feeds/folders,
+        Exact matching non-empty URLs appear once within the selected feeds/folders,
         preferring the earliest subscription. State is shared by URL per user.
 
         Args:
@@ -144,7 +144,7 @@ class EntryService:
                 Entry.id.label("entry_id"),
                 func.row_number()
                 .over(
-                    partition_by=Entry.url,
+                    partition_by=(Entry.url, linkless_entry_id()),
                     order_by=(Subscription.created_at, Entry.created_at, Entry.id),
                 )
                 .label("url_rank"),
@@ -466,7 +466,9 @@ class EntryService:
             raise ValueError("Not subscribed to this feed")
 
         # Get or create UserEntry
-        stmt = select(UserEntry).where(UserEntry.id == url_user_entry_id(user_id, entry.url))
+        stmt = select(UserEntry).where(
+            UserEntry.id == url_user_entry_id(user_id, entry.url, entry.id)
+        )
         result = await self.session.execute(stmt)
         user_entry = result.scalar_one_or_none()
 
@@ -587,14 +589,16 @@ class EntryService:
             entries_stmt = entries_stmt.where(Entry.feed_id == feed_id)
 
         result = await self.session.execute(entries_stmt)
-        entry_ids_by_url: dict[str, str] = {}
+        entry_ids_by_article: dict[tuple[str, str | None], str] = {}
         for entry_id, url in result.all():
-            entry_ids_by_url.setdefault(url, entry_id)
+            entry_ids_by_article.setdefault((url, None if url else entry_id), entry_id)
 
         # Update or create UserEntry records
         now = datetime.now(UTC)
-        for url, entry_id in entry_ids_by_url.items():
-            stmt = select(UserEntry).where(UserEntry.id == url_user_entry_id(user_id, url))
+        for (url, _), entry_id in entry_ids_by_article.items():
+            stmt = select(UserEntry).where(
+                UserEntry.id == url_user_entry_id(user_id, url, entry_id)
+            )
             result = await self.session.execute(stmt)
             user_entry = result.scalar_one_or_none()
 

@@ -7,11 +7,11 @@ Provides listing functionality for RSS feed subscriptions.
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from glean_core import get_logger
-from glean_core.services.entry_dedup import url_user_entry_id
+from glean_core.services.entry_dedup import count_distinct_articles, url_user_entry_id
 from glean_database.models import Entry, Subscription, UserEntry
 from glean_database.session import get_session_context
 
@@ -69,7 +69,7 @@ async def list_subscriptions(
         unread_counts_stmt = (
             select(
                 Entry.feed_id,
-                func.count(func.distinct(Entry.url)).label("unread_count"),
+                count_distinct_articles().label("unread_count"),
             )
             .where(Entry.feed_id.in_(feed_ids))
             .outerjoin(
