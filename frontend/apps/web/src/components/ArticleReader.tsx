@@ -2,7 +2,7 @@ import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
 import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
 import { useUpdateEntryState, entryKeys } from '../hooks/useEntries'
@@ -168,13 +168,14 @@ export function ArticleReader({
     window.dispatchEvent(new CustomEvent('openMobileSidebar'))
   }
   const updateMutation = useUpdateEntryState()
-  const articleHtml = (() => {
-    const source = entry.content || entry.summary
+  const source = entry.content || entry.summary
+  const articleHtml = useMemo(() => {
     if (!source) return ''
     const stripped = stripFeedMetadataHtml(processHtmlContent(source))
     return articleHtmlHasContent(stripped) ? stripped : ''
-  })()
+  }, [source])
   const contentRef = useContentRenderer(articleHtml || undefined)
+  const articleMarkup = useMemo(() => ({ __html: articleHtml }), [articleHtml])
   const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useIsMobile()
@@ -423,7 +424,7 @@ export function ArticleReader({
               <article
                 ref={contentRef}
                 className="prose prose-lg font-reading max-w-none"
-                dangerouslySetInnerHTML={{ __html: articleHtml }}
+                dangerouslySetInnerHTML={articleMarkup}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-16 text-center">
