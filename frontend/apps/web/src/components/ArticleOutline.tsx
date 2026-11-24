@@ -109,7 +109,7 @@ export function ArticleOutline({
           type="button"
           aria-current={index === activeIndex ? 'location' : undefined}
           className={cn(
-            'hover:bg-accent focus-visible:ring-ring flex min-h-9 w-full items-center gap-4 rounded px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2',
+            'hover:bg-accent focus-visible:ring-ring flex min-h-9 w-full items-center rounded px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2',
             index === activeIndex ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
           )}
           style={{ paddingLeft: (heading.level - rootLevel) * 12 + 8 }}
@@ -117,9 +117,6 @@ export function ArticleOutline({
         >
           <span className="min-w-0 flex-1 truncate" title={heading.text}>
             {heading.text}
-          </span>
-          <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
-            H{heading.level}
           </span>
         </button>
       ))}
