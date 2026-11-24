@@ -245,7 +245,6 @@
     "addCategory": "添加分类",
     "contentPrompt": "内容分类提示词",
     "promptPreview": "提示词预览",
-    "showConfidence": "在角标上显示置信度",
     "minTextLength": "最少正文长度（字符数）",
     "minTextLengthHint": "短于此长度的文章会跳过检测。每篇文章最多发送 6,000 个纯文本字符给 Jev。",
     "processing": "文章处理",

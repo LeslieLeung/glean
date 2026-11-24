@@ -1,6 +1,6 @@
 """Jev detection configuration and validated results."""
 
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -56,7 +56,6 @@ class JevSettings(BaseModel):
         default_factory=default_categories, min_length=1, max_length=10
     )
     min_text_length: int = Field(default=200, ge=50, le=5000)
-    show_confidence: bool = False
 
     @field_validator("base_url")
     @classmethod
@@ -90,6 +89,19 @@ class JevConfig(JevSettings):
     api_key: str | None = Field(default=None, repr=False)
     version: str = "initial"
 
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_legacy_display_setting(cls, value: Any) -> Any:
+        # Older installations stored this preference in the system config.
+        if not isinstance(value, dict):
+            return value
+        settings = cast(dict[str, Any], value)
+        if "show_confidence" not in settings:
+            return settings
+        settings = settings.copy()
+        settings.pop("show_confidence")
+        return settings
+
 
 class JevConfigRequest(JevSettings):
     # Omitted/null preserves the saved key; an empty string clears it.
@@ -118,7 +130,6 @@ class EntryClassification(BaseModel):
     score: Probability
     model_id: str
     content: ContentClassification | None = None
-    show_confidence: bool = False
 
 
 class JevNoulAnswer(BaseModel):

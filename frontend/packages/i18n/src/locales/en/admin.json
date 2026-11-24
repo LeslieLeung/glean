@@ -245,7 +245,6 @@
     "addCategory": "Add category",
     "contentPrompt": "Content classification prompt",
     "promptPreview": "Prompt preview",
-    "showConfidence": "Show confidence on the badge",
     "minTextLength": "Minimum text length (characters)",
     "minTextLengthHint": "Articles below this length are skipped. Up to 6,000 characters of plain article text are sent to Jev.",
     "processing": "Article processing",

@@ -10,6 +10,9 @@ export interface UserSettings {
   read_later_days?: number // Days until read later items expire (0 = never)
   show_read_later_remaining?: boolean // Show remaining time in read later list
   keyboard_navigation?: boolean // Use arrow keys / j/k to navigate between entries
+  show_jev_ai_label?: boolean
+  show_jev_content_type?: boolean
+  show_jev_confidence?: boolean
 }
 
 /** User account information */
@@ -78,7 +81,6 @@ export interface EntryClassification {
   score: number
   model_id: string
   content: { label: string; name: string; confidence: number } | null
-  show_confidence: boolean
 }
 
 export interface Entry {

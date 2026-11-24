@@ -39,7 +39,6 @@ function settingsFrom(config: JevConfigResponse): JevSettings {
     content_prompt: config.content_prompt,
     categories: config.categories,
     min_text_length: config.min_text_length,
-    show_confidence: config.show_confidence,
   }
 }
 
@@ -352,14 +351,6 @@ function JevForm({ config }: { config: JevConfigResponse }) {
                 {JSON.stringify(prompt, null, 2)}
               </pre>
             </details>
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="jev-confidence">{t('jev.showConfidence')}</Label>
-              <Switch
-                id="jev-confidence"
-                checked={form.show_confidence}
-                onCheckedChange={(value) => change('show_confidence', value)}
-              />
-            </div>
             <Field>
               <FieldLabel htmlFor="jev-min-length">{t('jev.minTextLength')}</FieldLabel>
               <Input
