@@ -43,10 +43,18 @@
   },
   "smart": {
     "title": "Smart",
-    "description": "Sorted by your preferences",
-    "limitedMode": "Limited Smart Mode",
-    "enableVectorizationHint": "Enable vectorization for AI-powered recommendations based on content similarity.",
-    "goToSettings": "Go to Settings"
+    "description": "Recent unread articles",
+    "score": "Recommendation score: {{score}}",
+    "refresh": "Refresh Smart",
+    "empty": "Older articles are available in the timeline.",
+    "expired": "This Smart list has expired. Refresh to continue.",
+    "reasons": {
+      "publication": "Based on publication time",
+      "liked": "You liked this article",
+      "disliked": "You disliked this article",
+      "similar_liked": "Similar to articles you liked",
+      "similar_disliked": "Similar to articles you disliked"
+    }
   },
   "empty": {
     "selectArticle": "Select an article",

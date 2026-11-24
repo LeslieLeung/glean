@@ -112,7 +112,9 @@ export interface EntryWithState extends Entry {
   feed_title: string | null
   feed_icon_url: string | null
   // M3: Preference score
-  preference_score: number | null // 0-100 preference score
+  preference_score: number | null // 0-100 recommendation score
+  recommendation_reason?:
+    'publication' | 'liked' | 'disliked' | 'similar_liked' | 'similar_disliked' | null
   debug_info: ScoreDebugInfo | null // Debug information (if debug mode enabled)
 }
 
@@ -266,17 +268,6 @@ export interface PreferenceStats {
   total_likes: number
   total_dislikes: number
   total_bookmarks: number
-  preference_strength: 'weak' | 'moderate' | 'strong'
-  top_sources: Array<{
-    feed_id: string
-    feed_title: string
-    affinity_score: number
-  }>
-  top_authors: Array<{
-    name: string
-    affinity_score: number
-  }>
-  model_updated_at: string | null
 }
 
 // MCP: API Token types

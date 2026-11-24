@@ -54,10 +54,13 @@ export interface EmbeddingStatusResponse {
   rebuild_id: string | null
   rebuild_started_at: string | null
   rebuild_phase: EmbeddingRebuildPhase | null
+  recent_failures?: { id: string; title: string | null; error: string | null }[]
   progress: {
     total: number
     done: number
     failed: number
+    pending: number
+    processing: number
   }
 }
 
@@ -178,6 +181,17 @@ export function useCancelRebuild() {
   })
 }
 
+export function useRetryFailedEmbeddings() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const response = await api.post<{ queued: number }>('/embedding/retry-failed')
+      return response.data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['embedding-status'] }),
+  })
+}
+
 export function useEmbeddingStatus(enabled = true) {
   const qc = useQueryClient()
   return useQuery<EmbeddingStatusResponse>({
@@ -202,6 +216,15 @@ export function useEmbeddingStatus(enabled = true) {
 
       return statusData
     },
-    refetchInterval: enabled ? 3000 : false,
+    refetchInterval: (query) => {
+      if (!enabled) return false
+      const current = query.state.data
+      return current?.status === 'rebuilding' ||
+        current?.status === 'validating' ||
+        current?.progress.pending ||
+        current?.progress.processing
+        ? 3000
+        : 15000
+    },
   })
 }

@@ -7,13 +7,11 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core import RedisKeys
 from glean_database.models import (
     Entry,
     Feed,
     Subscription,
     User,
-    UserPreferenceStats,
     VectorCleanupPending,
 )
 
@@ -214,14 +212,9 @@ class TestAdminFeedDeletion:
             title="Admin delete entry",
             guid="admin-delete-entry",
         )
-        stats = UserPreferenceStats(
-            user_id=test_user.id,
-            source_affinity={test_feed.id: {"positive": 2, "negative": 0}},
-        )
-        db_session.add_all([test_subscription, entry, stats])
+        db_session.add_all([test_subscription, entry])
         await db_session.commit()
         await db_session.refresh(entry)
-        initial_revision = test_user.preference_revision
 
         response = await client.delete(f"/api/admin/feeds/{test_feed.id}", headers=admin_headers)
 
@@ -232,16 +225,11 @@ class TestAdminFeedDeletion:
             )
         ).scalar_one()
         assert pending.feed_id == test_feed.id
-        await db_session.refresh(test_user)
-        await db_session.refresh(stats)
-        assert test_user.preference_revision == initial_revision + 1
-        assert test_feed.id not in stats.source_affinity
         assert ("cleanup_orphan_embeddings", (test_feed.id, [entry.id])) in (
             test_mock_redis.enqueued_jobs
         )
-        assert test_mock_redis.has_key(RedisKeys.PREFERENCE_PENDING_USERS_KEY)
 
-    async def test_batch_delete_stages_each_feed_and_dirties_user_once(
+    async def test_batch_delete_stages_each_feed(
         self,
         client: AsyncClient,
         admin_headers: dict[str, str],
@@ -265,13 +253,8 @@ class TestAdminFeedDeletion:
             for index, feed in enumerate(feeds)
         ]
         subscriptions = [Subscription(user_id=test_user.id, feed_id=feed.id) for feed in feeds]
-        stats = UserPreferenceStats(
-            user_id=test_user.id,
-            source_affinity={feed.id: {"positive": 1, "negative": 0} for feed in feeds},
-        )
-        db_session.add_all([*entries, *subscriptions, stats])
+        db_session.add_all([*entries, *subscriptions])
         await db_session.commit()
-        initial_revision = test_user.preference_revision
 
         response = await client.post(
             "/api/admin/feeds/batch",
@@ -291,13 +274,66 @@ class TestAdminFeedDeletion:
             ).scalars()
         )
         assert pending_ids == {entry.id for entry in entries}
-        await db_session.refresh(test_user)
-        await db_session.refresh(stats)
-        assert test_user.preference_revision == initial_revision + 1
-        assert stats.source_affinity == {}
         cleanup_jobs = [
             args
             for name, args in test_mock_redis.enqueued_jobs
             if name == "cleanup_orphan_embeddings"
         ]
         assert {args[0] for args in cleanup_jobs} == {feed.id for feed in feeds}
+
+
+async def test_admin_embedding_progress_and_manual_retry(
+    client, admin_headers, db_session, test_mock_redis, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+    from glean_core.services import TypedConfigService
+
+    feed = Feed(url="https://example.com/embedding.xml", title="Embeddings")
+    db_session.add(feed)
+    await db_session.flush()
+    entries = [
+        Entry(
+            feed_id=feed.id,
+            url=f"https://example.com/embedding/{name}",
+            title=name,
+            embedding_status=name,
+            embedding_error="provider rejected article for test-key" if name == "failed" else None,
+        )
+        for name in ("done", "pending", "failed")
+    ]
+    config = TypedConfigService(db_session)
+    db_session.add_all(entries)
+    await config.update(
+        EmbeddingConfig, enabled=True, status=VectorizationStatus.IDLE, api_key="test-key"
+    )
+    await db_session.commit()
+    lock = AsyncMock()
+    lock.acquire.return_value = True
+    monkeypatch.setattr(test_mock_redis, "lock", lambda *args, **kwargs: lock, raising=False)
+
+    status = await client.get("/api/admin/embedding/status", headers=admin_headers)
+    assert status.json()["progress"] == {
+        "total": 3,
+        "done": 1,
+        "pending": 1,
+        "failed": 1,
+        "processing": 0,
+    }
+    assert status.json()["recent_failures"] == [
+        {
+            "id": entries[2].id,
+            "title": "failed",
+            "error": "provider rejected article for [redacted]",
+        }
+    ]
+    retry = await client.post("/api/admin/embedding/retry-failed", headers=admin_headers)
+    assert retry.status_code == 200
+    assert retry.json() == {"queued": 1}
+    await db_session.refresh(entries[2])
+    assert entries[2].embedding_status == "pending"
+    assert entries[2].embedding_error is None
+    assert ("batch_generate_embeddings", ()) in test_mock_redis.enqueued_jobs
+    repeated = await client.post("/api/admin/embedding/retry-failed", headers=admin_headers)
+    assert repeated.json() == {"queued": 0}

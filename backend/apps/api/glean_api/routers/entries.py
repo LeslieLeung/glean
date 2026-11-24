@@ -7,7 +7,7 @@ Provides endpoints for reading and managing feed entries.
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from glean_core.schemas import (
@@ -17,17 +17,19 @@ from glean_core.schemas import (
     UserResponse,
 )
 from glean_core.services import EntryService
+from glean_core.services.entry_rank_snapshot import SmartCursorExpiredError
+from glean_core.services.entry_ranker import EmbeddingReader
 
-from ..dependencies import get_current_user, get_entry_service, get_score_service
+from ..dependencies import get_current_user, get_entry_service, get_ranking_vector_client
 
 router = APIRouter()
 
 
 @router.get("")
 async def list_entries(
+    request: Request,
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     entry_service: Annotated[EntryService, Depends(get_entry_service)],
-    score_service: Annotated[object, Depends(get_score_service)],  # ScoreService | None
     feed_id: UUID | Literal[""] | None = None,
     folder_id: UUID | Literal[""] | None = None,
     is_read: bool | None = None,
@@ -35,39 +37,39 @@ async def list_entries(
     read_later: bool | None = None,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    view: str = Query("timeline", regex="^(timeline|smart)$"),
+    view: Literal["timeline", "smart"] = "timeline",
+    include_score: bool = False,
+    global_smart: bool = False,
+    use_cursor: bool = False,
+    cursor: str | None = Query(None, max_length=64),
 ) -> EntryListResponse:
-    """
-    Get entries with filtering and pagination.
+    """List entries in publication or recommendation order."""
 
-    Args:
-        current_user: Current authenticated user.
-        entry_service: Entry service.
-        score_service: Score service for real-time preference scoring.
-        feed_id: Optional filter by feed ID.
-        folder_id: Optional filter by folder ID (gets entries from all feeds in folder).
-        is_read: Optional filter by read status.
-        is_liked: Optional filter by liked status.
-        read_later: Optional filter by read later status.
-        page: Page number (1-indexed).
-        per_page: Items per page (max 100).
-        view: View mode ("timeline" or "smart"). Smart view sorts by preference score.
+    async def get_embeddings() -> EmbeddingReader | None:
+        return await get_ranking_vector_client(request, entry_service.session)
 
-    Returns:
-        Paginated list of entries.
-    """
-    return await entry_service.get_entries(
-        user_id=current_user.id,
-        feed_id=str(feed_id) if feed_id is not None else None,
-        folder_id=str(folder_id) if folder_id is not None else None,
-        is_read=is_read,
-        is_liked=is_liked,
-        read_later=read_later,
-        page=page,
-        per_page=per_page,
-        view=view,
-        score_service=score_service,  # type: ignore[arg-type]
-    )
+    try:
+        return await entry_service.get_entries(
+            user_id=current_user.id,
+            feed_id=str(feed_id) if feed_id is not None else None,
+            folder_id=str(folder_id) if folder_id is not None else None,
+            is_read=is_read,
+            is_liked=is_liked,
+            read_later=read_later,
+            page=page,
+            per_page=per_page,
+            view=view,
+            include_score=include_score,
+            global_smart=global_smart,
+            use_cursor=use_cursor,
+            cursor=cursor,
+            get_embeddings=get_embeddings,
+        )
+    except SmartCursorExpiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Smart list expired. Refresh the list to continue.",
+        ) from exc
 
 
 @router.get("/{entry_id}")
@@ -165,7 +167,7 @@ async def like_entry(
     Mark entry as liked.
 
     This is a convenience endpoint that sets is_liked=True and
-    triggers preference model update.
+    supplies feedback for recommendation scoring.
 
     Args:
         entry_id: Entry identifier.
@@ -195,7 +197,7 @@ async def dislike_entry(
     Mark entry as disliked.
 
     This is a convenience endpoint that sets is_liked=False and
-    triggers preference model update.
+    supplies feedback for recommendation scoring.
 
     Args:
         entry_id: Entry identifier.

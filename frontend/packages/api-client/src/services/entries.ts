@@ -12,7 +12,7 @@ export class EntryService {
   /**
    * Get entries with filtering and pagination.
    *
-   * @param params.view - View mode: "timeline" (default) or "smart" (sorted by preference score)
+   * @param params.view - View mode: "timeline" (default) or "smart" (sorted by recommendation score)
    */
   async getEntries(params?: {
     feed_id?: string
@@ -23,6 +23,10 @@ export class EntryService {
     page?: number
     per_page?: number
     view?: 'timeline' | 'smart'
+    include_score?: boolean
+    global_smart?: boolean
+    use_cursor?: boolean
+    cursor?: string
   }): Promise<EntryListResponse> {
     return this.client.get<EntryListResponse>('/entries', { params })
   }

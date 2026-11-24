@@ -229,12 +229,11 @@ async def test_single_entry_claim_releases_row_lock_before_provider_call(
 
 
 @pytest.mark.asyncio
-async def test_full_rebuild_reaches_idle_after_rebuilding_reactions_and_bookmarks(
+async def test_full_rebuild_reaches_idle_after_article_embeddings(
     pipeline: dict[str, Any],
 ) -> None:
     from glean_worker.tasks.embedding_maintenance import scheduled_embedding_maintenance
     from glean_worker.tasks.embedding_rebuild import rebuild_embeddings
-    from glean_worker.tasks.preference_worker import rebuild_user_preference
 
     entry_ids = [str(uuid4()) for _ in range(4)]
     user_ids = [str(uuid4()) for _ in range(2)]
@@ -275,20 +274,120 @@ async def test_full_rebuild_reaches_idle_after_rebuilding_reactions_and_bookmark
         "failed": 0,
     }
     maintenance = await scheduled_embedding_maintenance(ctx)
-    assert maintenance["queued_preference_rebuilds"] == 2
-    for user_id in user_ids:
-        assert (await rebuild_user_preference(ctx, user_id, rebuild_id))["success"] is True
-
+    assert maintenance["rebuild_completed"] is True
     async with pipeline["sessions"]() as session:
         config = await TypedConfigService(session).get(EmbeddingConfig)
         assert config.status == VectorizationStatus.IDLE
         assert config.rebuild_id is None
-        users = (await session.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
-        assert all(
-            user.preference_revision == user.preference_synced_revision > 0 for user in users
+    assert all(
+        call.args[0] != "rebuild_user_preference"
+        for call in pipeline["redis"].enqueue_job.await_args_list
+    )
+
+
+@pytest.mark.parametrize("failure", ["provider", "vector_write"])
+async def test_batch_isolates_permanently_failing_article(pipeline, monkeypatch, failure):
+    from datetime import UTC, datetime, timedelta
+
+    client = pipeline["client"]
+    provider = pipeline["provider"]
+    ids = [str(uuid4()) for _ in range(3)]
+    bad_id = ids[1]
+    attempted_writes = []
+    insert = client.insert_entry_embedding
+
+    async def store(**values):
+        attempted_writes.append(values["entry_id"])
+        if failure == "vector_write" and values["entry_id"] == bad_id:
+            raise ValueError("vector write rejected")
+        await insert(**values)
+
+    async def generate_single(text):
+        if "Poison" in text:
+            raise ValueError("provider rejected article")
+        return [1.0, 0.0, 0.0], {}
+
+    if failure == "provider":
+        provider.generate_embeddings_batch.side_effect = ValueError("provider rejected batch")
+        provider.generate_embedding.side_effect = generate_single
+    monkeypatch.setattr(client, "insert_entry_embedding", store)
+
+    now = datetime.now(UTC)
+    async with pipeline["sessions"]() as session:
+        session.add_all(
+            Entry(
+                id=entry_id,
+                feed_id=pipeline["feed_id"],
+                url=f"https://example.com/{entry_id}",
+                title="Poison article" if entry_id == bad_id else "Article",
+                created_at=now - timedelta(seconds=index),
+            )
+            for index, entry_id in enumerate(ids)
         )
-    reactions = await pipeline["client"].get_user_preferences(user_ids[0])
-    assert set(reactions) == {"positive", "negative"}
-    assert reactions["positive"]["sample_count"] == pytest.approx(1.0)
-    bookmarks = await pipeline["client"].get_user_preferences(user_ids[1])
-    assert bookmarks["positive"]["sample_count"] == pytest.approx(0.7)
+        await session.commit()
+
+    result = await batch_generate_embeddings(
+        {"vector_client": client, "redis": pipeline["redis"]}, limit=3
+    )
+
+    assert result == {"processed": 2, "failed": 1}
+    assert set(await client.batch_get_entry_embeddings(ids)) == {ids[0], ids[2]}
+    if failure == "provider":
+        assert provider.generate_embedding.await_count == 4
+    else:
+        assert attempted_writes == [ids[0], bad_id, bad_id, bad_id, ids[2]]
+    async with pipeline["sessions"]() as session:
+        article = await session.get(Entry, bad_id)
+        assert article.embedding_status == "failed"
+        assert "rejected" in article.embedding_error
+        config = await TypedConfigService(session).get(EmbeddingConfig)
+        assert config.status == VectorizationStatus.IDLE
+        assert config.error_count == 0
+
+
+async def test_repeated_all_failed_batches_leave_vectorization_enabled(pipeline):
+    provider = pipeline["provider"]
+    provider.generate_embeddings_batch.side_effect = ValueError("provider rejected batch")
+    provider.generate_embedding.side_effect = ValueError("provider rejected article")
+    ctx = {"vector_client": pipeline["client"], "redis": pipeline["redis"]}
+
+    for _ in range(6):
+        async with pipeline["sessions"]() as session:
+            entry_id = str(uuid4())
+            session.add(
+                Entry(
+                    id=entry_id,
+                    feed_id=pipeline["feed_id"],
+                    url=f"https://example.com/{entry_id}",
+                    title="Article",
+                )
+            )
+            await session.commit()
+        assert await batch_generate_embeddings(ctx, limit=1) == {"processed": 0, "failed": 1}
+
+    async with pipeline["sessions"]() as session:
+        config = await TypedConfigService(session).get(EmbeddingConfig)
+        assert config.status == VectorizationStatus.IDLE
+        assert config.error_count == 0
+
+
+async def test_maintenance_resumes_a_legacy_article_circuit_breaker(pipeline):
+    from glean_worker.tasks.embedding_maintenance import scheduled_embedding_maintenance
+
+    async with pipeline["sessions"]() as session:
+        await TypedConfigService(session).update(
+            EmbeddingConfig,
+            status=VectorizationStatus.ERROR,
+            last_error="Circuit breaker: old provider outage",
+            error_count=5,
+        )
+
+    await scheduled_embedding_maintenance(
+        {"vector_client": pipeline["client"], "redis": pipeline["redis"]}
+    )
+
+    async with pipeline["sessions"]() as session:
+        config = await TypedConfigService(session).get(EmbeddingConfig)
+        assert config.status == VectorizationStatus.IDLE
+        assert config.last_error is None
+        assert config.error_count == 0

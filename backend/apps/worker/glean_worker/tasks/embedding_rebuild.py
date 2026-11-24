@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from arq import Retry
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,7 @@ from glean_core.schemas.config import (
     VectorizationStatus,
 )
 from glean_core.services import TypedConfigService
-from glean_database.models import Entry, UserPreferenceStats
+from glean_database.models import Entry
 from glean_database.session import get_session_context
 from glean_vector.config import EmbeddingConfig as EmbeddingSettings
 from glean_vector.config import (
@@ -26,7 +26,6 @@ from glean_vector.config import (
     vector_backend_config,
     vector_store_fingerprint,
 )
-from glean_vector.services.preference_service import get_preference_history_user_ids
 
 from ._vector_client import ensure_vector_client
 from .embedding_limits import enqueue_embedding_batch_job
@@ -92,8 +91,7 @@ async def rebuild_embeddings(
       3) Recreate vector collections if dimension changed
       4) Mark all entries pending
       5) Enqueue embedding jobs in batches
-      6) Keep status in the embedding phase until maintenance sees terminal entries
-      7) Rebuild preferences from durable history, then transition to IDLE
+      6) Transition to IDLE once maintenance sees terminal entries
     """
     runtime_backend = vector_backend_config.backend.lower()
     runtime_store_fingerprint = vector_store_fingerprint()
@@ -322,10 +320,6 @@ async def _rebuild_embeddings_locked(
                     f"{len(duplicate_entry_ids)} entries violate unique (feed_id, guid); "
                     "deduplicate the relational data and retry"
                 ) from integrity_error
-            # Vector preference collections were recreated above. Clear the DB
-            # affinity half too; only users with current durable history are
-            # reconstructed in the next phase.
-            await session.execute(delete(UserPreferenceStats))
             updated_generation = await config_service.update_embedding_generation(
                 expected_version=current.version,
                 expected_rebuild_id=rebuild_id,
@@ -359,20 +353,14 @@ async def _rebuild_embeddings_locked(
         total_pending: int = total_result.scalar_one()
 
         # Nothing to embed (e.g. brand-new instance with no entries yet, or every
-        # entry was a skipped duplicate). Move directly to preference reconstruction.
+        # entry was a skipped duplicate). Complete the rebuild immediately.
         if total_pending == 0:
-            queued_preferences = await start_preference_rebuild_phase(
-                session,
-                redis,
-                config_service,
-                rebuild_id,
-            )
+            await config_service.complete_rebuild(expected_rebuild_id=rebuild_id)
             logger.info("Entry rebuild completed immediately: no entries to embed")
             return {
                 "success": True,
                 "queued_entries": 0,
                 "queued_batches": 0,
-                "queued_preferences": queued_preferences,
                 "rebuild_id": rebuild_id,
                 "dimension": dimension,
             }
@@ -396,72 +384,15 @@ async def _rebuild_embeddings_locked(
             extra={"total_pending": total_pending, "num_batches": queued_batches},
         )
 
-        # Status stays REBUILDING in the embeddings phase. Maintenance starts
-        # preference jobs only after all entries become terminal.
+        # Maintenance completes the rebuild after all entries become terminal.
 
         return {
             "success": True,
             "queued_entries": total_pending,
             "queued_batches": queued_batches,
-            "queued_preferences": 0,
             "rebuild_id": rebuild_id,
             "dimension": dimension,
         }
-
-
-async def start_preference_rebuild_phase(
-    session: AsyncSession,
-    redis: Any,
-    config_service: TypedConfigService,
-    rebuild_id: str,
-) -> int:
-    """Stage and enqueue preference rebuilds for the current generation.
-
-    The caller must hold ``RedisKeys.REBUILD_LOCK_KEY``. Phase state is saved
-    before jobs are enqueued so maintenance can recover an interrupted enqueue.
-    """
-    current = await config_service.get(EmbeddingConfig)
-    if current.status != VectorizationStatus.REBUILDING or current.rebuild_id != rebuild_id:
-        return 0
-
-    user_ids = await get_preference_history_user_ids(session)
-    updated = await config_service.update_embedding_generation(
-        expected_version=current.version,
-        expected_rebuild_id=rebuild_id,
-        expected_statuses={VectorizationStatus.REBUILDING.value},
-        rebuild_phase=EmbeddingRebuildPhase.PREFERENCES,
-    )
-    if updated is None:
-        return 0
-
-    if not user_ids:
-        await config_service.complete_rebuild(expected_rebuild_id=rebuild_id)
-        logger.info(
-            "Embedding rebuild completed with no preference history",
-            extra={"rebuild_id": rebuild_id},
-        )
-        return 0
-
-    pending_key = RedisKeys.rebuild_preferences(rebuild_id)
-    await redis.sadd(pending_key, *user_ids)
-    await redis.expire(pending_key, RedisKeys.REBUILD_PREFERENCES_TTL)
-
-    for user_id in user_ids:
-        await redis.enqueue_job(
-            "rebuild_user_preference",
-            user_id,
-            rebuild_id,
-            current.vector_backend,
-            current.vector_store_fingerprint,
-            current.model_fingerprint,
-            _job_id=f"rebuild_pref_{rebuild_id}_{user_id}",
-        )
-
-    logger.info(
-        "Enqueued preference rebuild phase",
-        extra={"rebuild_id": rebuild_id, "users": len(user_ids)},
-    )
-    return len(user_ids)
 
 
 async def _mark_rebuild_error(

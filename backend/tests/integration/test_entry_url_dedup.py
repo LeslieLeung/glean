@@ -1,7 +1,6 @@
 """Cross-feed URL deduplication with real SQL, pagination and user state."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -58,18 +57,12 @@ async def test_dedup_before_count_pagination_and_scoring(
 ):
     feeds, entries, folder = duplicate_articles
     service = EntryService(db_session)
-    scorer = AsyncMock()
-    scorer.batch_calculate_scores.side_effect = lambda _, items: {e.id: 50.0 for e in items}
-    first = await service.get_entries(test_user.id, per_page=1, view=view, score_service=scorer)
-    second = await service.get_entries(
-        test_user.id, page=2, per_page=1, view=view, score_service=scorer
-    )
+    first = await service.get_entries(test_user.id, per_page=1, view=view)
+    second = await service.get_entries(test_user.id, page=2, per_page=1, view=view)
     assert first.total == second.total == 2
     assert first.total_pages == 2
     assert first.items[0].id == entries[0].id
     assert second.items[0].id == entries[3].id
-    if view == "smart":
-        assert all(len(call.args[1]) == 2 for call in scorer.batch_calculate_scores.call_args_list)
 
     scoped = await service.get_entries(test_user.id, feed_id=feeds[1].id)
     assert {item.id for item in scoped.items} == {entries[1].id, entries[3].id}
@@ -321,11 +314,10 @@ async def test_expiration_cannot_promote_obsolete_state(
 
 
 @pytest.mark.parametrize("reaction", [None, False, True])
-async def test_preference_rebuild_uses_authoritative_url_reaction(
+async def test_feedback_stats_use_authoritative_url_reaction(
     db_session, test_user, duplicate_articles, reaction
 ):
     from glean_core.services.preference_service import PreferenceService as CorePreferences
-    from glean_vector.services.preference_service import PreferenceService as VectorPreferences
 
     _, entries, _ = duplicate_articles
     now = datetime.now(UTC)
@@ -349,20 +341,7 @@ async def test_preference_rebuild_uses_authoritative_url_reaction(
     await EntryService(db_session).update_entry_state(
         entries[0].id, test_user.id, UpdateEntryStateRequest(is_liked=reaction)
     )
-    vector_client = AsyncMock()
-    vector_client.batch_get_entry_embeddings.return_value = {entries[1].id: [1.0, 0.0]}
-    await VectorPreferences(db_session, vector_client).rebuild_from_history(test_user.id)
-    vector_client.delete_user_preferences.assert_awaited_once_with(test_user.id)
-    if reaction is None:
-        vector_client.batch_get_entry_embeddings.assert_not_awaited()
-        vector_client.upsert_user_preference.assert_not_awaited()
-    else:
-        vector_client.batch_get_entry_embeddings.assert_awaited_once_with([entries[1].id])
-        vector_client.upsert_user_preference.assert_awaited_once()
-        call = vector_client.upsert_user_preference.call_args.kwargs
-        assert call["vector_type"] == ("positive" if reaction else "negative")
-        assert call["sample_count"] == 1.0
-    stats = await CorePreferences(db_session, AsyncMock()).get_stats(test_user.id)
+    stats = await CorePreferences(db_session).get_stats(test_user.id)
     assert stats["total_likes"] == int(reaction is True)
     assert stats["total_dislikes"] == int(reaction is False)
 

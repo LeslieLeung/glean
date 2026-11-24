@@ -40,7 +40,7 @@ from .embedding_limits import (
 logger = get_logger(__name__)
 
 # Circuit breaker state
-CONSECUTIVE_FAILURES_THRESHOLD = 5
+MAX_EMBEDDING_ATTEMPTS = 3
 
 
 async def _check_vectorization_enabled(session: AsyncSession) -> tuple[bool, EmbeddingConfig]:
@@ -125,79 +125,6 @@ def _generation_guard(
     return check
 
 
-async def _handle_embedding_error(
-    session: AsyncSession,
-    error: Exception,
-    *,
-    expected_version: str | None,
-    expected_rebuild_id: str | None,
-) -> int | None:
-    """
-    Handle embedding error with circuit breaker logic.
-
-    After CONSECUTIVE_FAILURES_THRESHOLD failures, sets status to ERROR.
-    """
-    result = await TypedConfigService(session).record_embedding_failure(
-        expected_version=expected_version,
-        expected_rebuild_id=expected_rebuild_id,
-        error=error,
-        circuit_threshold=CONSECUTIVE_FAILURES_THRESHOLD,
-    )
-    if result is None:
-        return None
-    new_error_count, circuit_open = result
-    if circuit_open:
-        logger.warning(f"Circuit breaker triggered after {new_error_count} consecutive failures")
-    return new_error_count
-
-
-async def _reset_error_count(
-    session: AsyncSession,
-    *,
-    expected_version: str | None,
-    expected_rebuild_id: str | None,
-) -> None:
-    """Reset error count only on the generation that succeeded."""
-    await TypedConfigService(session).reset_embedding_errors(
-        expected_version=expected_version,
-        expected_rebuild_id=expected_rebuild_id,
-    )
-
-
-async def _safe_handle_error(
-    session: AsyncSession,
-    error: Exception,
-    *,
-    expected_version: str | None,
-    expected_rebuild_id: str | None,
-) -> int | None:
-    """Handle embedding error, recovering from a poisoned session first.
-
-    When a prior DB operation fails, asyncpg puts the connection into a
-    failed-transaction state.  This helper rolls back before touching the
-    session so the circuit-breaker logic can still read/write config.
-    """
-    with contextlib.suppress(Exception):
-        await session.rollback()
-    try:
-        failure_count = await _handle_embedding_error(
-            session,
-            error,
-            expected_version=expected_version,
-            expected_rebuild_id=expected_rebuild_id,
-        )
-        # generate_entry_embedding may raise arq.Retry below.  Commit the
-        # circuit-breaker update before that exception leaves the session
-        # context, otherwise its automatic rollback would lose the count.
-        await session.commit()
-        return failure_count
-    except Exception:
-        logger.warning("Could not update circuit breaker after error", exc_info=True)
-        with contextlib.suppress(Exception):
-            await session.rollback()
-        return None
-
-
 def _embedding_job_try(ctx: dict[str, Any]) -> int:
     """Return the current arq attempt number with a safe default."""
     try:
@@ -266,7 +193,7 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
         # Connection creation failed before a DB service could record the
         # entry failure.  Let arq retry with bounded backoff so a transient
         # backend outage can recover without a tight retry loop.
-        if _embedding_job_try(ctx) < CONSECUTIVE_FAILURES_THRESHOLD:
+        if _embedding_job_try(ctx) < MAX_EMBEDDING_ATTEMPTS:
             raise Retry(defer=_embedding_retry_delay(ctx))
         return {"success": False, "entry_id": entry_id, "error": error}
 
@@ -309,13 +236,6 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
                 deadline=deadline,
             )
 
-            if success:
-                await _reset_error_count(
-                    session,
-                    expected_version=config.version,
-                    expected_rebuild_id=config.rebuild_id,
-                )
-
             return {"success": success, "entry_id": entry_id}
 
         except StaleEmbeddingGenerationError:
@@ -344,25 +264,11 @@ async def generate_entry_embedding(ctx: dict[str, Any], entry_id: str) -> dict[s
                     await embedding_service.restore_claimed_entries([entry_id])
             raise
         except Exception as e:
-            # Infrastructure errors are persisted as "failed" by the service
-            # layer.  Count the failure durably and ask arq for a bounded,
-            # deferred retry while the circuit is still closed.
             error_msg = str(e)
             logger.error(
-                f"Failed to generate embedding for entry {entry_id}: {error_msg}",
-                exc_info=True,
+                "Article embedding attempt failed", extra={"entry_id": entry_id}, exc_info=True
             )
-            failure_count = await _safe_handle_error(
-                session,
-                e,
-                expected_version=config.version,
-                expected_rebuild_id=config.rebuild_id,
-            )
-            job_try = _embedding_job_try(ctx)
-            circuit_open = (
-                failure_count is not None and failure_count >= CONSECUTIVE_FAILURES_THRESHOLD
-            )
-            if not circuit_open and job_try < CONSECUTIVE_FAILURES_THRESHOLD:
+            if _embedding_job_try(ctx) < MAX_EMBEDDING_ATTEMPTS:
                 raise Retry(defer=_embedding_retry_delay(ctx)) from e
             return {"success": False, "entry_id": entry_id, "error": error_msg}
 
@@ -463,25 +369,6 @@ async def batch_generate_embeddings(
                 deadline=deadline,
             )
 
-            processed = result.get("processed", 0)
-            failed = result.get("failed", 0)
-
-            if processed > 0:
-                await _reset_error_count(
-                    session,
-                    expected_version=config.version,
-                    expected_rebuild_id=rebuild_id,
-                )
-            elif failed > 0:
-                # Entire batch failed — count toward circuit breaker.
-                # Session may be dirty; rollback before using it for config.
-                await _safe_handle_error(
-                    session,
-                    RuntimeError(f"Batch: all {failed} entries failed, 0 succeeded"),
-                    expected_version=config.version,
-                    expected_rebuild_id=rebuild_id,
-                )
-
             await _enqueue_embedding_followup_if_needed(
                 session,
                 ctx.get("redis"),
@@ -499,103 +386,6 @@ async def batch_generate_embeddings(
 
         except Exception as e:
             logger.error(f"Failed to batch generate embeddings: {e}")
-            await _safe_handle_error(
-                session,
-                e,
-                expected_version=config.version,
-                expected_rebuild_id=rebuild_id,
-            )
-            return {"processed": 0, "failed": 0, "error": str(e)}
-
-        finally:
-            await embedding_client.close()
-
-
-async def retry_failed_embeddings(ctx: dict[str, Any], limit: int = 50) -> dict[str, int | str]:
-    """
-    Retry failed embeddings.
-
-    Args:
-        ctx: Worker context
-        limit: Maximum number of entries to retry
-
-    Returns:
-        Result dictionary with processed and failed counts
-    """
-    vector_client, vector_error = ensure_vector_client(ctx)
-    if not vector_client:
-        error = "Vector backend unavailable"
-        if vector_error:
-            error = f"{error}: {vector_error}"
-        return {"processed": 0, "failed": 0, "error": error}
-
-    async with get_session_context() as session:
-        # Check if vectorization is enabled
-        is_enabled, config = await _check_vectorization_enabled(session)
-        if not is_enabled:
-            logger.debug("Vectorization disabled, skipping retry")
-            return {"processed": 0, "failed": 0, "skipped": "Vectorization disabled"}
-
-        settings, rate_limit = await _load_embedding_settings(config)
-        embedding_client = EmbeddingClient(
-            config=settings,
-            rate_limit=rate_limit,
-            redis=ctx.get("redis"),
-        )
-        deadline = embedding_job_deadline()
-        job_limit = min(limit, embedding_job_entry_limit(rate_limit, settings.batch_size))
-
-        try:
-            # Ensure vector storage exists with correct model config
-            await vector_client.ensure_collections(
-                settings.dimension, settings.provider, settings.model
-            )
-
-            embedding_service = EmbeddingService(
-                db_session=session,
-                embedding_client=embedding_client,
-                vector_client=vector_client,
-                generation_guard=_generation_guard(
-                    session,
-                    expected_version=config.version,
-                    expected_rebuild_id=config.rebuild_id,
-                ),
-                generation_lock=ctx.get("redis"),
-            )
-
-            result = await embedding_service.retry_failed(
-                limit=job_limit,
-                chunk_size=settings.batch_size,
-                deadline=deadline,
-            )
-
-            processed = result.get("processed", 0)
-            failed = result.get("failed", 0)
-
-            if processed > 0:
-                await _reset_error_count(
-                    session,
-                    expected_version=config.version,
-                    expected_rebuild_id=config.rebuild_id,
-                )
-            elif failed > 0:
-                await _safe_handle_error(
-                    session,
-                    RuntimeError(f"Retry batch: all {failed} entries failed, 0 succeeded"),
-                    expected_version=config.version,
-                    expected_rebuild_id=config.rebuild_id,
-                )
-
-            return result  # type: ignore[return-value]
-
-        except Exception as e:
-            logger.error(f"Failed to retry failed embeddings: {e}")
-            await _safe_handle_error(
-                session,
-                e,
-                expected_version=config.version,
-                expected_rebuild_id=config.rebuild_id,
-            )
             return {"processed": 0, "failed": 0, "error": str(e)}
 
         finally:

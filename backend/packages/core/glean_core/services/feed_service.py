@@ -23,12 +23,10 @@ from glean_database.models import (
     Folder,
     Subscription,
     UserEntry,
-    UserPreferenceStats,
     VectorCleanupPending,
 )
 
 from .entry_dedup import count_distinct_articles, url_user_entry_id
-from .preference_dirty_service import get_feed_preference_user_ids, mark_preferences_dirty
 
 # Sentinel for unset values
 UNSET: object = object()
@@ -411,9 +409,8 @@ class FeedService:
 
         This method:
         1. Deletes the user's UserEntry records for entries in this feed
-        2. Removes feed affinity from UserPreferenceStats
-        3. Deletes the subscription
-        4. If no other users subscribe to the feed, deletes the feed and its entries
+        2. Deletes the subscription
+        3. If no other users subscribe to the feed, deletes the feed and its entries
 
         Args:
             subscription_id: Subscription identifier.
@@ -440,7 +437,7 @@ class FeedService:
 
         await self._preserve_shared_url_states(user_id, feed_id)
 
-        # 1. Delete user's UserEntry records for entries in this feed
+        # Delete the user's entry state for this feed.
         # This also cascades to UserEntryTag via relationship
         delete_user_entries_stmt = delete(UserEntry).where(
             UserEntry.user_id == user_id,
@@ -448,18 +445,12 @@ class FeedService:
         )
         await self.session.execute(delete_user_entries_stmt)
 
-        # 2. Remove feed affinity from UserPreferenceStats
-        await self._remove_feed_affinity(user_id, feed_id)
-
-        # 3. Delete the subscription
+        # Delete the subscription.
         await self.session.delete(subscription)
 
-        # 4. Check if feed has any other subscribers
-        orphaned_feed_id, entry_ids = await self._cleanup_orphan_feed(
-            feed_id, deleting_user_id=user_id
-        )
+        # Check if the feed has other subscribers.
+        orphaned_feed_id, entry_ids = await self._cleanup_orphan_feed(feed_id)
 
-        await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         return orphaned_feed_id, entry_ids
 
@@ -511,28 +502,7 @@ class FeedService:
             )
         await self.session.flush()
 
-    async def _remove_feed_affinity(self, user_id: str, feed_id: str) -> None:
-        """
-        Remove a feed from user's source_affinity in UserPreferenceStats.
-
-        Args:
-            user_id: User identifier.
-            feed_id: Feed identifier to remove.
-        """
-        result = await self.session.execute(
-            select(UserPreferenceStats).where(UserPreferenceStats.user_id == user_id)
-        )
-        stats = result.scalar_one_or_none()
-
-        if stats and stats.source_affinity and feed_id in stats.source_affinity:
-            # Create a copy and remove the feed
-            new_affinity = dict(stats.source_affinity)
-            del new_affinity[feed_id]
-            stats.source_affinity = new_affinity
-
-    async def _cleanup_orphan_feed(
-        self, feed_id: str, *, deleting_user_id: str | None = None
-    ) -> tuple[str | None, list[str]]:
+    async def _cleanup_orphan_feed(self, feed_id: str) -> tuple[str | None, list[str]]:
         """
         Delete a feed if it has no subscribers.
 
@@ -562,11 +532,6 @@ class FeedService:
             feed_result = await self.session.execute(feed_stmt)
             feed = feed_result.scalar_one_or_none()
             if feed:
-                affected_users = await get_feed_preference_user_ids(self.session, feed_id)
-                await mark_preferences_dirty(
-                    self.session,
-                    (user_id for user_id in affected_users if user_id != deleting_user_id),
-                )
                 self.session.add_all(
                     VectorCleanupPending(entry_id=entry_id, feed_id=feed_id)
                     for entry_id in entry_ids
@@ -665,17 +630,14 @@ class FeedService:
 
                 await self._preserve_shared_url_states(user_id, feed_id)
 
-                # 1. Delete user's UserEntry records for entries in this feed
+                # Delete the user's entry state for this feed.
                 delete_user_entries_stmt = delete(UserEntry).where(
                     UserEntry.user_id == user_id,
                     UserEntry.entry_id.in_(select(Entry.id).where(Entry.feed_id == feed_id)),
                 )
                 await self.session.execute(delete_user_entries_stmt)
 
-                # 2. Remove feed affinity from UserPreferenceStats
-                await self._remove_feed_affinity(user_id, feed_id)
-
-                # 3. Delete the subscription
+                # Delete the subscription.
                 await self.session.delete(subscription)
                 deleted_count += 1
 
@@ -685,16 +647,12 @@ class FeedService:
             else:
                 failed_count += 1
 
-        # 4. Check and cleanup orphan feeds
+        # Clean up orphaned feeds.
         orphaned_feeds: dict[str, list[str]] = {}
         for feed_id in feeds_to_check:
-            orphaned_feed_id, entry_ids = await self._cleanup_orphan_feed(
-                feed_id, deleting_user_id=user_id
-            )
+            orphaned_feed_id, entry_ids = await self._cleanup_orphan_feed(feed_id)
             if orphaned_feed_id:
                 orphaned_feeds[orphaned_feed_id] = entry_ids
 
-        if deleted_count > 0:
-            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         return deleted_count, failed_count, orphaned_feeds

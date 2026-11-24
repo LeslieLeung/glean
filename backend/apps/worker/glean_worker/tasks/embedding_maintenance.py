@@ -21,17 +21,17 @@ from glean_core.schemas.config import (
     VectorizationStatus,
 )
 from glean_core.services import TypedConfigService
-from glean_database.models import Entry, User, VectorCleanupPending
+from glean_database.models import Entry, VectorCleanupPending
 from glean_database.session import get_session_context
 from glean_vector.config import (
     embedding_model_fingerprint,
+    is_active_embedding_model,
+    is_active_vector_backend,
     vector_backend_config,
     vector_store_fingerprint,
 )
-from glean_vector.services.preference_service import get_preference_history_user_ids
 
-from .embedding_limits import embedding_job_entry_limit, enqueue_embedding_batch_job
-from .embedding_rebuild import start_preference_rebuild_phase
+from .embedding_limits import enqueue_embedding_batch_job
 
 logger = get_logger(__name__)
 
@@ -136,94 +136,48 @@ async def _re_enqueue_pending(
     return queued
 
 
-async def _recover_preference_phase(
-    session: AsyncSession,
-    redis: Any,
-    config: EmbeddingConfig,
-) -> int:
-    """Re-enqueue pending preference users after an interrupted phase."""
-    if not config.rebuild_id:
-        return 0
-    pending_key = RedisKeys.rebuild_preferences(config.rebuild_id)
-    pending_members = await redis.smembers(pending_key)
-    user_ids = [
-        member.decode() if isinstance(member, bytes) else str(member) for member in pending_members
-    ]
-
-    # Redis may have restarted after the DB phase was committed. Rebuild the
-    # pending set from durable history; recalculation is idempotent.
-    if not user_ids:
-        user_ids = await get_preference_history_user_ids(session)
-        if not user_ids:
-            config_service = TypedConfigService(session)
-            await config_service.complete_rebuild(expected_rebuild_id=config.rebuild_id)
-            return 0
-        await redis.sadd(pending_key, *user_ids)
-
-    await redis.expire(pending_key, RedisKeys.REBUILD_PREFERENCES_TTL)
-    for user_id in user_ids:
-        await redis.enqueue_job(
-            "rebuild_user_preference",
-            user_id,
-            config.rebuild_id,
-            config.vector_backend,
-            config.vector_store_fingerprint,
-            config.model_fingerprint,
-            _job_id=f"rebuild_pref_{config.rebuild_id}_{user_id}",
-        )
-    return len(user_ids)
-
-
 async def _advance_rebuild_phase(
     session: AsyncSession,
     redis: Any,
     config: EmbeddingConfig,
-) -> tuple[bool, int]:
-    """Advance terminal embeddings into the preference phase under a lock."""
+) -> bool:
+    """Finish the active rebuild when all article embeddings are terminal."""
     if not config.rebuild_id:
-        return False, 0
+        return False
 
     lock = redis.lock(RedisKeys.REBUILD_LOCK_KEY, timeout=RedisKeys.REBUILD_LOCK_TIMEOUT)
     acquired = await lock.acquire(blocking=False)
     if not acquired:
-        return False, 0
+        return False
 
     try:
-        # A preference worker may have completed the generation while we
-        # waited for the lock. Re-read before changing phase state.
+        # Re-read the active generation under the rebuild lock.
         rebuild_info = await _get_rebuild_counts(session)
         if rebuild_info is None:
-            return True, 0
+            return True
         current, current_counts = rebuild_info
         if current.rebuild_id != config.rebuild_id:
-            return False, 0
+            return False
 
-        if current.rebuild_phase == EmbeddingRebuildPhase.PREFERENCES:
-            queued = await _recover_preference_phase(session, redis, current)
-            return False, queued
-        if current.rebuild_phase != EmbeddingRebuildPhase.EMBEDDINGS:
+        if current.rebuild_phase not in (
+            EmbeddingRebuildPhase.EMBEDDINGS,
+            EmbeddingRebuildPhase.PREFERENCES,
+        ):
             # PREPARING means collection recreation and the relational pending
             # transition have not committed yet. Never infer completion from
             # the previous generation's terminal entry statuses.
-            return False, 0
+            return False
 
         pending = current_counts.get("pending", 0)
         processing = current_counts.get("processing", 0)
         if pending > 0 or processing > 0:
-            return False, 0
+            return False
 
         config_service = TypedConfigService(session)
         rebuild_id = current.rebuild_id
         if rebuild_id is None:
-            return False, 0
-        queued = await start_preference_rebuild_phase(
-            session,
-            redis,
-            config_service,
-            rebuild_id,
-        )
-        completed = queued == 0
-        return completed, queued
+            return False
+        return await config_service.complete_rebuild(expected_rebuild_id=rebuild_id)
     finally:
         with contextlib.suppress(Exception):
             await lock.release()
@@ -235,13 +189,12 @@ async def _enqueue_idle_recovery(
     *,
     rpm: int,
     batch_size: int,
-) -> tuple[int, int]:
-    """Recover pending/failed entries during normal IDLE operation."""
+) -> int:
+    """Recover pending entries during normal IDLE operation."""
     if counts.get("processing", 0) > 0:
-        return 0, 0
+        return 0
 
     pending_queued = 0
-    failed_queued = 0
     if counts.get("pending", 0) > 0:
         acquired = await redis.set(
             RedisKeys.EMBEDDING_PENDING_MAINTENANCE_KEY,
@@ -258,45 +211,7 @@ async def _enqueue_idle_recovery(
                 job_id_prefix="idle_pending",
             )
             pending_queued = 1
-
-    if counts.get("failed", 0) > 0:
-        acquired = await redis.set(
-            RedisKeys.EMBEDDING_FAILED_MAINTENANCE_KEY,
-            "1",
-            ex=RedisKeys.EMBEDDING_MAINTENANCE_THROTTLE_TTL,
-            nx=True,
-        )
-        if acquired:
-            await redis.enqueue_job(
-                "retry_failed_embeddings",
-                embedding_job_entry_limit(rpm, batch_size),
-            )
-            failed_queued = 1
-    return pending_queued, failed_queued
-
-
-async def _enqueue_pending_preference_users(
-    session: AsyncSession,
-    redis: Any,
-) -> int:
-    """Retry preference users from Redis and the durable revision outbox."""
-    members = await redis.smembers(RedisKeys.PREFERENCE_PENDING_USERS_KEY)
-    user_ids = {member.decode() if isinstance(member, bytes) else str(member) for member in members}
-    durable_result = await session.execute(
-        select(User.id).where(User.preference_revision > User.preference_synced_revision)
-    )
-    user_ids.update(str(row[0]) for row in durable_result.all())
-    if user_ids:
-        await redis.sadd(RedisKeys.PREFERENCE_PENDING_USERS_KEY, *user_ids)
-
-    prefix = f"pref_recover_{uuid4().hex}"
-    for index, user_id in enumerate(sorted(user_ids)):
-        await redis.enqueue_job(
-            "rebuild_user_preference",
-            user_id,
-            _job_id=f"{prefix}_{index}",
-        )
-    return len(user_ids)
+    return pending_queued
 
 
 async def _enqueue_validation_recovery(redis: Any, config: EmbeddingConfig) -> int:
@@ -419,9 +334,9 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
 
     Runs as an arq cron job. Performs four checks:
     1. Recovers entries stuck in 'processing' (worker crash / timeout).
-    2. Recovers pending/failed entries during normal IDLE operation.
+    2. Recovers pending entries during normal IDLE operation.
     3. Re-enqueues batch jobs for remaining pending entries during a rebuild.
-    4. Starts preference rebuilds only after entry embeddings are terminal.
+    4. Completes rebuilds after entry embeddings are terminal.
     """
     redis = ctx.get("redis")
 
@@ -431,9 +346,6 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
         # If in REBUILDING state, check whether we need to push more work
         # or whether the rebuild is done.
         re_enqueued = 0
-        retried_failed = 0
-        queued_preferences = 0
-        recovered_preference_users = 0
         recovered_validations = 0
         recovered_vector_cleanups = 0
         failed_preparation = False
@@ -455,7 +367,8 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
 
             if (
                 not failed_preparation
-                and config.rebuild_phase == EmbeddingRebuildPhase.EMBEDDINGS
+                and config.rebuild_phase
+                in (EmbeddingRebuildPhase.EMBEDDINGS, EmbeddingRebuildPhase.PREFERENCES)
                 and pending > 0
                 and processing == 0
                 and redis is not None
@@ -472,7 +385,7 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
                 )
 
             if redis is not None and not failed_preparation:
-                completed, queued_preferences = await _advance_rebuild_phase(
+                completed = await _advance_rebuild_phase(
                     session,
                     redis,
                     config,
@@ -480,6 +393,32 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
         else:
             config_service = TypedConfigService(session)
             config = await config_service.get(EmbeddingConfig)
+            # Older workers cleared rebuild metadata when they opened the
+            # circuit. The active generation can resume processing its pending rows.
+            if (
+                config.enabled
+                and config.status == VectorizationStatus.ERROR
+                and (config.last_error or "").startswith("Circuit breaker:")
+                and is_active_vector_backend(config.vector_backend, config.vector_store_fingerprint)
+                and is_active_embedding_model(
+                    config.model_fingerprint,
+                    provider=config.provider,
+                    model=config.model,
+                    dimension=config.dimension,
+                    base_url=config.base_url,
+                )
+            ):
+                resumed = await config_service.update_embedding_generation(
+                    expected_version=config.version,
+                    expected_rebuild_id=config.rebuild_id,
+                    expected_statuses={VectorizationStatus.ERROR.value},
+                    status=VectorizationStatus.IDLE,
+                    last_error=None,
+                    last_error_at=None,
+                    error_count=0,
+                )
+                if resumed is not None:
+                    config = resumed
             if (
                 redis is not None
                 and config.enabled
@@ -496,23 +435,15 @@ async def scheduled_embedding_maintenance(ctx: dict[str, Any]) -> dict[str, Any]
                     .group_by(Entry.embedding_status)
                 )
                 idle_counts = {str(row[0]): int(row[1]) for row in count_result.all()}
-                re_enqueued, retried_failed = await _enqueue_idle_recovery(
+                re_enqueued = await _enqueue_idle_recovery(
                     redis,
                     idle_counts,
                     rpm=config.get_rate_limit_for_provider(),
                     batch_size=config.batch_size,
                 )
-                recovered_preference_users = await _enqueue_pending_preference_users(
-                    session,
-                    redis,
-                )
-
     return {
         "recovered_stuck_entries": recovered,
         "re_enqueued_batches": re_enqueued,
-        "retried_failed_batches": retried_failed,
-        "queued_preference_rebuilds": queued_preferences,
-        "recovered_preference_users": recovered_preference_users,
         "recovered_validations": recovered_validations,
         "recovered_vector_cleanups": recovered_vector_cleanups,
         "failed_stuck_preparation": failed_preparation,

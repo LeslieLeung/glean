@@ -11,7 +11,6 @@ from . import (
     embedding_rebuild,
     embedding_worker,
     feed_fetcher,
-    preference_worker,
     subscription_cleanup,
 )
 
@@ -22,6 +21,5 @@ __all__ = [
     "embedding_worker",
     "embedding_rebuild",
     "embedding_maintenance",
-    "preference_worker",
     "subscription_cleanup",
 ]

@@ -25,6 +25,8 @@ export interface EntryFilters {
   page?: number
   per_page?: number
   view?: 'timeline' | 'smart'
+  include_score?: boolean
+  global_smart?: boolean
 }
 
 /**
@@ -45,24 +47,37 @@ export function useEntries(filters?: EntryFilters) {
  * Hook to fetch entries with infinite scroll support.
  */
 export function useInfiniteEntries(filters?: Omit<EntryFilters, 'page'>) {
-  return useInfiniteQuery({
-    queryKey: entryKeys.list(filters || {}),
-    queryFn: ({ pageParam = 1 }) =>
-      entryService.getEntries({ ...filters, page: pageParam, per_page: 20 }),
+  const queryClient = useQueryClient()
+  const queryKey = entryKeys.list(filters || {})
+  const smart = filters?.view === 'smart'
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) =>
+      entryService.getEntries({
+        ...filters,
+        ...(smart ? { use_cursor: true } : {}),
+        ...(typeof pageParam === 'string' ? { cursor: pageParam } : { page: pageParam }),
+        per_page: 20,
+      }),
     getNextPageParam: (lastPage) => {
-      if (lastPage.page < lastPage.total_pages) {
-        return lastPage.page + 1
-      }
+      if (smart && lastPage.next_cursor !== undefined) return lastPage.next_cursor ?? undefined
+      if (lastPage.page < lastPage.total_pages) return lastPage.page + 1
       return undefined
     },
-    initialPageParam: 1,
+    initialPageParam: 1 as number | string,
+    refetchOnWindowFocus: smart ? false : undefined,
     refetchInterval: (query) =>
+      !smart &&
       query.state.data?.pages.some((page) =>
         page.items.some((entry) => entry.classification_status === 'pending')
       )
         ? 5000
         : false,
   })
+  return {
+    ...query,
+    restart: () => queryClient.resetQueries({ queryKey, exact: true }),
+  }
 }
 
 /**
@@ -113,6 +128,8 @@ export function useUpdateEntryState() {
                 // compute a smart-view score and returns null. Keep the score
                 // already shown on the list card.
                 preference_score: updatedEntry.preference_score ?? item.preference_score,
+                recommendation_reason:
+                  updatedEntry.recommendation_reason ?? item.recommendation_reason,
               }
             }),
           })),

@@ -21,24 +21,4 @@ describe('PreferenceService', () => {
     expect(mockClient.get).toHaveBeenCalledWith('/preference/stats')
     expect(result).toEqual(stats)
   })
-
-  it('should rebuild model', async () => {
-    const response = { message: 'Model rebuild started' }
-    vi.mocked(mockClient.post).mockResolvedValue(response)
-
-    const result = await service.rebuildModel()
-
-    expect(mockClient.post).toHaveBeenCalledWith('/preference/rebuild')
-    expect(result).toEqual(response)
-  })
-
-  it('should get preference strength', async () => {
-    const response = { strength: 'strong' }
-    vi.mocked(mockClient.get).mockResolvedValue(response)
-
-    const result = await service.getStrength()
-
-    expect(mockClient.get).toHaveBeenCalledWith('/preference/strength')
-    expect(result).toEqual(response)
-  })
 })

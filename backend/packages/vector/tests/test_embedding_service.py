@@ -151,7 +151,7 @@ async def test_batch_generate_claims_one_provider_chunk_at_a_time() -> None:
     vector_client = AsyncMock()
     claimed_limits: list[int] = []
 
-    async def claim_entries(*, status: str, limit: int, order_by: object) -> list[str]:
+    async def claim_entries(limit: int) -> list[str]:
         claimed_limits.append(limit)
         if len(claimed_limits) == 1:
             return ["entry-1", "entry-2"]
@@ -246,8 +246,7 @@ async def test_batch_generate_uses_provider_batch_api() -> None:
         embedding_client=embedding_client,
         vector_client=vector_client,
     )
-    service._store_embedding = AsyncMock(return_value=[])  # type: ignore[method-assign]
-    service._mark_affected_preferences_pending = AsyncMock()  # type: ignore[method-assign]
+    service._store_embedding = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     result = await service.batch_generate(limit=1, chunk_size=1)
 

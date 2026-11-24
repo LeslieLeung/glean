@@ -1,4 +1,4 @@
-"""Tests for single-entry embedding retry and circuit-breaker behavior."""
+"""Tests for isolated single-entry embedding retries."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
 from glean_worker.tasks.embedding_worker import (
-    _safe_handle_error,
     generate_entry_embedding,
 )
 
@@ -29,34 +28,6 @@ def _session_context(session: AsyncMock) -> MagicMock:
     context.__aenter__ = AsyncMock(return_value=session)
     context.__aexit__ = AsyncMock(return_value=None)
     return context
-
-
-@pytest.mark.asyncio
-async def test_safe_handle_error_commits_circuit_breaker_update() -> None:
-    """A subsequent Retry must not roll back the global failure count."""
-    session = AsyncMock(spec=AsyncSession)
-    error = RuntimeError("backend unavailable")
-
-    with patch(
-        "glean_worker.tasks.embedding_worker._handle_embedding_error",
-        new=AsyncMock(return_value=2),
-    ) as handle_error:
-        failure_count = await _safe_handle_error(
-            session,
-            error,
-            expected_version="version-1",
-            expected_rebuild_id=None,
-        )
-
-    assert failure_count == 2
-    session.rollback.assert_awaited_once()
-    handle_error.assert_awaited_once_with(
-        session,
-        error,
-        expected_version="version-1",
-        expected_rebuild_id=None,
-    )
-    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -85,10 +56,6 @@ async def test_generate_entry_embedding_retries_transient_failure_with_backoff()
             "glean_worker.tasks.embedding_worker.EmbeddingService",
             return_value=service,
         ),
-        patch(
-            "glean_worker.tasks.embedding_worker._safe_handle_error",
-            new=AsyncMock(return_value=2),
-        ),
         pytest.raises(Retry) as exc_info,
     ):
         await generate_entry_embedding(
@@ -101,8 +68,8 @@ async def test_generate_entry_embedding_retries_transient_failure_with_backoff()
 
 
 @pytest.mark.asyncio
-async def test_generate_entry_embedding_stops_retry_when_circuit_opens() -> None:
-    """The fifth global failure opens the circuit instead of creating a retry storm."""
+async def test_generate_entry_embedding_stops_after_three_attempts() -> None:
+    """A permanently failing article reaches a terminal result on its third attempt."""
     session = AsyncMock(spec=AsyncSession)
     vector_client = AsyncMock()
     embedding_client = AsyncMock()
@@ -126,13 +93,9 @@ async def test_generate_entry_embedding_stops_retry_when_circuit_opens() -> None
             "glean_worker.tasks.embedding_worker.EmbeddingService",
             return_value=service,
         ),
-        patch(
-            "glean_worker.tasks.embedding_worker._safe_handle_error",
-            new=AsyncMock(return_value=5),
-        ),
     ):
         result = await generate_entry_embedding(
-            {"vector_client": vector_client, "job_try": 1},
+            {"vector_client": vector_client, "job_try": 3},
             "entry-1",
         )
 
@@ -154,9 +117,9 @@ async def test_generate_entry_embedding_retries_initial_connection_failure() -> 
         ),
         pytest.raises(Retry) as exc_info,
     ):
-        await generate_entry_embedding({"job_try": 3}, "entry-1")
+        await generate_entry_embedding({"job_try": 2}, "entry-1")
 
-    assert exc_info.value.defer_score == 240_000
+    assert exc_info.value.defer_score == 120_000
 
 
 @pytest.mark.asyncio
@@ -190,10 +153,6 @@ async def test_generate_entry_embedding_shares_redis_rate_limiter() -> None:
         patch(
             "glean_worker.tasks.embedding_worker.EmbeddingService",
             return_value=service,
-        ),
-        patch(
-            "glean_worker.tasks.embedding_worker._reset_error_count",
-            new=AsyncMock(),
         ),
     ):
         result = await generate_entry_embedding(
