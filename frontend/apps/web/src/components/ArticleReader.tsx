@@ -22,9 +22,9 @@ import {
   ChevronLeft,
   Menu as MenuIcon,
 } from 'lucide-react'
-import { format } from 'date-fns'
 import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
+import { ReadingDate } from './ReadingDate'
 import { ArticleOutline } from './ArticleOutline'
 import { BookmarkKnowledge } from './BookmarkKnowledge'
 import { PreferenceButtons } from './EntryActions/PreferenceButtons'
@@ -307,7 +307,7 @@ export function ArticleReader({
             {entry.author && <span className="font-medium">{entry.author}</span>}
             {entry.author && entry.published_at && <span>·</span>}
             {entry.published_at && (
-              <span>{format(new Date(entry.published_at), 'MMMM d, yyyy')}</span>
+              <ReadingDate value={entry.published_at} absoluteFormat="MMMM d, yyyy" />
             )}
           </div>
 
@@ -395,9 +395,7 @@ export function ArticleReader({
               <div className="text-muted-foreground mb-4 flex items-center gap-2 text-xs">
                 {entry.author && <span className="font-medium">{entry.author}</span>}
                 {entry.author && entry.published_at && <span>·</span>}
-                {entry.published_at && (
-                  <span>{format(new Date(entry.published_at), 'MMM d, yyyy')}</span>
-                )}
+                {entry.published_at && <ReadingDate value={entry.published_at} />}
               </div>
             )}
 

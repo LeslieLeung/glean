@@ -3,10 +3,10 @@
   "subtitle": "管理您的账号和偏好设置",
   "tabs": {
     "profile": "个人资料",
-    "readLater": "稍后阅读",
     "appearance": "外观",
+    "reading": "阅读",
+    "readLater": "稍后阅读",
     "manageFeeds": "管理订阅",
-    "preferences": "偏好",
     "apiTokens": "API 令牌"
   },
   "profile": {
@@ -42,7 +42,7 @@
   },
   "appearance": {
     "title": "外观",
-    "desc": "自定义外观和感觉",
+    "desc": "选择浅色、深色或跟随系统主题",
     "theme": "主题",
     "chooseTheme": "选择您的主题",
     "themes": {
@@ -52,10 +52,21 @@
       "dayDesc": "浅色主题，适合日间使用",
       "auto": "自动",
       "autoDesc": "跟随系统偏好"
-    },
+    }
+  },
+  "reading": {
+    "desc": "设置文章日期、键盘导航和 Jev 标签",
+    "relativeDates": "显示相对日期",
+    "relativeDatesDesc": "将文章和收藏的日期显示为「2 小时前」或「3 天前」。",
     "keyboardNavigation": "键盘导航",
     "keyboardNavigationDesc": "使用方向键（↑/↓）或 j/k 在阅读器中切换文章",
-    "settingsSaved": "设置已成功保存"
+    "saveError": "无法保存阅读设置。",
+    "jev": {
+      "title": "Jev 标签",
+      "showAI": "显示 AI 检测标签",
+      "showContentType": "显示内容类型标签",
+      "showConfidence": "显示可见标签的置信度"
+    }
   },
   "manageFeeds": {
     "title": "管理订阅",
@@ -84,8 +95,8 @@
     "cancel": "取消"
   },
   "preferences": {
-    "title": "偏好",
-    "desc": "管理您的内容偏好和智能过滤器",
+    "title": "推荐",
+    "desc": "管理相关性分数和个人推荐模型",
     "rebuildModel": "重建模型",
     "rebuilding": "重建中...",
     "showPreferenceScores": "显示偏好分数",
@@ -121,13 +132,6 @@
       "modelStrength": "模型强度",
       "modelStrengthDesc": "基于你的反馈历史",
       "lastUpdated": "上次更新：{{date}}"
-    },
-    "jev": {
-      "title": "Jev 标签",
-      "showAI": "显示 AI 检测标签",
-      "showContentType": "显示内容类型标签",
-      "showConfidence": "显示可见标签的置信度",
-      "saveError": "无法保存 Jev 展示偏好。"
     },
     "displaySettings": {
       "title": "显示设置",

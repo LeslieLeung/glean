@@ -9,6 +9,7 @@ import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
 import { useTranslation } from '@glean/i18n'
+import { ReadingDate } from '../components/ReadingDate'
 import { ArticleReader } from '../components/ArticleReader'
 import { BookmarkSearchMatches } from '../components/BookmarkSearchMatches'
 import { stripHtmlTags } from '../lib/html'
@@ -30,7 +31,6 @@ import {
   LayoutGrid,
   List,
 } from 'lucide-react'
-import { format } from 'date-fns'
 import {
   Button,
   Checkbox,
@@ -831,7 +831,7 @@ function BookmarkCard({
       {/* Footer */}
       <div className="text-muted-foreground flex items-center justify-between text-xs">
         <div className="flex items-center gap-2">
-          <span>{format(new Date(bookmark.created_at), 'MMM d, yyyy')}</span>
+          <ReadingDate value={bookmark.created_at} />
           {bookmark.entry_id && (
             <span
               className="text-primary/70 flex items-center gap-1"
@@ -1107,7 +1107,7 @@ function BookmarkListItem({
 
       {/* Date and source indicator */}
       <div className="text-muted-foreground hidden shrink-0 items-center gap-2 text-xs sm:flex">
-        <span>{format(new Date(bookmark.created_at), 'MMM d, yyyy')}</span>
+        <ReadingDate value={bookmark.created_at} />
         {bookmark.entry_id && (
           <span className="text-primary/70" title={t('common.savedFromFeed')}>
             <FileText className="h-3 w-3" />

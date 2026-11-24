@@ -3,10 +3,10 @@
   "subtitle": "Manage your account and preferences",
   "tabs": {
     "profile": "Profile",
-    "readLater": "Read Later",
     "appearance": "Appearance",
+    "reading": "Reading",
+    "readLater": "Read Later",
     "manageFeeds": "Manage Feeds",
-    "preferences": "Preferences",
     "apiTokens": "API Tokens"
   },
   "profile": {
@@ -42,7 +42,7 @@
   },
   "appearance": {
     "title": "Appearance",
-    "desc": "Customize the look and feel",
+    "desc": "Choose a light, dark, or system theme",
     "theme": "Theme",
     "chooseTheme": "Choose your theme",
     "themes": {
@@ -52,10 +52,21 @@
       "dayDesc": "Light theme for daytime use",
       "auto": "Auto",
       "autoDesc": "Follow your system preference"
-    },
+    }
+  },
+  "reading": {
+    "desc": "Customize article dates, keyboard navigation, and Jev labels",
+    "relativeDates": "Show relative dates",
+    "relativeDatesDesc": "Show article and bookmark dates as “2 hours ago” or “3 days ago”.",
     "keyboardNavigation": "Keyboard Navigation",
     "keyboardNavigationDesc": "Use arrow keys (↑/↓) or j/k to navigate between articles in the reader",
-    "settingsSaved": "Settings saved successfully"
+    "saveError": "Could not save reading settings.",
+    "jev": {
+      "title": "Jev labels",
+      "showAI": "Show AI detection label",
+      "showContentType": "Show content type label",
+      "showConfidence": "Show confidence on visible labels"
+    }
   },
   "manageFeeds": {
     "title": "Manage Feeds",
@@ -84,8 +95,8 @@
     "cancel": "Cancel"
   },
   "preferences": {
-    "title": "Preferences",
-    "desc": "Manage your content preferences and smart filters",
+    "title": "Recommendations",
+    "desc": "Manage relevance scores and your personal recommendation model",
     "rebuildModel": "Rebuild Model",
     "rebuilding": "Rebuilding...",
     "showPreferenceScores": "Show Preference Scores",
@@ -121,13 +132,6 @@
       "modelStrength": "Model Strength",
       "modelStrengthDesc": "Based on your feedback history",
       "lastUpdated": "Last updated: {{date}}"
-    },
-    "jev": {
-      "title": "Jev labels",
-      "showAI": "Show AI detection label",
-      "showContentType": "Show content type label",
-      "showConfidence": "Show confidence on visible labels",
-      "saveError": "Could not save Jev display preferences."
     },
     "displaySettings": {
       "title": "Display Settings",

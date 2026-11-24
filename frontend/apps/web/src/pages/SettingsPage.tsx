@@ -20,7 +20,7 @@ import {
   Sparkles,
   Languages,
   Key,
-  Keyboard,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -39,6 +39,7 @@ import {
   Switch,
 } from '@glean/ui'
 import { SubscriptionsTab } from '../components/tabs/SubscriptionsTab'
+import { ReadingTab } from '../components/tabs/ReadingTab'
 import { PreferenceTab } from '../components/tabs/PreferenceTab'
 import { APITokensTab } from '../components/tabs/APITokensTab'
 import { useTranslation } from '@glean/i18n'
@@ -78,7 +79,6 @@ export default function SettingsPage() {
   // Get current read_later_days from user settings, default to 7
   const currentReadLaterDays = user?.settings?.read_later_days ?? 7
   const showReadLaterRemaining = user?.settings?.show_read_later_remaining ?? true
-  const keyboardNavigationEnabled = user?.settings?.keyboard_navigation ?? true
 
   const handleReadLaterDaysChange = async (days: number) => {
     setIsSaving(true)
@@ -99,20 +99,6 @@ export default function SettingsPage() {
     setSaveSuccess(false)
     try {
       await updateSettings({ show_read_later_remaining: !showReadLaterRemaining })
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 2000)
-    } catch {
-      // Error is handled by the store
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const handleToggleKeyboardNavigation = async () => {
-    setIsSaving(true)
-    setSaveSuccess(false)
-    try {
-      await updateSettings({ keyboard_navigation: !keyboardNavigationEnabled })
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 2000)
     } catch {
@@ -409,40 +395,6 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
-
-        <div
-          className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-3 ring-1 sm:p-5"
-          style={{ animationDelay: '100ms' }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
-                <Keyboard className="text-primary h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <Label className="text-foreground block text-sm font-medium">
-                  {t('appearance.keyboardNavigation')}
-                </Label>
-                <p className="text-muted-foreground text-xs">
-                  {t('appearance.keyboardNavigationDesc')}
-                </p>
-              </div>
-            </div>
-            <Switch
-              aria-label={t('appearance.keyboardNavigation')}
-              checked={keyboardNavigationEnabled}
-              onCheckedChange={handleToggleKeyboardNavigation}
-              disabled={isSaving || isLoading}
-            />
-          </div>
-        </div>
-
-        {saveSuccess && (
-          <div className="animate-fade-in flex items-center gap-2 rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-600 ring-1 ring-green-500/20">
-            <CheckCircle className="h-4 w-4" />
-            {t('appearance.settingsSaved')}
-          </div>
-        )}
       </div>
     )
   }
@@ -456,18 +408,25 @@ export default function SettingsPage() {
       render: renderProfile,
     },
     {
-      id: 'read-later',
-      label: t('tabs.readLater'),
-      description: t('readLater.desc'),
-      icon: Clock,
-      render: renderReadLater,
-    },
-    {
       id: 'appearance',
       label: t('tabs.appearance'),
       description: t('appearance.desc'),
       icon: Sun,
       render: renderAppearance,
+    },
+    {
+      id: 'reading',
+      label: t('tabs.reading'),
+      description: t('reading.desc'),
+      icon: BookOpen,
+      render: () => <ReadingTab />,
+    },
+    {
+      id: 'read-later',
+      label: t('tabs.readLater'),
+      description: t('readLater.desc'),
+      icon: Clock,
+      render: renderReadLater,
     },
     {
       id: 'manage-feeds',
@@ -478,7 +437,7 @@ export default function SettingsPage() {
     },
     {
       id: 'preferences',
-      label: t('tabs.preferences'),
+      label: t('preferences.title'),
       description: t('preferences.desc'),
       icon: Sparkles,
       render: () => <PreferenceTab />,
