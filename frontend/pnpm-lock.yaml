@@ -380,7 +380,7 @@ importers:
         version: 4.4.0
       dompurify:
         specifier: ^3.3.1
-        version: 3.4.18
+        version: 3.5.0
       electron-store:
         specifier: ^12.0.0
         version: 12.0.0
@@ -558,7 +558,7 @@ importers:
         version: 2.1.1
       dompurify:
         specifier: ^3.3.1
-        version: 3.4.18
+        version: 3.5.0
       lucide-react:
         specifier: ^1.0.0
         version: 1.77.0(@types/react@19.3.0)(react@19.3.1)
@@ -2367,8 +2367,8 @@ packages:
   dom-accessibility-api@0.6.3:
     resolution: {integrity: sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w==}
 
-  dompurify@3.4.18:
-    resolution: {integrity: sha512-ofe3wI/uNm68HInABYFJYqQxRw1EaKAjNdrFVKqjUY+UZurvNd2L/HuQe097s/4RivWiZyP6tT7aoT8atjfhwg==}
+  dompurify@3.5.0:
+    resolution: {integrity: sha512-LYC0ZkE8P1V42JsRYTwMdme/2ET8SpOc5AA2eOFjP/IadvRd2fwiT4TVz5vkfy0XUx12aS2UaRkTnfVPNOv9vw==}
 
   dot-prop@10.2.0:
     resolution: {integrity: sha512-BTJ9aZYL3vCfZlZOBLy9v8TUqWGQ0pzFnygKwFZt5udj6viBoFIBviKPUoZLDCPn1FoXffv6McQFDenrm5Krfw==}
@@ -6010,7 +6010,7 @@ snapshots:
 
   dom-accessibility-api@0.6.3: {}
 
-  dompurify@3.4.18:
+  dompurify@3.5.0:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
