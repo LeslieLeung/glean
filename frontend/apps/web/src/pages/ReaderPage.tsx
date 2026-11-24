@@ -9,6 +9,7 @@ import {
 } from '../hooks/useEntries'
 import { useVectorizationStatus } from '../hooks/useVectorizationStatus'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
+import { ReadingDate } from '../components/ReadingDate'
 import { ClassificationBadge } from '../components/ClassificationBadge'
 import { useAuthStore } from '../stores/authStore'
 import { useUIStore } from '../stores/uiStore'
@@ -27,7 +28,7 @@ import {
   Info,
   ChevronDown,
 } from 'lucide-react'
-import { format, formatDistanceToNow, isPast } from 'date-fns'
+import { formatDistanceToNow, isPast } from 'date-fns'
 import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
 import { indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
 import {
@@ -952,9 +953,11 @@ function EntryListItem({
                 <span className="text-muted-foreground/40">·</span>
               )}
               {entry.published_at && (
-                <span className="tabular-nums">
-                  {format(new Date(entry.published_at), 'MMM d')}
-                </span>
+                <ReadingDate
+                  value={entry.published_at}
+                  absoluteFormat="MMM d"
+                  className="tabular-nums"
+                />
               )}
 
               <div className="ml-auto flex max-w-full min-w-0 items-center gap-1.5">
