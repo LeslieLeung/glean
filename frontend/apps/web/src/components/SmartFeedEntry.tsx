@@ -50,6 +50,7 @@ export function SmartFeedEntry({
   return (
     <button
       type="button"
+      data-entry-id={entry.id}
       aria-label={entry.title}
       onClick={onClick}
       className="hover:bg-muted/40 focus-visible:ring-ring flex w-full cursor-pointer items-start gap-3 px-4 py-4 text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset sm:px-6 sm:py-5"

@@ -34,7 +34,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow, isPast } from 'date-fns'
 import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
-import { indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
+import { findSurvivingReturnAnchor, indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
 import {
   buttonVariants,
   cn,
@@ -61,6 +61,24 @@ import {
 type FilterType = 'all' | 'unread' | 'smart' | 'read-later'
 
 const FILTER_ORDER: FilterType[] = ['all', 'unread', 'smart', 'read-later']
+const KEYBOARD_PREFETCH_THRESHOLD = 3
+
+interface FeedReturnState {
+  openedEntryId: string
+  entryId: string
+  order: string[]
+  scrollTop: number
+  entryOffsets: Record<string, number>
+  containerHeight: number
+  hasMeasuredLayout: boolean
+}
+
+function findEntryButton(container: HTMLElement, entryId: string): HTMLButtonElement | null {
+  for (const button of container.querySelectorAll<HTMLButtonElement>('button[data-entry-id]')) {
+    if (button.dataset.entryId === entryId) return button
+  }
+  return null
+}
 
 function timelineDate(publishedAt: string | null | undefined, createdAt?: string | null): Date {
   // Missing feed dates sort by when the article was fetched.
@@ -98,7 +116,9 @@ export default function ReaderPage() {
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(entryIdFromUrl)
   const isSmartFeedReading = isSmartFeed && !!selectedEntryId
-  const feedReturnRef = useRef<{ button: HTMLButtonElement; scrollTop: number } | null>(null)
+  const feedReturnRef = useRef<FeedReturnState | null>(null)
+  const pendingKeyboardNextFromIdRef = useRef<string | null>(null)
+  const pendingKeyboardFetchSeenRef = useRef(false)
 
   // Store the original position data of the selected entry when it was first clicked
   // This ensures the entry stays in its original position even after like/dislike/bookmark actions
@@ -364,9 +384,12 @@ export default function ReaderPage() {
       // Clear selected entry when switching views
       // This prevents showing an entry from a different feed/folder in the new view
       // Only clear if the change is not due to URL entry parameter
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
       if (!entryIdFromUrl) {
         setSelectedEntryId(null)
         selectedEntryOriginalDataRef.current = null
+        feedReturnRef.current = null
       }
 
       // Determine slide direction based on view change
@@ -397,6 +420,13 @@ export default function ReaderPage() {
       if (isMobile && !isSmartFeed) {
         setIsExitingEntryList(true)
       }
+      if (isSmartFeedReading && feedReturnRef.current) {
+        feedReturnRef.current = {
+          ...feedReturnRef.current,
+          entryId: entry.id,
+          order: entries.map((item) => item.id),
+        }
+      }
       setSelectedEntryId(entry.id)
 
       // Save the original position data when first selecting an entry
@@ -422,7 +452,7 @@ export default function ReaderPage() {
         })
       }
     },
-    [entries, isMobile, isSmartFeed, updateMutation, usesSmartSorting]
+    [entries, isMobile, isSmartFeed, isSmartFeedReading, updateMutation, usesSmartSorting]
   )
 
   const clearSelectedEntry = (removeEntryParam = false) => {
@@ -431,6 +461,8 @@ export default function ReaderPage() {
       next.delete('entry')
       setSearchParams(next, { replace: true })
     }
+    pendingKeyboardNextFromIdRef.current = null
+    pendingKeyboardFetchSeenRef.current = false
     setSelectedEntryId(null)
     selectedEntryOriginalDataRef.current = null
   }
@@ -455,14 +487,88 @@ export default function ReaderPage() {
 
   useLayoutEffect(() => {
     if (isSmartFeedReading || !feedReturnRef.current) return
-    const { button, scrollTop } = feedReturnRef.current
+    const saved = feedReturnRef.current
     feedReturnRef.current = null
-    if (isSmartFeed && entryListRef.current) {
-      // Fullscreen changes the available list width and height, which can clamp its scroll.
-      entryListRef.current.scrollTop = scrollTop
-      button.focus({ preventScroll: true })
+    const container = entryListRef.current
+    if (!isSmartFeed || !container) return
+
+    const currentIds = entries.map((entry) => entry.id)
+    const anchor = findSurvivingReturnAnchor(saved.order, saved.entryId, currentIds)
+    if (!anchor) {
+      container.scrollTop = 0
+      return
     }
-  }, [isSmartFeed, isSmartFeedReading])
+
+    const anchorButton = findEntryButton(container, anchor.id)
+    if (!anchorButton) {
+      container.scrollTop = 0
+      return
+    }
+
+    if (anchor.relation === 'fallback') {
+      container.scrollTop = 0
+      anchorButton.focus({ preventScroll: true })
+      return
+    }
+
+    const containerRect = container.getBoundingClientRect()
+    const anchorRect = anchorButton.getBoundingClientRect()
+    const currentHasLayout = containerRect.height > 0 && anchorRect.height > 0
+
+    if (saved.hasMeasuredLayout && currentHasLayout) {
+      const rawDesiredTop =
+        anchor.relation === 'after'
+          ? saved.entryOffsets[saved.entryId]
+          : saved.entryOffsets[anchor.id]
+      const navigatedAway = saved.entryId !== saved.openedEntryId
+      const hasVisibleDesiredTop =
+        rawDesiredTop !== undefined &&
+        (!navigatedAway || (rawDesiredTop >= 0 && rawDesiredTop < saved.containerHeight))
+
+      if (hasVisibleDesiredTop) {
+        const desiredTop =
+          anchor.relation === 'self' && !navigatedAway ? rawDesiredTop : Math.max(0, rawDesiredTop)
+        const currentTop = anchorRect.top - containerRect.top
+        container.scrollTop = Math.max(0, container.scrollTop + (currentTop - desiredTop))
+      } else {
+        anchorButton.scrollIntoView?.({ block: 'nearest' })
+      }
+    } else {
+      // Fullscreen changes the available list width and height, which can clamp its scroll.
+      container.scrollTop = saved.scrollTop
+    }
+
+    anchorButton.focus({ preventScroll: true })
+  }, [entries, isSmartFeed, isSmartFeedReading])
+
+  const prefetchNextPageForKeyboard = useCallback(
+    (targetIndex: number) => {
+      if (
+        hasNextPage &&
+        !isFetchingNextPage &&
+        !error &&
+        targetIndex >= entries.length - KEYBOARD_PREFETCH_THRESHOLD
+      ) {
+        void fetchNextPage()
+      }
+    },
+    [entries.length, error, fetchNextPage, hasNextPage, isFetchingNextPage]
+  )
+
+  const selectEntryFromKeyboard = useCallback(
+    (nextEntry: EntryWithState, nextIndex: number, isNext: boolean) => {
+      handleSelectEntry(nextEntry)
+      const entryEl =
+        !isSmartFeed && entryListRef.current?.querySelector(`[data-entry-id="${nextEntry.id}"]`)
+      if (entryEl) {
+        entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+      if (isNext) {
+        prefetchNextPageForKeyboard(nextIndex)
+      }
+    },
+    [handleSelectEntry, isSmartFeed, prefetchNextPageForKeyboard]
+  )
 
   // Keyboard navigation: arrow keys and j/k to switch between entries
   const handleKeyboardNavigation = useCallback(
@@ -504,25 +610,72 @@ export default function ReaderPage() {
       if (currentIndex === -1) {
         nextIndex = 0
       } else if (isNext) {
-        if (currentIndex >= entries.length - 1) return
+        if (currentIndex >= entries.length - 1) {
+          if (hasNextPage && !error) {
+            pendingKeyboardNextFromIdRef.current = selectedEntryId
+            pendingKeyboardFetchSeenRef.current = isFetchingNextPage
+            if (!isFetchingNextPage) {
+              void fetchNextPage()
+            }
+          }
+          return
+        }
         nextIndex = currentIndex + 1
       } else {
+        pendingKeyboardNextFromIdRef.current = null
+        pendingKeyboardFetchSeenRef.current = false
         if (currentIndex <= 0) return
         nextIndex = currentIndex - 1
       }
 
       const nextEntry = entries[nextIndex]
       if (nextEntry) {
-        handleSelectEntry(nextEntry)
-        const entryEl =
-          !isSmartFeed && entryListRef.current?.querySelector(`[data-entry-id="${nextEntry.id}"]`)
-        if (entryEl) {
-          entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-        }
+        pendingKeyboardNextFromIdRef.current = null
+        pendingKeyboardFetchSeenRef.current = false
+        selectEntryFromKeyboard(nextEntry, nextIndex, isNext)
       }
     },
-    [entries, selectedEntryId, keyboardNavigationEnabled, handleSelectEntry, isSmartFeed]
+    [
+      entries,
+      error,
+      fetchNextPage,
+      hasNextPage,
+      isFetchingNextPage,
+      isSmartFeed,
+      keyboardNavigationEnabled,
+      selectedEntryId,
+      selectEntryFromKeyboard,
+    ]
   )
+
+  useEffect(() => {
+    const pendingFromId = pendingKeyboardNextFromIdRef.current
+    if (!pendingFromId) return
+
+    if (pendingFromId !== selectedEntryId) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+      return
+    }
+
+    const currentIndex = entries.findIndex((entry) => entry.id === pendingFromId)
+    if (currentIndex >= 0 && currentIndex < entries.length - 1) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+      selectEntryFromKeyboard(entries[currentIndex + 1], currentIndex + 1, true)
+      return
+    }
+
+    if (isFetchingNextPage) {
+      pendingKeyboardFetchSeenRef.current = true
+      return
+    }
+
+    if (pendingKeyboardFetchSeenRef.current || !hasNextPage || error) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+    }
+  }, [entries, error, hasNextPage, isFetchingNextPage, selectedEntryId, selectEntryFromKeyboard])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyboardNavigation)
@@ -707,9 +860,31 @@ export default function ReaderPage() {
                         key={entry.id}
                         entry={entry}
                         onClick={(event) => {
+                          const container = entryListRef.current
+                          const containerRect = container?.getBoundingClientRect()
+                          const buttonRect = event.currentTarget.getBoundingClientRect()
+                          const hasMeasuredLayout =
+                            !!containerRect && containerRect.height > 0 && buttonRect.height > 0
+                          const entryOffsets: Record<string, number> = {}
+                          if (container && containerRect && hasMeasuredLayout) {
+                            for (const card of container.querySelectorAll<HTMLButtonElement>(
+                              'button[data-entry-id]'
+                            )) {
+                              const id = card.dataset.entryId
+                              if (id) {
+                                entryOffsets[id] =
+                                  card.getBoundingClientRect().top - containerRect.top
+                              }
+                            }
+                          }
                           feedReturnRef.current = {
-                            button: event.currentTarget,
-                            scrollTop: entryListRef.current?.scrollTop ?? 0,
+                            openedEntryId: entry.id,
+                            entryId: entry.id,
+                            order: entries.map((item) => item.id),
+                            scrollTop: container?.scrollTop ?? 0,
+                            entryOffsets,
+                            containerHeight: containerRect?.height ?? 0,
+                            hasMeasuredLayout,
                           }
                           handleSelectEntry(entry)
                         }}
