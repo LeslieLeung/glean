@@ -45,8 +45,9 @@ import {
   Pencil,
   MoreHorizontal as MoreIcon,
   CheckCheck,
+  CircleAlert,
 } from 'lucide-react'
-import type { FolderTreeNode, Subscription } from '@glean/types'
+import { FeedStatus, type FolderTreeNode, type Subscription } from '@glean/types'
 import {
   useDeleteSubscription,
   useFeedRefresh,
@@ -624,6 +625,10 @@ function SidebarFeedItem({
   onDragEnd,
 }: SidebarFeedItemProps) {
   const { t } = useTranslation('feeds')
+  const fetchError =
+    subscription.feed.status === FeedStatus.ERROR
+      ? subscription.feed.fetch_error_message || t('manager.refreshFailed')
+      : null
   const deleteMutation = useDeleteSubscription()
   const updateMutation = useUpdateSubscription()
   const markAllReadMutation = useMarkAllRead()
@@ -708,11 +713,21 @@ function SidebarFeedItem({
             {subscription.custom_title || subscription.feed.title || subscription.feed.url}
           </span>
         </button>
-        {subscription.unread_count > 0 && (
-          <Badge size="sm" className="bg-muted text-muted-foreground shrink-0 text-[10px]">
-            {subscription.unread_count}
-          </Badge>
-        )}
+        <span className="flex shrink-0 items-center gap-1">
+          {subscription.unread_count > 0 && (
+            <Badge size="sm" className="bg-muted text-muted-foreground text-[10px]">
+              {subscription.unread_count}
+            </Badge>
+          )}
+          <span
+            className="size-3.5"
+            role={fetchError ? 'img' : undefined}
+            aria-label={fetchError ?? undefined}
+            title={fetchError ?? undefined}
+          >
+            {fetchError && <CircleAlert className="text-destructive size-3.5" aria-hidden="true" />}
+          </span>
+        </span>
 
         <Menu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
           <MenuTrigger
