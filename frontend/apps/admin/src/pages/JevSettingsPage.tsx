@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isAxiosError } from 'axios'
-import { Eye, EyeOff, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import {
   Alert,
@@ -11,6 +11,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Collapsible,
+  CollapsiblePanel,
+  CollapsibleTrigger,
   Field,
   FieldDescription,
   FieldLabel,
@@ -71,6 +74,7 @@ function JevForm({ config }: { config: JevConfigResponse }) {
   const [apiKey, setApiKey] = useState('')
   const [clearKey, setClearKey] = useState(false)
   const [showKey, setShowKey] = useState(false)
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(() => new Set())
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
   const save = useSaveJevConfig()
   const test = useTestJevConfig()
@@ -98,6 +102,18 @@ function JevForm({ config }: { config: JevConfigResponse }) {
     )
   }
 
+  function setCategoryExpanded(id: string, open: boolean) {
+    setExpandedCategoryIds((current) => {
+      const next = new Set(current)
+      if (open) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
   const request = { ...form, ...(apiKey ? { api_key: apiKey } : clearKey ? { api_key: '' } : {}) }
 
   function showError(error: unknown) {
@@ -107,6 +123,15 @@ function JevForm({ config }: { config: JevConfigResponse }) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    const emptyCategories = form.categories.filter((category) => !category.label.trim())
+    if (form.classify_content && emptyCategories.length > 0) {
+      setExpandedCategoryIds((current) => {
+        const next = new Set(current)
+        for (const category of emptyCategories) next.add(category.id)
+        return next
+      })
+      return
+    }
     try {
       const updated = await save.mutateAsync(request)
       const settings = settingsFrom(updated)
@@ -261,68 +286,105 @@ function JevForm({ config }: { config: JevConfigResponse }) {
             {form.classify_content && (
               <div className="flex flex-col gap-4">
                 <p className="text-muted-foreground text-sm">{t('jev.categoriesHint')}</p>
-                {form.categories.map((category, index) => (
-                  <fieldset
-                    key={category.id}
-                    className="border-border flex min-w-0 flex-col gap-3 rounded-lg border p-4"
-                  >
-                    <legend className="px-1 text-sm">
-                      {t('jev.categoryNumber', { number: index + 1 })}
-                    </legend>
-                    <Field>
-                      <FieldLabel htmlFor={`category-${category.id}`}>
-                        {t('jev.categoryName')}
-                      </FieldLabel>
-                      <Input
-                        id={`category-${category.id}`}
-                        required
-                        maxLength={40}
-                        value={category.label}
-                        onChange={(event) => changeCategory(index, { label: event.target.value })}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor={`description-${category.id}`}>
-                        {t('jev.categoryDescription')}
-                      </FieldLabel>
-                      <Textarea
-                        id={`description-${category.id}`}
-                        rows={2}
-                        maxLength={2000}
-                        value={category.description}
-                        onChange={(event) =>
-                          changeCategory(index, { description: event.target.value })
-                        }
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="self-end"
-                      disabled={form.categories.length <= 1}
-                      onClick={() =>
-                        change(
-                          'categories',
-                          form.categories.filter((_, i) => i !== index)
-                        )
-                      }
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      {t('jev.removeCategory')}
-                    </Button>
-                  </fieldset>
-                ))}
+                <div className="border-border divide-border divide-y rounded-lg border">
+                  {form.categories.map((category, index) => {
+                    const expanded = expandedCategoryIds.has(category.id)
+                    const title =
+                      category.label.trim() || t('jev.categoryNumber', { number: index + 1 })
+                    return (
+                      <Collapsible
+                        key={category.id}
+                        open={expanded}
+                        onOpenChange={(open) => setCategoryExpanded(category.id, open)}
+                      >
+                        <CollapsibleTrigger
+                          type="button"
+                          className="hover:bg-accent/50 flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors"
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <ChevronRight
+                              className={`text-muted-foreground size-4 shrink-0 transition-transform duration-200 ${
+                                expanded ? 'rotate-90' : ''
+                              }`}
+                            />
+                            <span className="text-foreground shrink-0 text-sm font-medium">
+                              {title}
+                            </span>
+                            {category.description && (
+                              <span className="text-muted-foreground min-w-0 truncate text-xs">
+                                {category.description}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                            {index + 1}
+                          </span>
+                        </CollapsibleTrigger>
+                        <CollapsiblePanel>
+                          <fieldset className="border-border flex min-w-0 flex-col gap-3 border-t px-4 py-4">
+                            <legend className="sr-only">
+                              {t('jev.categoryNumber', { number: index + 1 })}
+                            </legend>
+                            <Field>
+                              <FieldLabel htmlFor={`category-${category.id}`}>
+                                {t('jev.categoryName')}
+                              </FieldLabel>
+                              <Input
+                                id={`category-${category.id}`}
+                                required
+                                maxLength={40}
+                                value={category.label}
+                                onChange={(event) =>
+                                  changeCategory(index, { label: event.target.value })
+                                }
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel htmlFor={`description-${category.id}`}>
+                                {t('jev.categoryDescription')}
+                              </FieldLabel>
+                              <Textarea
+                                id={`description-${category.id}`}
+                                rows={2}
+                                maxLength={2000}
+                                value={category.description}
+                                onChange={(event) =>
+                                  changeCategory(index, { description: event.target.value })
+                                }
+                              />
+                            </Field>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="self-end"
+                              disabled={form.categories.length <= 1}
+                              onClick={() => {
+                                setCategoryExpanded(category.id, false)
+                                change(
+                                  'categories',
+                                  form.categories.filter((_, i) => i !== index)
+                                )
+                              }}
+                            >
+                              <Trash2 data-icon="inline-start" />
+                              {t('jev.removeCategory')}
+                            </Button>
+                          </fieldset>
+                        </CollapsiblePanel>
+                      </Collapsible>
+                    )
+                  })}
+                </div>
                 <div className="flex items-center justify-between">
                   <Button
                     type="button"
                     variant="outline"
                     disabled={form.categories.length >= 10}
-                    onClick={() =>
-                      change('categories', [
-                        ...form.categories,
-                        { id: crypto.randomUUID(), label: '', description: '' },
-                      ])
-                    }
+                    onClick={() => {
+                      const id = crypto.randomUUID()
+                      change('categories', [...form.categories, { id, label: '', description: '' }])
+                      setCategoryExpanded(id, true)
+                    }}
                   >
                     <Plus data-icon="inline-start" />
                     {t('jev.addCategory')}
@@ -420,6 +482,7 @@ function JevForm({ config }: { config: JevConfigResponse }) {
           disabled={busy}
           onClick={() => {
             setForm(config.defaults)
+            setExpandedCategoryIds(new Set())
             setMessage(null)
           }}
         >

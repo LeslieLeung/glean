@@ -141,3 +141,33 @@ def test_endpoint_urls_are_normalized():
     assert (
         JevSettings(base_url="https://example.com/v1/systemone/").base_url == "https://example.com"
     )
+
+
+def test_default_categories_and_prompt_cover_rss_content_types():
+    settings = JevSettings()
+    assert [category.id for category in settings.categories] == [
+        "original",
+        "news",
+        "release",
+        "digest",
+        "translation",
+        "repost",
+        "ad",
+    ]
+    assert all(category.description for category in settings.categories)
+
+    questions = jev_service.build_questions(settings)
+    content_type = questions["content_type"]
+    assert content_type["type"] == "choice"
+    assert set(content_type["criteria"]) == {
+        "original",
+        "news",
+        "release",
+        "digest",
+        "translation",
+        "repost",
+        "ad",
+    }
+    assert "release" in content_type["instructions"]
+    assert "digest" in content_type["instructions"]
+    assert "translation" in content_type["instructions"]
