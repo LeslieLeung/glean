@@ -6,6 +6,7 @@ import { entryService } from '@glean/api-client'
 import { entryKeys } from '@/hooks/useEntries'
 import { MOBILE_LAYOUT_QUERY } from '@/hooks/useMediaQuery'
 import ReaderPage from '@/pages/ReaderPage'
+import { useUIStore } from '@/stores/uiStore'
 import { createMockEntry } from '../helpers/mockData'
 
 vi.mock('@glean/api-client', () => ({
@@ -22,18 +23,28 @@ vi.mock('@glean/i18n', () => ({
 }))
 
 vi.mock('@/components/ArticleReader', () => ({
-  ArticleReader: ({ onClose }: { onClose: () => void }) => (
-    <button onClick={onClose}>Close article</button>
+  ArticleReader: ({
+    entry,
+    onClose,
+    backLabel,
+    showFullscreenButton,
+  }: {
+    entry: { title: string }
+    onClose: () => void
+    backLabel?: string
+    showFullscreenButton?: boolean
+  }) => (
+    <>
+      <h1>{entry.title}</h1>
+      <button onClick={onClose}>{backLabel ?? 'Close article'}</button>
+      {showFullscreenButton !== false && <button>Fullscreen toggle</button>}
+    </>
   ),
   ArticleReaderSkeleton: () => null,
 }))
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: () => ({ user: null }),
-}))
-
-vi.mock('@/stores/uiStore', () => ({
-  useUIStore: () => ({ showPreferenceScore: false }),
 }))
 
 class MockIntersectionObserver {
@@ -62,6 +73,17 @@ class MockIntersectionObserver {
   }
 }
 
+function setMobileLayout(mobile: boolean) {
+  const matchMedia = vi.mocked(window.matchMedia).getMockImplementation()!
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      ...matchMedia(query),
+      matches: mobile && query === MOBILE_LAYOUT_QUERY,
+    }))
+  )
+}
+
 function intersectListBottom() {
   act(() => {
     MockIntersectionObserver.instances.forEach((observer) => observer.intersect())
@@ -73,6 +95,7 @@ describe('ReaderPage pagination', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    useUIStore.setState({ smartLayout: 'feed', showPreferenceScore: false })
     MockIntersectionObserver.instances = []
     vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
     queryClient = new QueryClient({
@@ -189,12 +212,108 @@ describe('ReaderPage pagination', () => {
     )
   })
 
+  it.each([false, true])('returns to the same Smart feed position on mobile=%s', async (mobile) => {
+    setMobileLayout(mobile)
+    const entry = createMockEntry({
+      title: 'Smart article',
+      summary: '<p>Article preview</p><img src="/cover.jpg">',
+    })
+    vi.mocked(entryService.getEntries).mockResolvedValue({
+      items: [entry],
+      page: 1,
+      per_page: 20,
+      total: 1,
+      total_pages: 1,
+      next_cursor: null,
+    })
+    vi.mocked(entryService.getEntry).mockResolvedValue(entry)
+    vi.mocked(entryService.updateEntryState).mockResolvedValue({ ...entry, is_read: true })
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?view=smart']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const card = await screen.findByRole('button', { name: entry.title })
+    const scrollContainer = card.closest<HTMLElement>('.overflow-y-auto')!
+    scrollContainer.scrollTop = 240
+    expect(card.textContent).toContain('Article preview')
+    expect(card.querySelector('img')?.src).toBe('https://example.com/cover.jpg')
+
+    fireEvent.click(card)
+    await screen.findByRole('heading', { name: entry.title })
+    const back = screen.getByRole('button', { name: 'smart.backToFeed' })
+    expect(container.querySelector('[data-smart-feed-reading]')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: entry.title })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Fullscreen toggle' })).toBeNull()
+    expect(entryService.updateEntryState).toHaveBeenCalledWith(entry.id, { is_read: true })
+
+    scrollContainer.scrollTop = 120
+    fireEvent.click(back)
+    expect(container.querySelector('[data-smart-feed-reading]')).toBeNull()
+    expect(screen.getByRole('button', { name: entry.title })).toBe(card)
+    expect(document.activeElement).toBe(card)
+    expect(scrollContainer.scrollTop).toBe(240)
+  })
+
+  it('switches between Smart feed and the original list using the same entries', async () => {
+    useUIStore.getState().setShowPreferenceScore(true)
+    const entry = createMockEntry({
+      title: 'Smart article',
+      author: 'Article author',
+      preference_score: 89,
+      classification: {
+        label: 'human',
+        score: 0.93,
+        model_id: 'jev-test',
+        content: { label: 'advertisement', name: 'Advertisement', confidence: 0.84 },
+      },
+    })
+    vi.mocked(entryService.getEntries).mockResolvedValueOnce({
+      items: [entry],
+      page: 1,
+      per_page: 20,
+      total: 1,
+      total_pages: 1,
+      next_cursor: null,
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?view=smart']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    await screen.findByRole('button', { name: entry.title })
+    const expectSharedDetails = () => {
+      const labels = screen.getByTitle('Human · Advertisement')
+      const score = screen.getByTitle('smart.score')
+      expect(labels.parentElement).toBe(score.parentElement)
+      expect(score.textContent).toBe('89')
+      expect(screen.getByTitle('Test Feed · Article author').textContent).toBe(
+        'Test Feed · Article author'
+      )
+    }
+    expectSharedDetails()
+    fireEvent.click(screen.getByRole('button', { name: 'smart.listView' }))
+    expect(screen.getByText(entry.title)).toBeDefined()
+    expect(screen.queryByRole('button', { name: entry.title })).toBeNull()
+    expect(screen.getByText('empty.selectArticle')).toBeDefined()
+    expect(JSON.parse(localStorage.getItem('glean-ui')!).state.smartLayout).toBe('list')
+    expectSharedDetails()
+
+    fireEvent.click(screen.getByRole('button', { name: 'smart.feedView' }))
+    expect(screen.getByRole('button', { name: entry.title })).toBeDefined()
+    expect(screen.queryByText('empty.selectArticle')).toBeNull()
+    expect(entryService.getEntries).toHaveBeenCalledTimes(1)
+  })
+
   it('restores mobile navigation after closing an article opened by URL', async () => {
-    const matchMedia = vi.mocked(window.matchMedia).getMockImplementation()!
-    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
-      ...matchMedia(query),
-      matches: query === MOBILE_LAYOUT_QUERY,
-    }))
+    setMobileLayout(true)
     vi.mocked(entryService.getEntry).mockResolvedValue(createMockEntry({ id: 'article' }))
 
     const { container } = render(

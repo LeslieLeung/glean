@@ -1385,6 +1385,14 @@ body {
   display: none;
 }
 
+.app-shell:has([data-smart-feed-reading]) > .app-sidebar {
+  display: none;
+}
+
+.app-shell[data-mac-electron]:has([data-smart-feed-reading]) > main {
+  padding-top: 3rem;
+}
+
 /* Keep portaled panels within the same visible viewport as the app shell. */
 @supports (height: 100dvh) {
   :is(

@@ -44,6 +44,11 @@
   "smart": {
     "title": "Smart",
     "description": "Recent unread articles",
+    "layout": "Smart layout",
+    "feedView": "Feed",
+    "listView": "List",
+    "backToFeed": "Back to feed",
+    "unknownFeed": "Unknown feed",
     "score": "Recommendation score: {{score}}",
     "refresh": "Refresh Smart",
     "empty": "Older articles are available in the timeline.",

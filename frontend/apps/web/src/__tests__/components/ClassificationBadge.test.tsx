@@ -31,6 +31,13 @@ describe('ClassificationBadge', () => {
     expect(screen.getByTitle('Original 85.0%').textContent).toContain('85.0%')
   })
 
+  it('keeps the full classification and confidence available in the inline label', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_confidence: true } }))
+    render(<ClassificationBadge result={result} inline />)
+    const label = 'Human 90.0% · Original 85.0%'
+    expect(screen.getByTitle(label).textContent).toBe(label)
+  })
+
   it('hides AI detection independently', () => {
     useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_ai_label: false } }))
     render(<ClassificationBadge result={result} />)
@@ -45,7 +52,7 @@ describe('ClassificationBadge', () => {
     expect(screen.queryByText('Original')).toBeNull()
   })
 
-  it('renders nothing when both labels are disabled', () => {
+  it.each([false, true])('renders nothing when both labels are disabled (inline=%s)', (inline) => {
     useAuthStore.getState().setUser(
       createMockUser({
         settings: {
@@ -55,7 +62,7 @@ describe('ClassificationBadge', () => {
         },
       })
     )
-    const { container } = render(<ClassificationBadge result={result} />)
+    const { container } = render(<ClassificationBadge result={result} inline={inline} />)
     expect(container.textContent).toBe('')
   })
 

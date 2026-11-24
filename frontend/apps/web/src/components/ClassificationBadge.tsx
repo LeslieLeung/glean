@@ -2,7 +2,13 @@ import { Badge } from '@glean/ui'
 import type { EntryClassification } from '@glean/types'
 import { useAuthStore } from '../stores/authStore'
 
-export function ClassificationBadge({ result }: { result?: EntryClassification | null }) {
+export function ClassificationBadge({
+  result,
+  inline = false,
+}: {
+  result?: EntryClassification | null
+  inline?: boolean
+}) {
   const settings = useAuthStore((state) => state.user?.settings)
   if (!result) return null
 
@@ -15,6 +21,18 @@ export function ClassificationBadge({ result }: { result?: EntryClassification |
   const aiConfidence = showConfidence ? ` ${(result.score * 100).toFixed(1)}%` : ''
   const contentConfidence =
     showConfidence && content ? ` ${(content.confidence * 100).toFixed(1)}%` : ''
+
+  if (inline) {
+    const labels = [showAI && aiLabel + aiConfidence, content && content.name + contentConfidence]
+      .filter(Boolean)
+      .join(' · ')
+
+    return (
+      <span className="min-w-0 truncate" title={labels}>
+        {labels}
+      </span>
+    )
+  }
 
   return (
     <>
