@@ -7,7 +7,6 @@ import {
   useUpdateEntryState,
   useMarkAllRead,
 } from '../hooks/useEntries'
-import { useVectorizationStatus } from '../hooks/useVectorizationStatus'
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { ReadingDate } from '../components/ReadingDate'
 import { ClassificationBadge } from '../components/ClassificationBadge'
@@ -25,7 +24,7 @@ import {
   ThumbsDown,
   Timer,
   Sparkles,
-  Info,
+  RefreshCw,
   ChevronDown,
 } from 'lucide-react'
 import { formatDistanceToNow, isPast } from 'date-fns'
@@ -78,10 +77,7 @@ export default function ReaderPage() {
   const { user } = useAuthStore()
   const { showPreferenceScore } = useUIStore()
 
-  // Check vectorization status for Smart view
-  const { data: vectorizationStatus } = useVectorizationStatus()
-  const isVectorizationEnabled =
-    vectorizationStatus?.enabled && vectorizationStatus?.status === 'idle'
+  const isGlobalSmart = isSmartView && !selectedFeedId && !selectedFolderId
 
   // Initialize filterType from URL parameter or default to 'unread'
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -98,6 +94,7 @@ export default function ReaderPage() {
   const selectedEntryOriginalDataRef = useRef<{
     id: string
     preferenceScore: number | null
+    recommendationReason: EntryWithState['recommendation_reason']
     publishedAt: string | null
     index: number
     order: string[]
@@ -129,6 +126,7 @@ export default function ReaderPage() {
   const usesSmartSorting = isSmartView || filterType === 'smart'
 
   const getFilterParams = () => {
+    if (isGlobalSmart) return { is_read: false }
     switch (filterType) {
       case 'unread':
         return { is_read: false }
@@ -150,17 +148,19 @@ export default function ReaderPage() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    restart,
   } = useInfiniteEntries({
     feed_id: selectedFeedId,
     folder_id: selectedFolderId,
     ...getFilterParams(),
-    // The 'view' parameter differentiates 'smart' from 'unread' filters:
-    // - 'smart': sorted by preference_score (descending)
-    // - 'timeline': sorted by published_at (descending)
-    // Both 'smart' and 'unread' filters use is_read: false, but differ in sort order
     view: usesSmartSorting ? 'smart' : 'timeline',
+    ...(isGlobalSmart ? { global_smart: true } : {}),
+    ...(showPreferenceScore && !usesSmartSorting && filterType !== 'read-later'
+      ? { include_score: true }
+      : {}),
   })
 
+  const smartExpired = usesSmartSorting && error && 'status' in error && error.status === 410
   const rawEntries = entriesData?.pages.flatMap((page) => page.items) || []
 
   // Fetch selected entry separately to keep it visible even when filtered out of list
@@ -210,6 +210,8 @@ export default function ReaderPage() {
         ? {
             ...selectedEntry,
             preference_score: originalData.preferenceScore ?? selectedEntry.preference_score,
+            recommendation_reason:
+              originalData.recommendationReason ?? selectedEntry.recommendation_reason,
           }
         : selectedEntry
 
@@ -386,6 +388,7 @@ export default function ReaderPage() {
         selectedEntryOriginalDataRef.current = {
           id: entry.id,
           preferenceScore: entry.preference_score,
+          recommendationReason: entry.recommendation_reason,
           publishedAt: entry.published_at,
           index: index >= 0 ? index : 0,
           order: entries.map((item) => item.id),
@@ -516,112 +519,62 @@ export default function ReaderPage() {
           >
             {/* Filters */}
             <div className="border-border bg-card border-b px-3 py-2">
-              {/*
-                UI Behavior:
-                - Global Smart View (no feed/folder selected): Shows dedicated smart view header + limited filters (unread, all)
-                - Feed/Folder View: Shows all 4 filter tabs including "smart" filter
-
-                Mobile: Uses dropdown menu for filter selection with Mark All Read button
-                Desktop: Shows all filter tabs inline
-              */}
-              {isMobile ? (
-                /* Mobile: Dropdown menu + Mark All Read button */
+              {isGlobalSmart ? (
+                <div className="bg-primary/5 flex min-w-0 items-center gap-2 rounded-lg px-3 py-1">
+                  <Sparkles className="text-primary h-4 w-4 shrink-0" />
+                  <span className="text-primary text-sm font-medium">{t('smart.title')}</span>
+                  <span className="text-muted-foreground text-xs">{t('smart.description')}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto shrink-0"
+                    aria-label={t('smart.refresh')}
+                    title={t('smart.refresh')}
+                    onClick={() => void restart()}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : isMobile ? (
                 <div className="flex items-center gap-2">
-                  {isSmartView && !selectedFeedId && !selectedFolderId && (
-                    /* Smart view indicator for mobile */
-                    <div className="bg-primary/5 flex items-center gap-1.5 rounded-lg px-2 py-0.5">
-                      <Sparkles className="text-primary h-3.5 w-3.5" />
-                      <span className="text-primary text-xs font-medium">{t('smart.title')}</span>
-                    </div>
-                  )}
-                  <FilterDropdownMenu
-                    filterType={filterType}
-                    onFilterChange={handleFilterChange}
-                    isSmartView={isSmartView && !selectedFeedId && !selectedFolderId}
-                  />
+                  <FilterDropdownMenu filterType={filterType} onFilterChange={handleFilterChange} />
                   <MarkAllReadButton feedId={selectedFeedId} folderId={selectedFolderId} />
                 </div>
               ) : (
-                /* Desktop: Original filter tabs */
-                <>
-                  {isSmartView && !selectedFeedId && !selectedFolderId ? (
-                    /* Smart view header + filters */
-                    <div className="space-y-2">
-                      {/* Smart Header */}
-                      <div className="bg-primary/5 animate-fade-in flex min-w-0 items-center gap-2 rounded-lg px-3 py-1">
-                        <Sparkles className="text-primary h-4 w-4 animate-pulse" />
-                        <span className="text-primary text-sm font-medium">{t('smart.title')}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {t('smart.description')}
-                        </span>
-                      </div>
-                      {/* Filter tabs for Smart view */}
-                      <div className="bg-muted/50 @container flex min-w-0 items-center gap-1 rounded-lg p-1">
-                        <FilterTab
-                          active={filterType === 'unread'}
-                          onClick={() => handleFilterChange('unread')}
-                          icon={<div className="h-2 w-2 rounded-full bg-current" />}
-                          label={t('filters.unread')}
-                        />
-                        <FilterTab
-                          active={filterType === 'all'}
-                          onClick={() => handleFilterChange('all')}
-                          icon={<Inbox className="h-3.5 w-3.5" />}
-                          label={t('filters.all')}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    /* Regular view filters */
-                    <div className="flex items-center gap-2">
-                      {/* Filter tabs */}
-                      <div className="bg-muted/50 @container flex min-w-0 flex-1 items-center gap-1 rounded-lg p-1">
-                        <FilterTab
-                          active={filterType === 'all'}
-                          onClick={() => handleFilterChange('all')}
-                          icon={<Inbox className="h-3.5 w-3.5" />}
-                          label={t('filters.all')}
-                        />
-                        <FilterTab
-                          active={filterType === 'unread'}
-                          onClick={() => handleFilterChange('unread')}
-                          icon={<div className="h-2 w-2 rounded-full bg-current" />}
-                          label={t('filters.unread')}
-                        />
-                        <FilterTab
-                          active={filterType === 'smart'}
-                          onClick={() => handleFilterChange('smart')}
-                          icon={<Sparkles className="h-3.5 w-3.5" />}
-                          label={t('filters.smart')}
-                        />
-                        <FilterTab
-                          active={filterType === 'read-later'}
-                          onClick={() => handleFilterChange('read-later')}
-                          icon={<Clock className="h-3.5 w-3.5" />}
-                          label={t('filters.readLater')}
-                        />
-                      </div>
+                <div className="flex items-center gap-2">
+                  {/* Filter tabs */}
+                  <div className="bg-muted/50 @container flex min-w-0 flex-1 items-center gap-1 rounded-lg p-1">
+                    <FilterTab
+                      active={filterType === 'all'}
+                      onClick={() => handleFilterChange('all')}
+                      icon={<Inbox className="h-3.5 w-3.5" />}
+                      label={t('filters.all')}
+                    />
+                    <FilterTab
+                      active={filterType === 'unread'}
+                      onClick={() => handleFilterChange('unread')}
+                      icon={<div className="h-2 w-2 rounded-full bg-current" />}
+                      label={t('filters.unread')}
+                    />
+                    <FilterTab
+                      active={filterType === 'smart'}
+                      onClick={() => handleFilterChange('smart')}
+                      icon={<Sparkles className="h-3.5 w-3.5" />}
+                      label={t('filters.smart')}
+                    />
+                    <FilterTab
+                      active={filterType === 'read-later'}
+                      onClick={() => handleFilterChange('read-later')}
+                      icon={<Clock className="h-3.5 w-3.5" />}
+                      label={t('filters.readLater')}
+                    />
+                  </div>
 
-                      {/* Mark all read button */}
-                      <MarkAllReadButton feedId={selectedFeedId} folderId={selectedFolderId} />
-                    </div>
-                  )}
-                </>
+                  {/* Mark all read button */}
+                  <MarkAllReadButton feedId={selectedFeedId} folderId={selectedFolderId} />
+                </div>
               )}
             </div>
-
-            {/* Smart view banner when vectorization is disabled */}
-            {isSmartView && !isVectorizationEnabled && (
-              <div className="border-border bg-muted/30 border-b px-3 py-2">
-                <div className="flex items-start gap-2 text-sm">
-                  <Info className="text-muted-foreground mt-0.5 h-4 w-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-foreground font-medium">{t('smart.limitedMode')}</p>
-                    <p className="text-muted-foreground">{t('smart.enableVectorizationHint')}</p>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Entry list */}
             <div ref={entryListRef} className="flex-1 overflow-y-auto">
@@ -648,7 +601,14 @@ export default function ReaderPage() {
                     <Alert variant="error">
                       <AlertCircle />
                       <AlertTitle>{t('entries.loadError')}</AlertTitle>
-                      <AlertDescription>{(error as Error).message}</AlertDescription>
+                      <AlertDescription>
+                        {smartExpired ? t('smart.expired') : error.message}
+                      </AlertDescription>
+                      {usesSmartSorting && (
+                        <Button variant="outline" size="sm" onClick={() => void restart()}>
+                          {t('smart.refresh')}
+                        </Button>
+                      )}
                     </Alert>
                   </div>
                 )}
@@ -660,7 +620,7 @@ export default function ReaderPage() {
                     </div>
                     <p className="text-muted-foreground">{t('entries.noEntries')}</p>
                     <p className="text-muted-foreground/60 mt-1 text-xs">
-                      {t('empty.tryChangingFilter')}
+                      {t(isGlobalSmart ? 'smart.empty' : 'empty.tryChangingFilter')}
                     </p>
                   </div>
                 )}
@@ -678,14 +638,14 @@ export default function ReaderPage() {
                         filterType === 'read-later' &&
                         (user?.settings?.show_read_later_remaining ?? true)
                       }
-                      showPreferenceScore={usesSmartSorting && showPreferenceScore}
+                      showPreferenceScore={showPreferenceScore}
                       dataEntryId={entry.id}
                     />
                   ))}
                 </div>
 
                 {/* Intersection observer target for infinite scroll */}
-                {hasNextPage && !isFetchingNextPage && entries.length > 0 && (
+                {hasNextPage && !error && !isFetchingNextPage && entries.length > 0 && (
                   <div ref={setLoadMoreElement} className="h-4" />
                 )}
 
@@ -883,6 +843,16 @@ function EntryListItem({
   showPreferenceScore?: boolean
   dataEntryId?: string
 }) {
+  const { t } = useTranslation('reader')
+  const scoreTitle =
+    entry.preference_score == null
+      ? undefined
+      : [
+          t('smart.score', { score: entry.preference_score.toFixed(0) }),
+          entry.recommendation_reason && t(`smart.reasons.${entry.recommendation_reason}`),
+        ]
+          .filter(Boolean)
+          .join(' · ')
   const remainingTime = showReadLaterRemaining ? formatRemainingTime(entry.read_later_until) : null
   const summary = stripHtmlTags(stripFeedMetadataHtml(entry.summary || ''))
   return (
@@ -961,7 +931,7 @@ function EntryListItem({
               )}
 
               <div className="ml-auto flex max-w-full min-w-0 items-center gap-1.5">
-                {/* M3: Preference score badge */}
+                {/* Recommendation score */}
                 {showPreferenceScore &&
                   entry.preference_score !== null &&
                   entry.preference_score !== undefined && (
@@ -973,9 +943,9 @@ function EntryListItem({
                             ? 'bg-amber-500/10 text-amber-500'
                             : 'bg-muted text-muted-foreground'
                       }`}
-                      title={`Preference score: ${entry.preference_score.toFixed(0)}%`}
+                      title={scoreTitle}
                     >
-                      {entry.preference_score.toFixed(0)}%
+                      {entry.preference_score.toFixed(0)}
                     </span>
                   )}
                 {entry.is_liked === true && (
@@ -1042,11 +1012,9 @@ function FilterTab({
 function FilterDropdownMenu({
   filterType,
   onFilterChange,
-  isSmartView,
 }: {
   filterType: FilterType
   onFilterChange: (type: FilterType) => void
-  isSmartView: boolean
 }) {
   const { t } = useTranslation('reader')
 
@@ -1076,11 +1044,6 @@ function FilterDropdownMenu({
     }
   }
 
-  // For Smart View without feed/folder, only show 'unread' and 'all'
-  const availableFilters: FilterType[] = isSmartView
-    ? ['unread', 'all']
-    : ['all', 'unread', 'smart', 'read-later']
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="text-foreground hover:bg-accent flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors">
@@ -1091,7 +1054,7 @@ function FilterDropdownMenu({
         <ChevronDown className="h-4 w-4 opacity-50" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {availableFilters.map((type) => (
+        {FILTER_ORDER.map((type) => (
           <DropdownMenuItem
             key={type}
             onClick={() => onFilterChange(type)}

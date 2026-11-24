@@ -9,14 +9,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, union, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
 
 from glean_core import RedisKeys, get_logger
 from glean_core.published_at import effective_published_at
-from glean_core.services.preference_dirty_service import mark_preferences_dirty
-from glean_database.models import Bookmark, Entry, UserEntry
+from glean_database.models import Entry
 from glean_vector.clients.embedding_client import EmbeddingClient
 from glean_vector.clients.rate_limiter import RateLimitDeadlineError
 from glean_vector.clients.vector_store import VectorStoreClient
@@ -149,7 +147,9 @@ class EmbeddingService:
             True if successful, False otherwise
         """
         # Get entry from database
-        result = await self.db.execute(select(Entry).where(Entry.id == entry_id))
+        result = await self.db.execute(
+            select(Entry).where(Entry.id == entry_id).with_for_update(skip_locked=True)
+        )
         entry = result.scalar_one_or_none()
 
         if not entry:
@@ -162,6 +162,8 @@ class EmbeddingService:
         # Skip if already processed
         if entry.embedding_status == "done":
             return True
+        if entry.embedding_status == "processing":
+            return False
 
         # Update status to processing
         await self.db.execute(
@@ -193,17 +195,12 @@ class EmbeddingService:
             # Detect language (simple heuristic)
             language = self._detect_language(text)
 
-            affected_user_ids = await self._store_embedding(
+            await self._store_embedding(
                 entry=entry,
                 embedding=embedding,
                 language=language,
                 word_count=word_count,
             )
-            await self._mark_affected_preferences_pending(
-                entry_id,
-                affected_user_ids,
-            )
-
             return True
 
         except StaleEmbeddingGenerationError:
@@ -213,8 +210,7 @@ class EmbeddingService:
         except RateLimitDeadlineError:
             raise
         except Exception as e:
-            # Infrastructure error (API / vector backend) – mark the entry
-            # as failed but re-raise so the worker circuit breaker can react.
+            # Persist the entry error and let the single-entry job retry.
             logger.error(f"Failed to generate embedding for entry {entry_id}: {e}")
             await self._mark_failed_fenced(entry_id, str(e))
             raise
@@ -226,7 +222,7 @@ class EmbeddingService:
         embedding: list[float],
         language: str,
         word_count: int,
-    ) -> list[str]:
+    ) -> None:
         """Fence the vector write against collection recreation."""
         entry_id = entry.id
         feed_id = entry.feed_id
@@ -273,9 +269,7 @@ class EmbeddingService:
                     embedding_error=None,
                 )
             )
-            affected_user_ids = await self._mark_affected_preferences_dirty_in_db(entry_id)
             await self.db.commit()
-            return affected_user_ids
         finally:
             if lock is not None and acquired:
                 with contextlib.suppress(Exception):
@@ -285,48 +279,10 @@ class EmbeddingService:
         """Mark entry embedding as failed."""
         await self.db.execute(
             update(Entry)
-            .where(Entry.id == entry_id)
+            .where(Entry.id == entry_id, Entry.embedding_status == "processing")
             .values(embedding_status="failed", embedding_error=error)
         )
         await self.db.flush()
-
-    async def _mark_affected_preferences_dirty_in_db(
-        self,
-        entry_id: str,
-    ) -> list[str]:
-        """Durably dirty users in the same transaction as the done marker."""
-        result = await self.db.execute(
-            union(
-                select(UserEntry.user_id).where(
-                    UserEntry.entry_id == entry_id,
-                    UserEntry.is_liked.is_not(None),
-                ),
-                select(Bookmark.user_id).where(Bookmark.entry_id == entry_id),
-            )
-        )
-        user_ids = [str(row[0]) for row in result.all()]
-        await mark_preferences_dirty(self.db, user_ids)
-        return user_ids
-
-    async def _mark_affected_preferences_pending(
-        self,
-        entry_id: str,
-        user_ids: list[str],
-    ) -> None:
-        """Accelerate delivery of users already dirtied in PostgreSQL."""
-        if not user_ids or self.generation_lock is None:
-            return
-        try:
-            await self.generation_lock.sadd(
-                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                *user_ids,
-            )
-        except Exception:
-            logger.warning(
-                "Could not mark affected preference users pending",
-                extra={"entry_id": entry_id, "user_count": len(user_ids)},
-                exc_info=True,
-            )
 
     async def _mark_failed_fenced(self, entry_id: str, error: str) -> None:
         """Persist a failure only while this config generation still owns it."""
@@ -425,54 +381,6 @@ class EmbeddingService:
         Returns:
             Dictionary with processed and failed counts
         """
-        return await self._process_status_queue(
-            status="pending",
-            limit=limit,
-            order_by=Entry.created_at.desc(),
-            chunk_size=chunk_size,
-            deadline=deadline,
-        )
-
-    async def retry_failed(
-        self,
-        limit: int = 50,
-        *,
-        chunk_size: int | None = None,
-        deadline: float | None = None,
-    ) -> dict[str, int]:
-        """
-        Retry failed embeddings.
-
-        Uses SELECT FOR UPDATE SKIP LOCKED to avoid concurrent retriers
-        picking up the same entries. Claims are incremental so timeouts
-        restore only the in-flight provider chunk.
-
-        Args:
-            limit: Maximum number of entries to retry
-            chunk_size: Max texts per provider request (defaults to client batch_size)
-            deadline: Monotonic timestamp to stop claiming more work
-
-        Returns:
-            Dictionary with processed and failed counts
-        """
-        return await self._process_status_queue(
-            status="failed",
-            limit=limit,
-            order_by=Entry.updated_at.asc(),
-            chunk_size=chunk_size,
-            deadline=deadline,
-        )
-
-    async def _process_status_queue(
-        self,
-        *,
-        status: str,
-        limit: int,
-        order_by: ColumnElement[Any],
-        chunk_size: int | None,
-        deadline: float | None,
-    ) -> dict[str, int]:
-        """Claim and embed entries until the quota or job deadline is reached."""
         remaining_quota = max(0, limit)
         request_chunk = (
             chunk_size
@@ -493,11 +401,7 @@ class EmbeddingService:
                 break
 
             take = min(remaining_quota, request_chunk)
-            entry_ids = await self._claim_entries(
-                status=status,
-                limit=take,
-                order_by=order_by,
-            )
+            entry_ids = await self._claim_entries(take)
             if not entry_ids:
                 break
 
@@ -541,18 +445,12 @@ class EmbeddingService:
 
         return {"processed": processed, "failed": failed}
 
-    async def _claim_entries(
-        self,
-        *,
-        status: str,
-        limit: int,
-        order_by: ColumnElement[Any],
-    ) -> list[str]:
+    async def _claim_entries(self, limit: int) -> list[str]:
         """Atomically claim a small disjoint slice of the embedding queue."""
         claim_result = await self.db.execute(
             select(Entry.id)
-            .where(Entry.embedding_status == status)
-            .order_by(order_by)
+            .where(Entry.embedding_status == "pending")
+            .order_by(Entry.created_at.desc(), Entry.id)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
@@ -616,7 +514,6 @@ class EmbeddingService:
             return processed, failed
 
         texts = [text for _, text, _ in embeddable]
-        unprocessed = [entry.id for entry, _, _ in embeddable]
         try:
             if already_acquired:
                 embeddings, _ = await self.embedding_client.generate_embeddings_batch_acquired(
@@ -624,46 +521,71 @@ class EmbeddingService:
                 )
             else:
                 embeddings, _ = await self.embedding_client.generate_embeddings_batch(
-                    texts,
-                    deadline=deadline,
+                    texts, deadline=deadline
                 )
             if len(embeddings) != len(embeddable):
                 raise RuntimeError(
-                    "Embedding batch size mismatch: "
-                    f"expected {len(embeddable)}, got {len(embeddings)}"
+                    f"Embedding batch size mismatch: expected {len(embeddable)}, got {len(embeddings)}"
                 )
-            for (entry, text, word_count), embedding in zip(embeddable, embeddings, strict=True):
-                language = self._detect_language(text)
-                affected_user_ids = await self._store_embedding(
-                    entry=entry,
-                    embedding=embedding,
-                    language=language,
-                    word_count=word_count,
-                )
-                await self._mark_affected_preferences_pending(entry.id, affected_user_ids)
-                unprocessed.pop(0)
-                processed += 1
-        except (
-            StaleEmbeddingGenerationError,
-            RateLimitDeadlineError,
-            asyncio.CancelledError,
-        ):
-            with contextlib.suppress(Exception):
-                await self.db.rollback()
-            await self.restore_claimed_entries(unprocessed)
+        except (StaleEmbeddingGenerationError, RateLimitDeadlineError, asyncio.CancelledError):
             raise
         except Exception as error:
-            logger.error(
-                "Failed to generate or store embedding batch",
-                extra={"remaining": len(unprocessed), "error": str(error)},
+            # Some providers reject the entire input array for one bad article.
+            # Give each article two individual calls after the failed batch.
+            logger.warning(
+                "Embedding batch rejected; retrying articles individually",
+                extra={"entry_count": len(texts), "error": str(error)},
             )
-            with contextlib.suppress(Exception):
-                await self.db.rollback()
-            for leftover_id in unprocessed:
-                await self._mark_failed_fenced(leftover_id, str(error))
-            failed += len(unprocessed)
+            embeddings = [None] * len(embeddable)
+
+        for (entry, text, word_count), embedding in zip(embeddable, embeddings, strict=True):
+            try:
+                if embedding is None:
+                    embedding = await self._retry_single_input(text, deadline)
+                await self._store_with_retry(entry, embedding, text, word_count)
+                processed += 1
+            except (StaleEmbeddingGenerationError, RateLimitDeadlineError, asyncio.CancelledError):
+                raise
+            except Exception as error:
+                logger.warning(
+                    "Article embedding failed after retries",
+                    extra={"entry_id": entry.id, "error": str(error)},
+                )
+                await self._mark_failed_fenced(entry.id, str(error))
+                failed += 1
 
         return processed, failed
+
+    async def _retry_single_input(self, text: str, deadline: float | None) -> list[float]:
+        for attempt in range(2):
+            try:
+                embedding, _ = await self.embedding_client.generate_embedding(
+                    text, deadline=deadline
+                )
+                return embedding
+            except (StaleEmbeddingGenerationError, RateLimitDeadlineError, asyncio.CancelledError):
+                raise
+            except Exception:
+                if attempt == 1:
+                    raise
+        raise AssertionError("Unreachable retry state")
+
+    async def _store_with_retry(
+        self, entry: _EmbeddingInput, embedding: list[float], text: str, word_count: int
+    ) -> None:
+        language = self._detect_language(text)
+        for attempt in range(3):
+            try:
+                await self._store_embedding(
+                    entry=entry, embedding=embedding, language=language, word_count=word_count
+                )
+                return
+            except (StaleEmbeddingGenerationError, asyncio.CancelledError):
+                raise
+            except Exception:
+                await self.db.rollback()
+                if attempt == 2:
+                    raise
 
     async def restore_claimed_entries(self, entry_ids: list[str]) -> None:
         """Return stale generation claims to the pending queue."""

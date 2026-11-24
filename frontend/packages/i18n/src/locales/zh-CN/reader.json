@@ -43,10 +43,18 @@
   },
   "smart": {
     "title": "智能列表",
-    "description": "按您的偏好排序",
-    "limitedMode": "简化智能模式",
-    "enableVectorizationHint": "启用向量化后，可获得基于内容相似度的 AI 推荐。",
-    "goToSettings": "前往设置"
+    "description": "近期未读文章",
+    "score": "推荐分：{{score}}",
+    "refresh": "刷新智能列表",
+    "empty": "可在时间线查看更早的文章。",
+    "expired": "此智能列表已过期，刷新后继续。",
+    "reasons": {
+      "publication": "根据发布时间",
+      "liked": "你赞过这篇文章",
+      "disliked": "你踩过这篇文章",
+      "similar_liked": "与你赞过的文章相近",
+      "similar_disliked": "与你踩过的文章相近"
+    }
   },
   "empty": {
     "selectArticle": "选择文章",

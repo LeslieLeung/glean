@@ -79,7 +79,9 @@ export interface UpdateEntryStateRequest {
 }
 
 /** Entry list response */
-export type EntryListResponse = PaginatedResponse<EntryWithState>
+export type EntryListResponse = PaginatedResponse<EntryWithState> & {
+  next_cursor?: string | null
+}
 
 /** Subscription list response (paginated) */
 export interface SubscriptionListResponse {

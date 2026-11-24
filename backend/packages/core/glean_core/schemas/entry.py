@@ -5,10 +5,15 @@ Request and response models for entry-related operations.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from .jev import EntryClassification
+
+RecommendationReason = Literal[
+    "publication", "liked", "disliked", "similar_liked", "similar_disliked"
+]
 
 
 class EntryBase(BaseModel):
@@ -40,8 +45,9 @@ class EntryResponse(BaseModel):
     read_at: datetime | None = None
     is_bookmarked: bool = False
     bookmark_id: str | None = None
-    # Preference score for recommendations (M3)
+    # Recommendation score, using the existing API field name.
     preference_score: float | None = None
+    recommendation_reason: RecommendationReason | None = None
     # Feed info for display in aggregated views
     feed_title: str | None = None
     feed_icon_url: str | None = None
@@ -57,6 +63,7 @@ class EntryListResponse(BaseModel):
     page: int
     per_page: int
     total_pages: int
+    next_cursor: str | None = None
 
 
 class UpdateEntryStateRequest(BaseModel):

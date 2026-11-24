@@ -23,6 +23,7 @@ import {
   useTestEmbedding,
   useRebuildEmbedding,
   useCancelRebuild,
+  useRetryFailedEmbeddings,
   type EmbeddingConfigUpdatePayload,
   type VectorizationStatus,
 } from '../hooks/useEmbeddingConfig'
@@ -104,9 +105,7 @@ function StatusBadge({ status }: { status?: VectorizationStatus }) {
 export default function SettingsPage() {
   const { t } = useTranslation(['admin', 'common'])
   const { data: config, isLoading } = useEmbeddingConfig()
-  const { data: statusData } = useEmbeddingStatus(
-    config?.status === 'rebuilding' || config?.status === 'validating'
-  )
+  const { data: statusData } = useEmbeddingStatus(config?.enabled === true)
 
   const updateMutation = useUpdateEmbeddingConfig()
   const enableMutation = useEnableEmbedding()
@@ -115,6 +114,7 @@ export default function SettingsPage() {
   const testMutation = useTestEmbedding()
   const rebuildMutation = useRebuildEmbedding()
   const cancelMutation = useCancelRebuild()
+  const retryFailedMutation = useRetryFailedEmbeddings()
 
   const [form, setForm] = useState<EmbeddingConfigUpdatePayload>({
     provider: DEFAULT_PROVIDER,
@@ -603,13 +603,13 @@ export default function SettingsPage() {
               )}
 
               {/* Progress Card */}
-              {(config?.status === 'rebuilding' || config?.status === 'validating') && (
+              {(statusData || config?.status === 'validating') && (
                 <Card>
                   <CardHeader>
                     <CardTitle>{t('admin:settings.embedding.progress', 'Progress')}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {config.status === 'validating' && (
+                    {config?.status === 'validating' && (
                       <p className="text-muted-foreground text-sm">
                         {t(
                           'admin:settings.embedding.validatingConnection',
@@ -618,7 +618,7 @@ export default function SettingsPage() {
                       </p>
                     )}
 
-                    {config.status === 'rebuilding' && statusData && (
+                    {statusData && (
                       <>
                         <div className="border-border bg-muted/40 rounded-md border p-3">
                           <div className="text-foreground flex items-center justify-between text-sm">
@@ -633,6 +633,14 @@ export default function SettingsPage() {
                             <span>{t('admin:settings.embedding.failed', 'Failed')}</span>
                             <span>{statusData.progress?.failed ?? '-'}</span>
                           </div>
+                          <div className="text-foreground mt-2 flex items-center justify-between text-sm">
+                            <span>{t('admin:settings.embedding.pending', 'Pending')}</span>
+                            <span>{statusData.progress.pending}</span>
+                          </div>
+                          <div className="text-foreground mt-2 flex items-center justify-between text-sm">
+                            <span>{t('admin:settings.embedding.processing', 'Processing')}</span>
+                            <span>{statusData.progress.processing}</span>
+                          </div>
                           <div className="bg-accent/40 mt-4 h-2 rounded-full">
                             <div
                               className="bg-primary h-2 rounded-full transition-all duration-300"
@@ -645,6 +653,64 @@ export default function SettingsPage() {
                             })}
                           </p>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={
+                            !statusData.enabled ||
+                            statusData.status !== 'idle' ||
+                            !statusData.progress.failed ||
+                            retryFailedMutation.isPending
+                          }
+                          onClick={() => retryFailedMutation.mutate()}
+                        >
+                          <RefreshCw
+                            className={retryFailedMutation.isPending ? 'animate-spin' : ''}
+                          />
+                          {t('admin:settings.embedding.retryFailed', 'Retry failed')}
+                        </Button>
+                        {retryFailedMutation.isSuccess && (
+                          <p role="status" className="text-muted-foreground text-sm">
+                            {t(
+                              'admin:settings.embedding.retryQueued',
+                              '{{count}} articles queued',
+                              {
+                                count: retryFailedMutation.data.queued,
+                              }
+                            )}
+                          </p>
+                        )}
+                        {retryFailedMutation.isError && (
+                          <Alert variant="error">
+                            <AlertDescription>
+                              {t(
+                                'admin:settings.embedding.retryError',
+                                'Could not queue failed articles.'
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                        {!!statusData.recent_failures?.length && (
+                          <div className="space-y-2">
+                            <h3 className="text-foreground text-sm font-medium">
+                              {t('admin:settings.embedding.recentFailures', 'Recent failures')}
+                            </h3>
+                            <ul className="divide-border divide-y">
+                              {statusData.recent_failures.map((failure) => (
+                                <li key={failure.id} className="space-y-1 py-2 text-sm">
+                                  <p className="font-medium break-words">
+                                    {failure.title || failure.id}
+                                  </p>
+                                  {failure.error && (
+                                    <p className="text-muted-foreground text-xs break-words">
+                                      {failure.error}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </>
                     )}
                   </CardContent>

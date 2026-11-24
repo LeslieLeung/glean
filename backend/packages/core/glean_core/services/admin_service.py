@@ -6,10 +6,10 @@ Provides business logic for administrative operations.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core.published_at import effective_published_at
@@ -19,11 +19,9 @@ from glean_database.models.entry import Entry
 from glean_database.models.feed import Feed, FeedStatus
 from glean_database.models.subscription import Subscription
 from glean_database.models.user import User
-from glean_database.models.user_preference_stats import UserPreferenceStats
 from glean_database.models.vector_cleanup_pending import VectorCleanupPending
 
 from ..auth.password import hash_password, verify_password
-from .preference_dirty_service import get_feed_preference_user_ids, mark_preferences_dirty
 from .system_config_service import SystemConfigService
 
 
@@ -33,7 +31,6 @@ class FeedDeletionEffects:
 
     feed_id: str
     entry_ids: tuple[str, ...]
-    user_ids: tuple[str, ...]
 
 
 class AdminService:
@@ -426,7 +423,6 @@ class AdminService:
             return None
 
         effects = await self._stage_feed_deletion(feed)
-        await mark_preferences_dirty(self.session, effects.user_ids)
         await self.session.commit()
         return effects
 
@@ -459,31 +455,13 @@ class AdminService:
                 deletion_effects.append(await self._stage_feed_deletion(feed))
                 count += 1
 
-        await mark_preferences_dirty(
-            self.session,
-            (user_id for effects in deletion_effects for user_id in effects.user_ids),
-        )
         await self.session.commit()
         return count, deletion_effects
 
     async def _stage_feed_deletion(self, feed: Feed) -> FeedDeletionEffects:
-        """Stage external-vector cleanup and preference invalidation before deletion."""
+        """Stage external-vector cleanup before deletion."""
         entry_result = await self.session.execute(select(Entry.id).where(Entry.feed_id == feed.id))
         entry_ids = tuple(str(row[0]) for row in entry_result.all())
-
-        user_ids = tuple(await get_feed_preference_user_ids(self.session, feed.id))
-
-        if user_ids:
-            stats_result = await self.session.execute(
-                select(UserPreferenceStats).where(UserPreferenceStats.user_id.in_(user_ids))
-            )
-            for stats in stats_result.scalars().all():
-                if feed.id in stats.source_affinity:
-                    stats.source_affinity = {
-                        source_id: affinity
-                        for source_id, affinity in stats.source_affinity.items()
-                        if source_id != feed.id
-                    }
 
         self.session.add_all(
             VectorCleanupPending(entry_id=entry_id, feed_id=feed.id) for entry_id in entry_ids
@@ -492,7 +470,6 @@ class AdminService:
         return FeedDeletionEffects(
             feed_id=feed.id,
             entry_ids=entry_ids,
-            user_ids=user_ids,
         )
 
     # M2: Entry management methods
@@ -705,3 +682,25 @@ class AdminService:
             "done": done,
             "failed": failed,
         }
+
+    async def get_recent_embedding_failures(self) -> list[dict[str, str | None]]:
+        """Return a small sample of the most recent terminal failures."""
+        result = await self.session.execute(
+            select(Entry.id, Entry.title, Entry.embedding_error)
+            .where(Entry.embedding_status == "failed")
+            .order_by(Entry.updated_at.desc(), Entry.id)
+            .limit(5)
+        )
+        return [
+            {"id": entry_id, "title": title, "error": error} for entry_id, title, error in result
+        ]
+
+    async def requeue_failed_embeddings(self) -> int:
+        """Return failed articles to the durable pending queue."""
+        result = await self.session.execute(
+            update(Entry)
+            .where(Entry.embedding_status == "failed")
+            .values(embedding_status="pending", embedding_error=None)
+        )
+        await self.session.commit()
+        return cast(CursorResult[Any], result).rowcount

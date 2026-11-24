@@ -4,17 +4,18 @@ Entry service.
 Handles entry retrieval and user-specific entry state management.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from math import isfinite
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 from arq.connections import ArqRedis
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import Select, and_, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core import RedisKeys, get_logger
-from glean_core.published_at import effective_published_at
+from glean_core import get_logger
+from glean_core.published_at import FUTURE_PUBLISHED_AT_TOLERANCE, effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
+from glean_core.schemas.entry import RecommendationReason
 from glean_core.schemas.jev import JevConfig
 from glean_core.services.jev_service import classification_for_display
 from glean_core.services.typed_config_service import TypedConfigService
@@ -29,17 +30,20 @@ from glean_database.models import (
 )
 
 from .entry_dedup import linkless_entry_id, url_user_entry_id
-from .preference_dirty_service import mark_preferences_dirty
+from .entry_rank_snapshot import SmartSnapshot, smart_scope
+from .entry_ranker import (
+    FEEDBACK_LIMIT,
+    GLOBAL_CANDIDATE_LIMIT,
+    GLOBAL_WINDOW_DAYS,
+    SCORE_BATCH_SIZE,
+    EmbeddingReader,
+    EntryRanker,
+    RankedEntry,
+    RankEntry,
+    rank_entries,
+)
 
 logger = get_logger(__name__)
-SMART_SCORE_BATCH_SIZE = 200
-
-if TYPE_CHECKING:
-    from glean_core.services.simple_score_service import SimpleScoreService
-    from glean_vector.services.score_service import ScoreService
-
-    # Union type for score service
-    ScoreServiceType = ScoreService | SimpleScoreService
 
 
 class EntryService:
@@ -98,7 +102,11 @@ class EntryService:
         page: int = 1,
         per_page: int = 20,
         view: str = "timeline",
-        score_service: "ScoreServiceType | None" = None,
+        include_score: bool = False,
+        global_smart: bool = False,
+        use_cursor: bool = False,
+        cursor: str | None = None,
+        get_embeddings: Callable[[], Awaitable[EmbeddingReader | None]] | None = None,
     ) -> EntryListResponse:
         """
         Get entries for a user with filtering and pagination.
@@ -116,11 +124,20 @@ class EntryService:
             page: Page number (1-indexed).
             per_page: Items per page.
             view: View mode ("timeline" or "smart").
-            score_service: Score service for real-time scoring (required for smart view).
+            include_score: Calculate recommendation scores on a timeline page.
+            global_smart: Use the recent unread candidate pool and source diversification.
+            use_cursor: Request stable Smart pagination.
+            cursor: Resume a Smart snapshot.
+            get_embeddings: Load optional article embeddings for current scoring.
 
         Returns:
             Paginated entry list response.
         """
+
+        now = datetime.now(UTC)
+        global_smart = view == "smart" and global_smart and not feed_id and not folder_id
+        if global_smart:
+            is_read = False
 
         # Get user's subscribed feed IDs, optionally filtered by folder
         subscriptions_stmt = select(Subscription.feed_id).where(Subscription.user_id == user_id)
@@ -183,12 +200,13 @@ class EntryService:
                 Feed.title.label("feed_title"),
                 Feed.icon_url.label("feed_icon_url"),
             )
-            .join(Feed, Entry.feed_id == Feed.id)
-            .outerjoin(
+            .join_from(Entry, Feed, Entry.feed_id == Feed.id)
+            .outerjoin_from(
+                Entry,
                 UserEntry,
                 UserEntry.id == url_user_entry_id(user_id),
             )
-            .where(Entry.id.in_(unique_ids))
+            .where(Entry.feed_id.in_(feed_ids))
         )
 
         # Apply filters
@@ -204,59 +222,107 @@ class EntryService:
         if read_later is not None:
             stmt = stmt.where(UserEntry.read_later == read_later)
 
-        # Count total
-        count_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await self.session.execute(count_stmt)
-        total = total_result.scalar() or 0
-
-        # For smart view, we need to fetch more entries to score and sort
-        if view == "smart" and score_service:
-            # A globally sorted page cannot be produced from a fixed five-page
-            # prefix: page six would always be empty and high-scoring older
-            # entries could never surface. Fetch all matching candidates and
-            # score them in bounded batches to keep vector queries manageable.
-            stmt_for_scoring = stmt.order_by(desc(Entry.published_at))
-
-            result = await self.session.execute(stmt_for_scoring)
-            all_rows = result.all()
-
-            # Calculate scores in bounded batches.
-            # Both ScoreService and SimpleScoreService implement batch_calculate_scores
-            # ScoreService returns dict[entry_id, float]
-            # SimpleScoreService returns dict[entry_id, dict with 'score' key]
-            scores_result: dict[str, float | dict[str, object]] = {}
-            for offset in range(0, len(all_rows), SMART_SCORE_BATCH_SIZE):
-                entries_batch = [
-                    row[0] for row in all_rows[offset : offset + SMART_SCORE_BATCH_SIZE]
-                ]
-                scores_result.update(
-                    await score_service.batch_calculate_scores(user_id, entries_batch)
+        recommendations: dict[str, tuple[float, RecommendationReason]]
+        if view == "smart":
+            ranked: list[RankedEntry] = []
+            snapshot = None
+            scope = smart_scope(
+                user_id, feed_id, folder_id, is_read, is_liked, read_later, global_smart
+            )
+            if cursor is not None:
+                if self.redis_pool is None:
+                    raise RuntimeError("Smart cursor pagination requires Redis")
+                snapshot = await SmartSnapshot.load(self.redis_pool, scope, cursor)
+            else:
+                score_stmt = stmt.where(Entry.id.in_(unique_ids)).with_only_columns(
+                    Entry.id,
+                    Entry.feed_id,
+                    Entry.published_at,
+                    Entry.created_at,
+                    Entry.title,
+                    Entry.summary,
+                    UserEntry.is_liked,
+                    maintain_column_froms=True,
                 )
+                if global_smart:
+                    published_at = case(
+                        (
+                            or_(
+                                Entry.published_at.is_(None),
+                                Entry.published_at > now + FUTURE_PUBLISHED_AT_TOLERANCE,
+                            ),
+                            Entry.created_at,
+                        ),
+                        else_=Entry.published_at,
+                    )
+                    score_stmt = (
+                        score_stmt.where(published_at >= now - timedelta(days=GLOBAL_WINDOW_DAYS))
+                        .order_by(published_at.desc(), Entry.id)
+                        .limit(GLOBAL_CANDIDATE_LIMIT)
+                    )
+                ranked = await self._rank_entries(
+                    user_id, score_stmt, now, global_smart, get_embeddings
+                )
+                if use_cursor and len(ranked) > per_page:
+                    if self.redis_pool is None:
+                        raise RuntimeError("Smart cursor pagination requires Redis")
+                    snapshot = await SmartSnapshot.create(self.redis_pool, scope, ranked)
 
-            # Normalize to dict[str, float]
-            scores: dict[str, float] = {}
-            for entry_id, score_data in scores_result.items():
-                if isinstance(score_data, dict):
-                    # SimpleScoreService format
-                    raw_score = score_data.get("score", 50.0)
-                else:
-                    # ScoreService format
-                    raw_score = score_data
-                if isinstance(raw_score, (int, float)):
-                    numeric_score = float(raw_score)
-                    scores[entry_id] = numeric_score if isfinite(numeric_score) else 50.0
-                else:
-                    scores[entry_id] = 50.0
+            if snapshot is not None:
+                rows, recommendations, offset = await self._read_smart_page(
+                    stmt, snapshot, per_page
+                )
+                total = len(snapshot.entries)
+                next_cursor = snapshot.cursor(offset)
+            else:
+                total = len(ranked)
+                start = 0 if use_cursor else (page - 1) * per_page
+                recommendations = {
+                    entry.id: (entry.score, entry.reason)
+                    for entry in ranked[start : start + per_page]
+                }
+                eligible = await self._ranked_rows(stmt, list(recommendations))
+                rows = [eligible[entry_id] for entry_id in recommendations if entry_id in eligible]
+                next_cursor = None
+        else:
+            stmt = stmt.where(Entry.id.in_(unique_ids))
+            total = (
+                await self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+            )
+            result = await self.session.execute(
+                stmt.order_by(desc(Entry.published_at), Entry.id)
+                .limit(per_page)
+                .offset((page - 1) * per_page)
+            )
+            rows = result.all()
+            recommendations = {}
+            if include_score and rows:
+                ranker = await self._entry_ranker(user_id, now, get_embeddings)
+                scored = await ranker.score(
+                    [
+                        RankEntry(
+                            entry.id,
+                            entry.feed_id,
+                            effective_published_at(entry.published_at, entry.created_at, now=now),
+                            entry.title,
+                            entry.summary,
+                            state.is_liked if state else None,
+                        )
+                        for entry, state, *_ in rows
+                    ]
+                )
+                recommendations = {entry.id: (entry.score, entry.reason) for entry in scored}
+            next_cursor = None
 
-            # Build items with scores
-            items_with_scores: list[tuple[EntryResponse, float]] = []
-            for entry, user_entry, bookmark_id, feed_title, feed_icon_url in all_rows:
-                score = scores.get(entry.id, 50.0)
-                item = EntryResponse(
-                    id=str(entry.id),
-                    feed_id=str(entry.feed_id),
-                    url=str(entry.url),
-                    title=str(entry.title),
+        items: list[EntryResponse] = []
+        for entry, state, bookmark_id, feed_title, feed_icon_url in rows:
+            score, reason = recommendations.get(entry.id, (None, None))
+            items.append(
+                EntryResponse(
+                    id=entry.id,
+                    feed_id=entry.feed_id,
+                    url=entry.url,
+                    title=entry.title,
                     author=entry.author,
                     content=entry.content,
                     summary=entry.summary,
@@ -266,83 +332,153 @@ class EntryService:
                     classification_status=entry.classification_status
                     if jev_config.enabled
                     else None,
-                    published_at=effective_published_at(entry.published_at, entry.created_at),
+                    published_at=effective_published_at(
+                        entry.published_at, entry.created_at, now=now
+                    ),
                     created_at=entry.created_at,
-                    is_read=bool(user_entry.is_read) if user_entry else False,
-                    is_liked=user_entry.is_liked if user_entry else None,
-                    read_later=bool(user_entry.read_later) if user_entry else False,
-                    read_later_until=(user_entry.read_later_until if user_entry else None),
-                    read_at=user_entry.read_at if user_entry else None,
+                    is_read=state.is_read if state else False,
+                    is_liked=state.is_liked if state else None,
+                    read_later=state.read_later if state else False,
+                    read_later_until=state.read_later_until if state else None,
+                    read_at=state.read_at if state else None,
                     is_bookmarked=bookmark_id is not None,
-                    bookmark_id=str(bookmark_id) if bookmark_id else None,
+                    bookmark_id=bookmark_id,
                     preference_score=score,
+                    recommendation_reason=reason,
                     feed_title=feed_title,
                     feed_icon_url=feed_icon_url,
                 )
-                items_with_scores.append((item, score))
-
-            # Sort by score descending
-            items_with_scores.sort(key=lambda x: x[1], reverse=True)
-
-            # Apply pagination
-            start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
-            items = [item for item, _ in items_with_scores[start_idx:end_idx]]
-        else:
-            # Timeline view. published_at already stores the fetch time when the
-            # feed date was missing or far in the future, so this order can use
-            # ix_entries_published_at instead of sorting a CASE expression.
-            stmt = (
-                stmt.order_by(desc(Entry.published_at))
-                .limit(per_page)
-                .offset((page - 1) * per_page)
             )
-
-            result = await self.session.execute(stmt)
-            rows = result.all()
-
-            # Build response items
-            items: list[EntryResponse] = []
-            for entry, user_entry, bookmark_id, feed_title, feed_icon_url in rows:
-                items.append(
-                    EntryResponse(
-                        id=str(entry.id),
-                        feed_id=str(entry.feed_id),
-                        url=str(entry.url),
-                        title=str(entry.title),
-                        author=entry.author,
-                        content=entry.content,
-                        summary=entry.summary,
-                        classification=classification_for_display(
-                            entry.classification_result, jev_config
-                        ),
-                        classification_status=entry.classification_status
-                        if jev_config.enabled
-                        else None,
-                        published_at=effective_published_at(entry.published_at, entry.created_at),
-                        created_at=entry.created_at,
-                        is_read=bool(user_entry.is_read) if user_entry else False,
-                        is_liked=user_entry.is_liked if user_entry else None,
-                        read_later=bool(user_entry.read_later) if user_entry else False,
-                        read_later_until=(user_entry.read_later_until if user_entry else None),
-                        read_at=user_entry.read_at if user_entry else None,
-                        is_bookmarked=bookmark_id is not None,
-                        bookmark_id=str(bookmark_id) if bookmark_id else None,
-                        preference_score=None,  # No score for timeline view
-                        feed_title=feed_title,
-                        feed_icon_url=feed_icon_url,
-                    )
-                )
-
-        # Calculate total pages
-        total_pages = (total + per_page - 1) // per_page if total > 0 else 0
-
         return EntryListResponse(
             items=items,
             total=total,
             page=page,
             per_page=per_page,
-            total_pages=total_pages,
+            total_pages=(total + per_page - 1) // per_page,
+            next_cursor=next_cursor,
+        )
+
+    async def _entry_ranker(
+        self,
+        user_id: str,
+        now: datetime,
+        get_embeddings: Callable[[], Awaitable[EmbeddingReader | None]] | None,
+    ) -> EntryRanker:
+        # Resolve URL-shared state before limiting each polarity so legacy copies
+        # and retracted reactions cannot supply duplicate or stale feedback.
+        feedback = (
+            select(
+                Entry.id,
+                Entry.feed_id,
+                Entry.published_at,
+                Entry.created_at,
+                Entry.title,
+                Entry.summary,
+                UserEntry.is_liked,
+                func.row_number()
+                .over(
+                    partition_by=UserEntry.is_liked,
+                    order_by=(UserEntry.liked_at.desc().nulls_last(), UserEntry.id),
+                )
+                .label("feedback_rank"),
+            )
+            .join_from(Entry, UserEntry, UserEntry.entry_id == Entry.id)
+            .where(
+                UserEntry.user_id == user_id,
+                UserEntry.is_liked.is_not(None),
+                UserEntry.id == url_user_entry_id(user_id),
+            )
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(
+                feedback.c.id,
+                feedback.c.feed_id,
+                feedback.c.published_at,
+                feedback.c.created_at,
+                feedback.c.title,
+                feedback.c.summary,
+                feedback.c.is_liked,
+            ).where(feedback.c.feedback_rank <= FEEDBACK_LIMIT)
+        )
+        samples = [
+            RankEntry(
+                entry_id,
+                feed_id,
+                effective_published_at(published_at, created_at, now=now),
+                title,
+                summary,
+                reaction,
+            )
+            for entry_id, feed_id, published_at, created_at, title, summary, reaction in result
+        ]
+        embeddings = await get_embeddings() if samples and get_embeddings else None
+        ranker = EntryRanker(now, samples, embeddings)
+        await ranker.load_feedback_vectors()
+        return ranker
+
+    async def _rank_entries(
+        self,
+        user_id: str,
+        stmt: Select[Any],
+        now: datetime,
+        global_smart: bool,
+        get_embeddings: Callable[[], Awaitable[EmbeddingReader | None]] | None,
+    ) -> list[RankedEntry]:
+        ranker = await self._entry_ranker(user_id, now, get_embeddings)
+        result = await self.session.stream(stmt.execution_options(yield_per=SCORE_BATCH_SIZE))
+        scored: list[RankedEntry] = []
+        try:
+            async for batch in result.partitions():
+                scored.extend(
+                    await ranker.score(
+                        [
+                            RankEntry(
+                                entry_id,
+                                feed_id,
+                                effective_published_at(published_at, created_at, now=now),
+                                title,
+                                summary,
+                                reaction,
+                            )
+                            for entry_id, feed_id, published_at, created_at, title, summary, reaction in batch
+                        ]
+                    )
+                )
+        finally:
+            await result.close()
+        return rank_entries(scored, diversify=global_smart)
+
+    async def _ranked_rows(self, stmt: Select[Any], ids: list[str]) -> dict[str, Any]:
+        if not ids:
+            return {}
+        result = await self.session.execute(stmt.where(Entry.id.in_(ids)))
+        return {row[0].id: row for row in result}
+
+    async def _read_smart_page(
+        self, stmt: Select[Any], snapshot: SmartSnapshot, per_page: int
+    ) -> tuple[list[Any], dict[str, tuple[float, RecommendationReason]], int]:
+        offset = snapshot.offset
+        recommendations: dict[str, tuple[float, RecommendationReason]] = {}
+        id_stmt = stmt.with_only_columns(Entry.id, maintain_column_froms=True)
+        while offset < len(snapshot.entries) and len(recommendations) < per_page:
+            batch = snapshot.entries[offset : offset + SCORE_BATCH_SIZE]
+            result = await self.session.scalars(
+                id_stmt.where(Entry.id.in_([entry_id for entry_id, _, _ in batch]))
+            )
+            eligible = set(result)
+            for entry_id, score, reason in batch:
+                offset += 1
+                if entry_id in eligible:
+                    recommendations[entry_id] = (score, reason)
+                if len(recommendations) == per_page:
+                    break
+
+        rows = await self._ranked_rows(stmt, list(recommendations))
+        return (
+            [rows[entry_id] for entry_id in recommendations if entry_id in rows],
+            recommendations,
+            offset,
         )
 
     async def get_entry(self, entry_id: str, user_id: str) -> EntryResponse:
@@ -472,9 +608,6 @@ class EntryService:
         result = await self.session.execute(stmt)
         user_entry = result.scalar_one_or_none()
 
-        # Track old is_liked value for preference update
-        old_is_liked = user_entry.is_liked if user_entry else None
-
         if not user_entry:
             # Create new UserEntry
             user_entry = UserEntry(entry_id=entry_id, user_id=user_id)
@@ -484,7 +617,6 @@ class EntryService:
         # Use model_dump(exclude_unset=True) to only update explicitly set fields
         now = datetime.now(UTC)
         update_data = update.model_dump(exclude_unset=True)
-        preference_changed = False
 
         if "is_read" in update_data and update.is_read is not None:
             user_entry.is_read = update.is_read
@@ -494,10 +626,6 @@ class EntryService:
         if "is_liked" in update_data:
             # is_liked can be True, False, or None
             new_is_liked = update.is_liked
-
-            # Only trigger preference update if value actually changed
-            if old_is_liked != new_is_liked:
-                preference_changed = True
 
             user_entry.is_liked = new_is_liked
             # Update liked_at timestamp when like/dislike is set (not when cleared to null)
@@ -528,28 +656,7 @@ class EntryService:
                 # Clearing read_later, also clear read_later_until
                 user_entry.read_later_until = None
 
-        if preference_changed:
-            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
-
-        # Queue preference update task if needed (M3)
-        if preference_changed and self.redis_pool:
-            try:
-                await cast(Any, self.redis_pool).sadd(
-                    RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                    user_id,
-                )
-                await self.redis_pool.enqueue_job(
-                    "rebuild_user_preference",
-                    user_id=user_id,
-                )
-                logger.info(
-                    f"Queued preference sync: user={user_id[:8]}... entry={entry_id[:8]}..."
-                )
-            except Exception as e:
-                # Don't fail the request if task queueing fails
-                # The user's like/dislike is already saved
-                logger.warning(f"Failed to queue preference update: {e}")
 
         # Return updated entry
         return await self.get_entry(entry_id, user_id)

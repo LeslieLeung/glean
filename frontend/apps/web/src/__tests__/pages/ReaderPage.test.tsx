@@ -28,10 +28,6 @@ vi.mock('@/components/ArticleReader', () => ({
   ArticleReaderSkeleton: () => null,
 }))
 
-vi.mock('@/hooks/useVectorizationStatus', () => ({
-  useVectorizationStatus: () => ({ data: { enabled: true, status: 'idle' } }),
-}))
-
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: () => ({ user: null }),
 }))
@@ -144,6 +140,53 @@ describe('ReaderPage pagination', () => {
     expect(screen.getByText('entries.noMoreEntries')).toBeDefined()
     intersectListBottom()
     expect(entryService.getEntries).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses Smart cursors and starts a fresh list on refresh', async () => {
+    const page = {
+      page: 1,
+      per_page: 20,
+      total: 2,
+      total_pages: 2,
+    }
+    vi.mocked(entryService.getEntries)
+      .mockResolvedValueOnce({
+        ...page,
+        items: [createMockEntry({ id: 'first', title: 'Ranked first' })],
+        next_cursor: 'snapshot.1',
+      })
+      .mockResolvedValueOnce({
+        ...page,
+        items: [createMockEntry({ id: 'next', title: 'Ranked next' })],
+        next_cursor: null,
+      })
+      .mockResolvedValueOnce({
+        ...page,
+        items: [createMockEntry({ id: 'fresh', title: 'Fresh ranking' })],
+        next_cursor: null,
+      })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?view=smart']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    await screen.findByText('Ranked first')
+    intersectListBottom()
+    await screen.findByText('Ranked next')
+    expect(entryService.getEntries).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ cursor: 'snapshot.1', global_smart: true, is_read: false })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'smart.refresh' }))
+    await screen.findByText('Fresh ranking')
+    expect(screen.queryByText('Ranked next')).toBeNull()
+    expect(entryService.getEntries).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ page: 1, use_cursor: true })
+    )
   })
 
   it('restores mobile navigation after closing an article opened by URL', async () => {

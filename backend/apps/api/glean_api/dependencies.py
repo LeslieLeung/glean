@@ -28,6 +28,7 @@ from glean_core.services import (
     TypedConfigService,
     UserService,
 )
+from glean_core.services.entry_ranker import EmbeddingReader
 from glean_database.session import get_session
 
 from .config import settings
@@ -204,42 +205,26 @@ async def get_bookmark_service(
     return BookmarkService(session, redis_pool)
 
 
-# M3 service dependencies
-async def get_preference_service(
+def get_preference_service(
     session: Annotated[AsyncSession, Depends(get_session)],
-    redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> PreferenceService:
-    """Get preference service instance."""
-    return PreferenceService(session, redis_pool)
+    """Get feedback counts for the settings page."""
+    return PreferenceService(session)
 
 
-async def get_score_service(
-    request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> object | None:
-    """
-    Get score service instance for real-time preference scoring.
-
-    Returns:
-    - ScoreService if vectorization is enabled and vector backend is available
-    - SimpleScoreService if vectorization is disabled
-    - None if there's an error
-    """
+async def get_ranking_vector_client(
+    request: Request, session: AsyncSession
+) -> EmbeddingReader | None:
+    """Use the active vector store when its embedding generation is ready."""
     from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
-    from glean_core.services import SimpleScoreService, TypedConfigService
+    from glean_core.services import TypedConfigService
     from glean_vector.config import is_active_embedding_model, is_active_vector_backend
 
-    # Check if vectorization is enabled
-    config_service = TypedConfigService(session)
-    config = await config_service.get(EmbeddingConfig)
-
+    config = await TypedConfigService(session).get(EmbeddingConfig)
     if (
         not config.enabled
         or config.status != VectorizationStatus.IDLE
-        or not is_active_vector_backend(
-            config.vector_backend,
-            config.vector_store_fingerprint,
-        )
+        or not is_active_vector_backend(config.vector_backend, config.vector_store_fingerprint)
         or not is_active_embedding_model(
             config.model_fingerprint,
             provider=config.provider,
@@ -248,26 +233,15 @@ async def get_score_service(
             base_url=config.base_url,
         )
     ):
-        # Vectorization disabled - use simple scoring
-        return SimpleScoreService(session)
+        return None
 
-    # Vectorization enabled - try to use vector scoring
     try:
-        from glean_vector.services.score_service import ScoreService
-
-        vector_client, _vector_error = await ensure_app_vector_client(
-            request.app,
-            config.dimension,
-            config.provider,
-            config.model,
+        client, _ = await ensure_app_vector_client(
+            request.app, config.dimension, config.provider, config.model
         )
-        if vector_client is None:
-            return SimpleScoreService(session)
-
-        return ScoreService(db_session=session, vector_client=vector_client)
+        return client
     except Exception:
-        # Vector backend not available, fall back to simple scoring
-        return SimpleScoreService(session)
+        return None
 
 
 def get_typed_config_service(

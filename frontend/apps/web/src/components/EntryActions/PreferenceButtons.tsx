@@ -1,7 +1,7 @@
 /**
  * Preference buttons component for like/dislike actions.
  *
- * M3: Provides quick feedback buttons for training preference model.
+ * Records article feedback for recommendation scoring.
  */
 
 import { useState } from 'react'

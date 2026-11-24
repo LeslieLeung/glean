@@ -103,47 +103,12 @@ class DatabaseURLConfig(BaseSettings):
     database_url: str = "postgresql+asyncpg://glean:changeme@localhost:5432/glean"
 
 
-class PreferenceConfig(BaseSettings):
-    """Preference calculation configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="PREFERENCE_",
-        env_file=str(_env_file) if _env_file.exists() else None,
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    default_score: float = 50.0
-    confidence_threshold: int = 10
-    like_weight: float = 1.0
-    bookmark_weight: float = 0.7
-    source_boost_max: float = 5.0
-    author_boost_max: float = 3.0
-
-
-class ScoreConfig(BaseSettings):
-    """Score calculation configuration."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="SCORE_",
-        env_file=str(_env_file) if _env_file.exists() else None,
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
-
-    recommend_threshold: float = 70.0
-    low_interest_threshold: float = 40.0
-    cache_ttl: int = 3600
-
-
 # Global config instances
 embedding_config = EmbeddingConfig()
 milvus_config = MilvusConfig()
 vector_backend_config = VectorBackendConfig()
 pgvector_config = PgVectorConfig()
 database_url_config = DatabaseURLConfig()
-preference_config = PreferenceConfig()
-score_config = ScoreConfig()
 
 
 def embedding_model_fingerprint(

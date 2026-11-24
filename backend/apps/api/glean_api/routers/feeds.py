@@ -5,13 +5,13 @@ Provides endpoints for feed discovery, subscription management, and OPML import/
 """
 
 import asyncio
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Literal
 from uuid import UUID
 
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, UploadFile, status
 
-from glean_core import RedisKeys, get_logger
+from glean_core import get_logger
 from glean_core.schemas import (
     BatchDeleteSubscriptionsRequest,
     BatchDeleteSubscriptionsResponse,
@@ -252,21 +252,6 @@ async def delete_subscription(
                     extra={"feed_id": orphaned_feed_id},
                     exc_info=True,
                 )
-        try:
-            await cast(Any, redis).sadd(
-                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                current_user.id,
-            )
-            await redis.enqueue_job(
-                "rebuild_user_preference",
-                user_id=current_user.id,
-            )
-        except Exception:
-            logger.warning(
-                "Immediate preference enqueue failed; durable revision will retry",
-                extra={"user_id": current_user.id},
-                exc_info=True,
-            )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from None
 
@@ -311,23 +296,6 @@ async def batch_delete_subscriptions(
                     extra={"feed_id": feed_id},
                     exc_info=True,
                 )
-    if deleted_count > 0:
-        try:
-            await cast(Any, redis).sadd(
-                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                current_user.id,
-            )
-            await redis.enqueue_job(
-                "rebuild_user_preference",
-                user_id=current_user.id,
-            )
-        except Exception:
-            logger.warning(
-                "Immediate preference enqueue failed; durable revision will retry",
-                extra={"user_id": current_user.id},
-                exc_info=True,
-            )
-
     return BatchDeleteSubscriptionsResponse(deleted_count=deleted_count, failed_count=failed_count)
 
 

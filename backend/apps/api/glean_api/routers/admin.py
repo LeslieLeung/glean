@@ -7,7 +7,7 @@ Provides endpoints for administrative operations.
 import contextlib
 from datetime import UTC, datetime, timedelta
 from math import ceil
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
@@ -59,10 +59,8 @@ logger = get_logger(__name__)
 async def _enqueue_feed_deletion_effects(
     redis: ArqRedis, effects: list[FeedDeletionEffects]
 ) -> None:
-    """Accelerate durable cleanup/preference outboxes after the DB commit."""
-    user_ids: set[str] = set()
+    """Accelerate durable vector cleanup after the DB commit."""
     for deletion in effects:
-        user_ids.update(deletion.user_ids)
         if not deletion.entry_ids:
             continue
         try:
@@ -75,18 +73,6 @@ async def _enqueue_feed_deletion_effects(
             logger.warning(
                 "Immediate admin vector cleanup enqueue failed; durable outbox will retry",
                 extra={"feed_id": deletion.feed_id},
-                exc_info=True,
-            )
-    if user_ids:
-        try:
-            await cast(Any, redis).sadd(
-                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                *sorted(user_ids),
-            )
-        except Exception:
-            logger.warning(
-                "Immediate admin preference enqueue failed; durable revisions will retry",
-                extra={"user_count": len(user_ids)},
                 exc_info=True,
             )
 
@@ -1210,6 +1196,39 @@ async def cancel_embedding_rebuild(
     return {"message": "Rebuild cancelled; full rebuild required", "status": "error"}
 
 
+@router.post("/embedding/retry-failed")
+async def retry_failed_embeddings(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+) -> dict[str, int]:
+    """Requeue failed article embeddings without rebuilding successful ones."""
+    from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
+
+    lock = redis.lock(RedisKeys.REBUILD_LOCK_KEY, timeout=RedisKeys.REBUILD_LOCK_TIMEOUT)
+    if not await lock.acquire(blocking=False):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Vector store is busy")
+    try:
+        config = await TypedConfigService(session).get(EmbeddingConfig)
+        if not config.enabled or config.status != VectorizationStatus.IDLE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Vectorization must be operational before retrying failed articles",
+            )
+        queued = await admin_service.requeue_failed_embeddings()
+    finally:
+        with contextlib.suppress(Exception):
+            await lock.release()
+    if queued:
+        try:
+            await redis.enqueue_job("batch_generate_embeddings")
+        except Exception:
+            # The committed pending rows are picked up by periodic maintenance.
+            logger.warning("Immediate embedding retry enqueue failed", exc_info=True)
+    return {"queued": queued}
+
+
 @router.get("/embedding/status")
 async def get_embedding_status(
     current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
@@ -1219,8 +1238,7 @@ async def get_embedding_status(
     """
     Get embedding system status and rebuild progress.
 
-    Rebuild phase transitions are owned by worker maintenance so preference
-    reconstruction cannot be bypassed by polling this endpoint.
+    Rebuild phase transitions are owned by worker maintenance.
     """
     from glean_core.schemas.config import EmbeddingConfig, VectorizationStatus
     from glean_core.services import TypedConfigService
@@ -1230,6 +1248,16 @@ async def get_embedding_status(
 
     # Get progress from entry counts
     progress = await admin_service.get_embedding_progress()
+
+    recent_failures = (
+        await admin_service.get_recent_embedding_failures() if progress["failed"] else []
+    )
+    for failure in recent_failures:
+        message = failure["error"]
+        if message:
+            if config.api_key:
+                message = message.replace(config.api_key, "[redacted]")
+            failure["error"] = message[:600]
 
     current_status = config.status
 
@@ -1245,6 +1273,7 @@ async def get_embedding_status(
         ),
         "rebuild_phase": config.rebuild_phase.value if config.rebuild_phase else None,
         "progress": progress,
+        "recent_failures": recent_failures,
     }
 
 

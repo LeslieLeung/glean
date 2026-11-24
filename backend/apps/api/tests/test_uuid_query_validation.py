@@ -16,7 +16,6 @@ from glean_api.dependencies import (
     get_current_user,
     get_entry_service,
     get_feed_service,
-    get_score_service,
 )
 from glean_api.main import create_app
 
@@ -57,7 +56,6 @@ def query_app() -> tuple[FastAPI, AsyncMock]:
         get_bookmark_service,
     ):
         app.dependency_overrides[dependency] = lambda: service
-    app.dependency_overrides[get_score_service] = lambda: None
     return app, service
 
 

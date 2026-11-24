@@ -8,7 +8,6 @@ import json
 from functools import reduce
 from math import ceil
 from operator import add
-from typing import Any, cast
 
 from arq.connections import ArqRedis
 from sqlalchemy import case, false, func, or_, select
@@ -16,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from glean_core import RedisKeys, get_logger
+from glean_core import get_logger
 from glean_core.schemas.bookmark import (
     AnnotationResponse,
     BookmarkCreate,
@@ -43,8 +42,6 @@ from glean_database.models import (
 )
 from glean_database.search_text import html_text
 from glean_rss import strip_html_tags
-
-from .preference_dirty_service import mark_preferences_dirty
 
 logger = get_logger(__name__)
 
@@ -390,10 +387,7 @@ class BookmarkService:
             if entry and not existing.entry_id:
                 existing.entry_id = entry.id
                 existing.content = existing.content or entry.content
-                await mark_preferences_dirty(self.session, [user_id])
             await self.session.commit()
-            if entry:
-                await self._queue_preference_sync(user_id)
             result = await self.get_bookmark(existing.id, user_id)
             result.already_exists = True
             return result, False
@@ -440,13 +434,7 @@ class BookmarkService:
             if tag_result.scalar_one_or_none():
                 self.session.add(BookmarkTag(bookmark_id=bookmark.id, tag_id=tag_id))
 
-        if entry_id:
-            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
-
-        # Queue an idempotent current-state sync for entry-backed bookmarks.
-        if entry_id:
-            await self._queue_preference_sync(user_id)
 
         # Return with associations
         return await self.get_bookmark(bookmark.id, user_id), needs_metadata_fetch
@@ -499,7 +487,6 @@ class BookmarkService:
         )
         if bookmark is None:
             raise ValueError("Bookmark not found")
-        entry_id = bookmark.entry_id
         if self.redis_pool:
             snapshot = (await self.get_bookmark(bookmark_id, user_id)).model_dump(mode="json")
             from .bookmark_knowledge_service import BookmarkKnowledgeService
@@ -518,11 +505,7 @@ class BookmarkService:
                 f"bookmark:undo:{user_id}:{bookmark_id}", 30, json.dumps(snapshot)
             )
         await self.session.delete(bookmark)
-        if entry_id:
-            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
-        if entry_id:
-            await self._queue_preference_sync(user_id)
 
     async def retry_content(self, bookmark_id: str, user_id: str) -> BookmarkResponse:
         bookmark = await self._get_bookmark_or_raise(bookmark_id, user_id)
@@ -617,34 +600,12 @@ class BookmarkService:
                 select(Tag.id).where(Tag.id == tag.id, Tag.user_id == user_id)
             ):
                 self.session.add(BookmarkTag(bookmark_id=bookmark_id, tag_id=tag.id))
-        if entry_id:
-            await mark_preferences_dirty(self.session, [user_id])
         await self.session.commit()
         if self.redis_pool:
             await self.redis_pool.delete(key)
-        if entry_id:
-            await self._queue_preference_sync(user_id)
         if data.snapshot_status in ("pending", "processing"):
             await self.queue_content(bookmark_id)
         return await self.get_bookmark(bookmark_id, user_id)
-
-    async def _queue_preference_sync(self, user_id: str) -> None:
-        """Best-effort enqueue of a current-state preference rebuild."""
-        if not self.redis_pool:
-            return
-        try:
-            await cast(Any, self.redis_pool).sadd(
-                RedisKeys.PREFERENCE_PENDING_USERS_KEY,
-                user_id,
-            )
-            await self.redis_pool.enqueue_job(
-                "rebuild_user_preference",
-                user_id=user_id,
-            )
-        except Exception as error:
-            # The bookmark write has already committed and remains the source
-            # of truth; a later full rebuild can safely recover this signal.
-            logger.warning(f"Failed to queue preference sync: {error}")
 
     async def add_folder(self, bookmark_id: str, user_id: str, folder_id: str) -> BookmarkResponse:
         """

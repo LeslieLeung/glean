@@ -33,7 +33,6 @@ from .tasks import (
     embedding_worker,
     feed_fetcher,
     jev_classification,
-    preference_worker,
     subscription_cleanup,
 )
 
@@ -139,12 +138,9 @@ def get_oss_functions() -> list[TaskFunction | Function]:
         # M3: Embedding tasks (triggered immediately after feed fetch)
         embedding_worker.generate_entry_embedding,
         embedding_worker.batch_generate_embeddings,
-        embedding_worker.retry_failed_embeddings,
         embedding_worker.validate_and_rebuild_embeddings,
         embedding_rebuild.rebuild_embeddings,
         # M3: Preference tasks
-        preference_worker.update_user_preference,
-        preference_worker.rebuild_user_preference,
         # Subscription cleanup
         subscription_cleanup.cleanup_orphan_embeddings,
         # Embedding maintenance

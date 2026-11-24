@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from glean_core import RedisKeys
 from glean_core.schemas.config import (
     EmbeddingConfig,
     EmbeddingRebuildPhase,
@@ -16,62 +15,48 @@ from glean_vector.config import (
     vector_store_fingerprint,
 )
 from glean_worker.tasks.embedding_maintenance import (
+    _advance_rebuild_phase,
     _enqueue_idle_recovery,
     _enqueue_validation_recovery,
     _enqueue_vector_cleanup_recovery,
 )
 from glean_worker.tasks.embedding_rebuild import (
     rebuild_embeddings,
-    start_preference_rebuild_phase,
 )
 from glean_worker.tasks.embedding_worker import batch_generate_embeddings
 
 
 @pytest.mark.asyncio
-async def test_preference_phase_uses_current_history_and_generation_id():
+@pytest.mark.parametrize(
+    "phase", [EmbeddingRebuildPhase.EMBEDDINGS, EmbeddingRebuildPhase.PREFERENCES]
+)
+async def test_terminal_rebuild_completes_without_a_profile_phase(phase):
     session = AsyncMock()
     redis = MagicMock()
-    redis.sadd = AsyncMock()
-    redis.expire = AsyncMock()
     redis.enqueue_job = AsyncMock()
-    config_service = AsyncMock()
-    config_service.get.return_value = EmbeddingConfig(
+    redis.lock.return_value.acquire = AsyncMock(return_value=True)
+    redis.lock.return_value.release = AsyncMock()
+    config = EmbeddingConfig(
         enabled=True,
         status=VectorizationStatus.REBUILDING,
         rebuild_id="generation-1",
-        rebuild_phase=EmbeddingRebuildPhase.EMBEDDINGS,
+        rebuild_phase=phase,
     )
-
-    with patch(
-        "glean_worker.tasks.embedding_rebuild.get_preference_history_user_ids",
-        new=AsyncMock(return_value=["user-like", "user-bookmark"]),
+    config_service = AsyncMock()
+    config_service.complete_rebuild.return_value = True
+    with (
+        patch(
+            "glean_worker.tasks.embedding_maintenance._get_rebuild_counts",
+            new=AsyncMock(return_value=(config, {"done": 2, "failed": 1})),
+        ),
+        patch(
+            "glean_worker.tasks.embedding_maintenance.TypedConfigService",
+            return_value=config_service,
+        ),
     ):
-        queued = await start_preference_rebuild_phase(
-            session,
-            redis,
-            config_service,
-            "generation-1",
-        )
-
-    assert queued == 2
-    config_service.update_embedding_generation.assert_awaited_once_with(
-        expected_version=None,
-        expected_rebuild_id="generation-1",
-        expected_statuses={VectorizationStatus.REBUILDING.value},
-        rebuild_phase=EmbeddingRebuildPhase.PREFERENCES,
-    )
-    redis.sadd.assert_awaited_once_with(
-        RedisKeys.rebuild_preferences("generation-1"),
-        "user-like",
-        "user-bookmark",
-    )
-    assert redis.enqueue_job.await_count == 2
-    first = redis.enqueue_job.await_args_list[0]
-    assert first.args[:3] == (
-        "rebuild_user_preference",
-        "user-like",
-        "generation-1",
-    )
+        assert await _advance_rebuild_phase(session, redis, config) is True
+    config_service.complete_rebuild.assert_awaited_once_with(expected_rebuild_id="generation-1")
+    redis.enqueue_job.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -112,28 +97,25 @@ async def test_stale_rebuild_batch_exits_before_touching_vector_storage():
 
 
 @pytest.mark.asyncio
-async def test_idle_maintenance_recovers_pending_and_failed_with_throttle():
+async def test_idle_maintenance_recovers_pending_but_leaves_failed_for_manual_retry():
     redis = MagicMock()
     redis.set = AsyncMock(side_effect=[True, True])
     redis.enqueue_job = AsyncMock()
 
-    pending, failed = await _enqueue_idle_recovery(
+    pending = await _enqueue_idle_recovery(
         redis,
         {"pending": 3, "failed": 2, "processing": 0},
         rpm=10,
         batch_size=20,
     )
 
-    assert (pending, failed) == (1, 1)
+    assert pending == 1
     assert redis.enqueue_job.await_args_list[0].args[:3] == (
         "batch_generate_embeddings",
         200,
         None,
     )
-    assert redis.enqueue_job.await_args_list[1].args == (
-        "retry_failed_embeddings",
-        200,
-    )
+    assert redis.enqueue_job.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -149,7 +131,7 @@ async def test_idle_maintenance_does_not_compete_with_processing_jobs():
         batch_size=20,
     )
 
-    assert queued == (0, 0)
+    assert queued == 0
     redis.enqueue_job.assert_not_awaited()
 
 

@@ -18,16 +18,15 @@ vi.mock('@glean/api-client', () => ({
 }))
 
 vi.mock('@glean/i18n', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { score: string }) =>
+      key === 'smart.score' ? `Recommendation score: ${options?.score}` : key,
+  }),
 }))
 
 vi.mock('@/components/ArticleReader', () => ({
   ArticleReader: () => null,
   ArticleReaderSkeleton: () => null,
-}))
-
-vi.mock('@/hooks/useVectorizationStatus', () => ({
-  useVectorizationStatus: () => ({ data: { enabled: true, status: 'idle' } }),
 }))
 
 vi.mock('@/stores/authStore', () => ({
@@ -98,9 +97,9 @@ describe('ReaderPage preference score badge', () => {
       </QueryClientProvider>
     )
 
-    const high = screen.getByTitle('Preference score: 82%')
-    const mid = screen.getByTitle('Preference score: 55%')
-    const low = screen.getByTitle('Preference score: 41%')
+    const high = screen.getByTitle('Recommendation score: 82')
+    const mid = screen.getByTitle('Recommendation score: 55')
+    const low = screen.getByTitle('Recommendation score: 41')
     expect(high).toHaveClass('text-green-500')
     expect(mid).toHaveClass('text-amber-500')
     expect(low).toHaveClass('text-muted-foreground')
@@ -110,8 +109,30 @@ describe('ReaderPage preference score badge', () => {
     await waitFor(() =>
       expect(entryService.updateEntryState).toHaveBeenCalledWith('high', { is_read: true })
     )
-    expect(screen.getByTitle('Preference score: 82%')).toHaveTextContent('82%')
-    expect(screen.getByTitle('Preference score: 55%')).toBeInTheDocument()
-    expect(screen.getByTitle('Preference score: 41%')).toBeInTheDocument()
+    expect(screen.getByTitle('Recommendation score: 82')).toHaveTextContent('82')
+    expect(screen.getByTitle('Recommendation score: 55')).toBeInTheDocument()
+    expect(screen.getByTitle('Recommendation score: 41')).toBeInTheDocument()
+  })
+
+  it('requests and shows recommendation scores on a chronological page', async () => {
+    vi.mocked(entryService.getEntries).mockResolvedValueOnce({
+      items: [createMockEntry({ title: 'Recent article', preference_score: 86 })],
+      page: 1,
+      per_page: 20,
+      total: 1,
+      total_pages: 1,
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?feed=feed-1&tab=unread']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByTitle('Recommendation score: 86')).toHaveTextContent('86')
+    expect(entryService.getEntries).toHaveBeenCalledWith(
+      expect.objectContaining({ view: 'timeline', include_score: true, page: 1 })
+    )
   })
 })
