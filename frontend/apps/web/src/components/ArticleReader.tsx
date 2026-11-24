@@ -1,3 +1,4 @@
+import { MOBILE_LAYOUT_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
@@ -69,26 +70,6 @@ interface ArticleReaderProps {
   /** Hide read/unread status actions (for bookmarks page) */
   hideReadStatus?: boolean
   onBookmarkChange?: () => void
-}
-
-/**
- * Hook to detect mobile viewport
- */
-function useIsMobile(breakpoint = 640) {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
-  )
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < breakpoint)
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [breakpoint])
-
-  return isMobile
 }
 
 /**
@@ -178,7 +159,7 @@ export function ArticleReader({
   const articleMarkup = useMemo(() => ({ __html: articleHtml }), [articleHtml])
   const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const isMobile = useIsMobile()
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY)
   const barsVisible = useScrollHide(scrollContainerRef)
 
   // Apply smart defaults based on mobile detection
@@ -406,7 +387,7 @@ export function ArticleReader({
         {/* Scrollable content area - hide scrollbar for cleaner reading */}
         <div
           ref={scrollContainerRef}
-          className={`hide-scrollbar min-w-0 flex-1 overflow-y-auto ${isMobile ? 'pt-14 pb-16' : ''}`}
+          className={`hide-scrollbar min-w-0 flex-1 overflow-y-auto ${isMobile ? 'pt-14 pb-[calc(4rem+env(safe-area-inset-bottom,0px))]' : ''}`}
         >
           <div className="article-reader-copy mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
             {/* Mobile: Author and date at top of content */}
@@ -463,10 +444,10 @@ export function ArticleReader({
             barsVisible ? 'translate-y-0' : 'translate-y-full'
           }`}
         >
-          <div className="flex h-14 items-center justify-around px-2">
+          <div className="flex min-h-14 items-stretch px-2">
             <button
               onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
-              className="action-btn action-btn-mobile action-btn-external text-muted-foreground hover:text-foreground flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors"
+              className="action-btn action-btn-mobile action-btn-external text-muted-foreground hover:text-foreground transition-colors"
             >
               <ExternalLink className="h-5 w-5" />
               <span className="text-[10px]">{t('actions.open')}</span>
@@ -475,7 +456,7 @@ export function ArticleReader({
             {!hideReadStatus && (
               <button
                 onClick={handleToggleRead}
-                className={`action-btn action-btn-mobile ${readAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+                className={`action-btn action-btn-mobile ${readAnimation} transition-colors ${
                   entry.is_read ? 'text-muted-foreground' : 'text-primary'
                 }`}
               >
@@ -492,7 +473,7 @@ export function ArticleReader({
 
                 <button
                   onClick={handleToggleReadLater}
-                  className={`action-btn action-btn-mobile ${readLaterAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+                  className={`action-btn action-btn-mobile ${readLaterAnimation} transition-colors ${
                     entry.read_later ? 'text-primary' : 'text-muted-foreground'
                   }`}
                 >
@@ -505,7 +486,7 @@ export function ArticleReader({
             <button
               onClick={handleToggleBookmark}
               disabled={isBookmarking}
-              className={`action-btn action-btn-mobile ${bookmarkAnimation} flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+              className={`action-btn action-btn-mobile ${bookmarkAnimation} transition-colors ${
                 entry.is_bookmarked ? 'text-primary' : 'text-muted-foreground'
               } disabled:opacity-50`}
             >

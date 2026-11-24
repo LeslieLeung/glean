@@ -105,6 +105,7 @@ export function PreferenceTab() {
           variant="outline"
           size="sm"
           onClick={() => setShowRebuildConfirm(true)}
+          aria-label={t('preferences.rebuildModel')}
           disabled={rebuildMutation.isPending}
           className="shrink-0 gap-1.5"
         >
@@ -135,7 +136,11 @@ export function PreferenceTab() {
             </p>
           </div>
         </div>
-        <Switch checked={showPreferenceScore} onCheckedChange={setShowPreferenceScore} />
+        <Switch
+          aria-label={t('preferences.showPreferenceScores')}
+          checked={showPreferenceScore}
+          onCheckedChange={setShowPreferenceScore}
+        />
       </div>
 
       <JevDisplaySettings />

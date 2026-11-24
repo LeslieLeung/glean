@@ -1,3 +1,4 @@
+import { MOBILE_LAYOUT_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -34,6 +35,7 @@ import {
   Alert,
   AlertTitle,
   AlertDescription,
+  Button,
   Skeleton,
   AlertDialog,
   AlertDialogPopup,
@@ -51,26 +53,6 @@ import {
 type FilterType = 'all' | 'unread' | 'smart' | 'read-later'
 
 const FILTER_ORDER: FilterType[] = ['all', 'unread', 'smart', 'read-later']
-
-/**
- * Hook to detect mobile viewport
- */
-function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
-  )
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < breakpoint)
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [breakpoint])
-
-  return isMobile
-}
 
 function timelineDate(publishedAt: string | null | undefined, createdAt?: string | null): Date {
   // Missing feed dates sort by when the article was fetched.
@@ -136,7 +118,7 @@ export default function ReaderPage() {
   const [isExitingEntryList, setIsExitingEntryList] = useState(false)
   const [isEnteringEntryList, setIsEnteringEntryList] = useState(false)
   const exitingEntryRef = useRef<EntryWithState | null>(null)
-  const isMobile = useIsMobile()
+  const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY)
   const entryListRef = useRef<HTMLDivElement>(null)
   const [loadMoreElement, setLoadMoreElement] = useState<HTMLDivElement | null>(null)
 
@@ -393,12 +375,8 @@ export default function ReaderPage() {
       // On mobile, trigger entry list exit animation while opening reader
       if (isMobile) {
         setIsExitingEntryList(true)
-        setSelectedEntryId(entry.id)
-        // Notify Layout to hide its header (ArticleReader will show its own)
-        window.dispatchEvent(new CustomEvent('showArticleReader'))
-      } else {
-        setSelectedEntryId(entry.id)
       }
+      setSelectedEntryId(entry.id)
 
       // Save the original position data when first selecting an entry
       // This ensures the entry stays in place even after like/dislike/bookmark actions
@@ -499,9 +477,12 @@ export default function ReaderPage() {
   const showReader = !isMobile || !!selectedEntryId
 
   return (
-    <div className={`flex h-full ${isMobile ? 'relative' : ''}`}>
+    <div
+      className="flex h-full max-md:relative max-md:overflow-hidden"
+      data-reader-active={selectedEntryId ? '' : undefined}
+    >
       {/* Entry list */}
-      {!isFullscreen && showEntryList && (
+      {(isMobile || !isFullscreen) && showEntryList && (
         <>
           <div
             className={`border-border bg-card/50 relative flex min-w-0 flex-col border-r ${
@@ -742,7 +723,7 @@ export default function ReaderPage() {
       {/* Reading pane */}
       {(showReader || isExitingArticle) && (
         <div
-          key={selectedEntryId || 'exiting'}
+          key={selectedEntryId || exitingEntryRef.current?.id || 'empty'}
           className={`flex min-w-0 flex-1 flex-col ${
             isMobile
               ? `absolute inset-0 z-20 ${isExitingArticle ? 'reader-transition-exit' : 'reader-transition'}`
@@ -750,8 +731,8 @@ export default function ReaderPage() {
                 ? 'reader-transition-exit'
                 : 'reader-transition'
           }`}
-          onAnimationEnd={() => {
-            if (isExitingArticle) {
+          onAnimationEnd={(event) => {
+            if (isExitingArticle && event.target === event.currentTarget) {
               setIsExitingArticle(false)
               exitingEntryRef.current = null
             }
@@ -764,9 +745,7 @@ export default function ReaderPage() {
               entry={(selectedEntry || exitingEntryRef.current)!}
               onClose={() => {
                 if (isMobile && selectedEntry) {
-                  // Notify Layout to show its header immediately (starts fade-in animation
-                  // concurrently with reader slide-out animation)
-                  window.dispatchEvent(new CustomEvent('hideArticleReader'))
+                  setIsFullscreen(false)
                   exitingEntryRef.current = selectedEntry
                   setIsExitingArticle(true)
                   setIsEnteringEntryList(true)
@@ -780,7 +759,14 @@ export default function ReaderPage() {
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             />
-          ) : !isMobile ? (
+          ) : isMobile ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
+              <p className="text-muted-foreground">{t('article.noContent')}</p>
+              <Button variant="ghost" onClick={() => setSelectedEntryId(null)}>
+                {t('actions.close')}
+              </Button>
+            </div>
+          ) : (
             <div className="bg-background flex min-w-0 flex-1 flex-col items-center justify-center">
               <div className="text-center">
                 <div className="bg-muted mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl">
@@ -794,7 +780,7 @@ export default function ReaderPage() {
                 </p>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
       )}
     </div>

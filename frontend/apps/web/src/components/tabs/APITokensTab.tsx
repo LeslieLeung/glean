@@ -123,9 +123,9 @@ export function APITokensTab() {
   return (
     <div className="stagger-children space-y-6">
       {/* Create Token Button */}
-      <div className="animate-fade-in flex items-center justify-between">
+      <div className="animate-fade-in flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground text-sm">{t('apiTokens.description')}</p>
-        <Button onClick={() => setShowCreateDialog(true)} className="btn-glow">
+        <Button onClick={() => setShowCreateDialog(true)} className="btn-glow shrink-0">
           <Plus className="mr-2 h-4 w-4" />
           {t('apiTokens.createToken')}
         </Button>

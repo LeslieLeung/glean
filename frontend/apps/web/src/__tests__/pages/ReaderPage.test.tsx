@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { entryService } from '@glean/api-client'
 import { entryKeys } from '@/hooks/useEntries'
+import { MOBILE_LAYOUT_QUERY } from '@/hooks/useMediaQuery'
 import ReaderPage from '@/pages/ReaderPage'
 import { createMockEntry } from '../helpers/mockData'
 
@@ -21,7 +22,9 @@ vi.mock('@glean/i18n', () => ({
 }))
 
 vi.mock('@/components/ArticleReader', () => ({
-  ArticleReader: () => null,
+  ArticleReader: ({ onClose }: { onClose: () => void }) => (
+    <button onClick={onClose}>Close article</button>
+  ),
   ArticleReaderSkeleton: () => null,
 }))
 
@@ -141,5 +144,28 @@ describe('ReaderPage pagination', () => {
     expect(screen.getByText('entries.noMoreEntries')).toBeDefined()
     intersectListBottom()
     expect(entryService.getEntries).toHaveBeenCalledTimes(3)
+  })
+
+  it('restores mobile navigation after closing an article opened by URL', async () => {
+    const matchMedia = vi.mocked(window.matchMedia).getMockImplementation()!
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...matchMedia(query),
+      matches: query === MOBILE_LAYOUT_QUERY,
+    }))
+    vi.mocked(entryService.getEntry).mockResolvedValue(createMockEntry({ id: 'article' }))
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?feed=feed-1&entry=article']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const close = await screen.findByRole('button', { name: 'Close article' })
+    expect(container.querySelector('[data-reader-active]')).not.toBeNull()
+    fireEvent.click(close)
+    expect(container.querySelector('[data-reader-active]')).toBeNull()
+    expect(screen.getByText('timeline first page')).toBeDefined()
   })
 })

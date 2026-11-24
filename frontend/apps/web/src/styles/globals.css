@@ -1357,8 +1357,12 @@ body {
   animation: contentFadeIn 0.25s ease-out forwards;
 }
 
+.reader-transition-exit {
+  animation: contentFadeIn 0.25s ease-in reverse both;
+}
+
 /* Mobile reader slide-in transition */
-@media (max-width: 767px) {
+@media (width < 48rem) {
   .reader-transition {
     animation: mobileSlideInFromRight 0.3s ease-out forwards;
   }
@@ -1377,12 +1381,25 @@ body {
   }
 }
 
-/* Mobile Layout header transition - ensures smooth height animation */
-@media (max-width: 767px) {
-  .layout-header-transition {
-    transition: opacity 0.3s ease-out, height 0.3s ease-out, min-height 0.3s ease-out;
+.app-shell:has([data-reader-active], [data-settings-detail]) > .app-mobile-header {
+  display: none;
+}
+
+/* Keep portaled panels within the same visible viewport as the app shell. */
+@supports (height: 100dvh) {
+  :is(
+    [data-slot="dialog-viewport"],
+    [data-slot="alert-dialog-viewport"],
+    [data-slot="sheet-viewport"]
+  ) {
+    height: 100dvh;
   }
 }
+
+:is([data-slot="dialog-viewport"], [data-slot="alert-dialog-viewport"]) {
+  overflow-y: auto;
+}
+
 /* ==========================================================================
    Article Outline Styles
    ========================================================================== */
@@ -1480,6 +1497,7 @@ body {
 .article-outline-list {
   display: flex;
   max-height: min(65vh, 32rem);
+  max-height: min(65dvh, 32rem);
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
@@ -1697,7 +1715,22 @@ body {
 /* Mobile action button ripple effect */
 .action-btn-mobile {
   position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
   overflow: hidden;
+  padding: 0.25rem;
+  text-align: center;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.action-btn-mobile svg {
+  flex: none;
 }
 
 .action-btn-mobile::after {
