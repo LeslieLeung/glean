@@ -218,7 +218,7 @@ export default function SubscriptionsPage() {
         {/* Toolbar */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* Search */}
-          <div className="relative flex-1 sm:max-w-xs">
+          <div className="relative min-w-0 flex-1 sm:max-w-xs">
             <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
             <Input
               placeholder={t('manageSubscriptions.searchPlaceholder')}
@@ -229,7 +229,7 @@ export default function SubscriptionsPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {selectedCount > 0 && (
               <>
                 <span className="text-muted-foreground text-sm">

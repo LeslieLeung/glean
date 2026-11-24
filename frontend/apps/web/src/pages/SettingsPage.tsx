@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeStore } from '../stores/themeStore'
 import { useLanguageStore } from '../stores/languageStore'
@@ -19,6 +21,8 @@ import {
   Languages,
   Key,
   Keyboard,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   Label,
@@ -46,11 +50,22 @@ import { useTranslation } from '@glean/i18n'
  */
 export default function SettingsPage() {
   const { t } = useTranslation('settings')
+  const { t: tCommon } = useTranslation('common')
+  const [searchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const sectionId = searchParams.get('section')
+  const detailHeading = useRef<HTMLHeadingElement>(null)
+  const isWideLayout = useMediaQuery('(min-width: 64rem)')
   const { user, updateSettings, isLoading } = useAuthStore()
   const { theme, setTheme } = useThemeStore()
   const { language, setLanguage } = useLanguageStore()
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
+
+  useEffect(() => {
+    if (!isWideLayout && sectionId) detailHeading.current?.focus({ preventScroll: true })
+  }, [isWideLayout, sectionId])
 
   // Read later expiration options
   const READ_LATER_OPTIONS = [
@@ -107,7 +122,7 @@ export default function SettingsPage() {
     }
   }
 
-  const ProfileContent = () => {
+  const renderProfile = () => {
     // Display priority: username > name for display name
     const displayName = user?.username || user?.name || t('profile.notSet')
     // Display priority: email > phone for contact info
@@ -121,10 +136,12 @@ export default function SettingsPage() {
             {t('profile.name')}
           </Label>
           <div className="from-muted/50 to-muted/30 ring-border/50 hover:ring-primary/20 flex items-center gap-3 rounded-xl bg-gradient-to-br p-4 ring-1 transition-all">
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+            <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
               <User className="text-primary h-5 w-5" />
             </div>
-            <span className="text-foreground font-medium">{displayName}</span>
+            <span className="text-foreground min-w-0 font-medium [overflow-wrap:anywhere]">
+              {displayName}
+            </span>
           </div>
         </div>
 
@@ -134,10 +151,12 @@ export default function SettingsPage() {
             {user?.email ? t('profile.email') : t('profile.phone')}
           </Label>
           <div className="from-muted/50 to-muted/30 ring-border/50 hover:ring-primary/20 flex items-center gap-3 rounded-xl bg-gradient-to-br p-4 ring-1 transition-all">
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-lg">
+            <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
               <Mail className="text-primary h-5 w-5" />
             </div>
-            <span className="text-foreground font-medium">{contactInfo}</span>
+            <span className="text-foreground min-w-0 font-medium [overflow-wrap:anywhere]">
+              {contactInfo}
+            </span>
           </div>
         </div>
 
@@ -201,14 +220,14 @@ export default function SettingsPage() {
     )
   }
 
-  const ReadLaterContent = () => (
+  const renderReadLater = () => (
     <div className="stagger-children space-y-6">
       <div className="animate-fade-in">
         <Label className="text-muted-foreground mb-2 block text-sm font-medium">
           {t('readLater.autoCleanup')}
         </Label>
         <p className="text-muted-foreground/80 mb-4 text-sm">{t('readLater.autoCleanupDesc')}</p>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           {READ_LATER_OPTIONS.map((option, index) => (
             <Button
               key={option.value}
@@ -216,7 +235,8 @@ export default function SettingsPage() {
               size="sm"
               onClick={() => handleReadLaterDaysChange(option.value)}
               disabled={isSaving || isLoading}
-              className={`min-w-[100px] transition-all ${
+              aria-pressed={currentReadLaterDays === option.value}
+              className={`min-h-11 min-w-0 transition-all sm:min-w-[100px] lg:min-h-0 ${
                 currentReadLaterDays === option.value ? 'btn-glow' : ''
               }`}
               style={{ animationDelay: `${index * 30}ms` }}
@@ -233,11 +253,11 @@ export default function SettingsPage() {
 
       {/* Show remaining time toggle */}
       <div
-        className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-5 ring-1"
+        className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-3 ring-1 sm:p-5"
         style={{ animationDelay: '100ms' }}
       >
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex flex-1 items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
               <Eye className="text-primary h-5 w-5" />
             </div>
@@ -251,6 +271,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <Switch
+            aria-label={t('readLater.showRemainingTime')}
             checked={showReadLaterRemaining}
             onCheckedChange={handleToggleShowRemaining}
             disabled={isSaving || isLoading}
@@ -267,7 +288,7 @@ export default function SettingsPage() {
     </div>
   )
 
-  const AppearanceContent = () => {
+  const renderAppearance = () => {
     const themeOptions = [
       {
         value: 'dark' as const,
@@ -318,6 +339,7 @@ export default function SettingsPage() {
               <button
                 key={value}
                 onClick={() => setTheme(value)}
+                aria-pressed={theme === value}
                 className={`group animate-fade-in relative flex flex-col items-center gap-2 rounded-xl border p-2 text-center transition-all duration-200 md:gap-4 md:rounded-2xl md:p-6 ${
                   theme === value
                     ? 'border-primary/50 from-primary/10 to-primary/5 ring-primary/30 bg-gradient-to-br shadow-lg ring-2 md:scale-105'
@@ -389,11 +411,11 @@ export default function SettingsPage() {
         </div>
 
         <div
-          className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-5 ring-1"
+          className="border-border/50 from-muted/30 to-muted/10 ring-border/20 animate-fade-in rounded-xl border bg-gradient-to-br p-3 ring-1 sm:p-5"
           style={{ animationDelay: '100ms' }}
         >
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-1 items-center gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <div className="bg-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
                 <Keyboard className="text-primary h-5 w-5" />
               </div>
@@ -407,6 +429,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <Switch
+              aria-label={t('appearance.keyboardNavigation')}
               checked={keyboardNavigationEnabled}
               onCheckedChange={handleToggleKeyboardNavigation}
               disabled={isSaving || isLoading}
@@ -424,208 +447,173 @@ export default function SettingsPage() {
     )
   }
 
-  return (
-    <div className="bg-background h-full p-4 sm:p-6 lg:p-8">
-      <div className="flex h-full flex-col">
-        {/* Header with animation */}
-        <div className="animate-fade-in mb-2">
-          <div className="flex items-center gap-4">
-            <div className="from-primary/20 to-primary/5 ring-primary/20 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ring-1">
-              <User className="text-primary h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="font-display text-foreground text-3xl font-bold">{t('title')}</h1>
-              <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
-            </div>
+  const sections = [
+    {
+      id: 'profile',
+      label: t('tabs.profile'),
+      description: t('profile.desc'),
+      icon: User,
+      render: renderProfile,
+    },
+    {
+      id: 'read-later',
+      label: t('tabs.readLater'),
+      description: t('readLater.desc'),
+      icon: Clock,
+      render: renderReadLater,
+    },
+    {
+      id: 'appearance',
+      label: t('tabs.appearance'),
+      description: t('appearance.desc'),
+      icon: Sun,
+      render: renderAppearance,
+    },
+    {
+      id: 'manage-feeds',
+      label: t('tabs.manageFeeds'),
+      description: t('manageFeeds.desc'),
+      icon: ListChecks,
+      render: () => <SubscriptionsTab />,
+    },
+    {
+      id: 'preferences',
+      label: t('tabs.preferences'),
+      description: t('preferences.desc'),
+      icon: Sparkles,
+      render: () => <PreferenceTab />,
+    },
+    {
+      id: 'api-tokens',
+      label: t('tabs.apiTokens'),
+      description: t('apiTokens.desc'),
+      icon: Key,
+      render: () => <APITokensTab />,
+    },
+  ]
+  const section = sections.find(({ id }) => id === sectionId)
+  const version = t('version', { version: import.meta.env.VITE_APP_VERSION || 'dev' })
+
+  if (!isWideLayout) {
+    return (
+      <div
+        className="bg-background flex h-full min-h-0 flex-col"
+        data-settings-detail={section ? '' : undefined}
+      >
+        {section && (
+          <header className="border-border bg-card flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
+            <button
+              type="button"
+              aria-label={tCommon('actions.back')}
+              onClick={() => {
+                if (location.state?.fromSettingsOverview) navigate(-1)
+                else navigate('/settings', { replace: true })
+              }}
+              className="text-muted-foreground hover:bg-accent hover:text-foreground flex size-11 shrink-0 items-center justify-center rounded-lg"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <h1
+              ref={detailHeading}
+              tabIndex={-1}
+              className="font-display text-foreground min-w-0 text-lg font-semibold outline-none"
+            >
+              {section.label}
+            </h1>
+          </header>
+        )}
+        <div key={section?.id} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-2xl px-4 py-5 sm:px-6">
+            {section ? (
+              section.render()
+            ) : (
+              <>
+                <h1 className="font-display text-foreground mb-4 text-2xl font-bold">
+                  {t('title')}
+                </h1>
+                <nav
+                  aria-label={t('title')}
+                  className="border-border bg-card divide-border divide-y overflow-hidden rounded-xl border"
+                >
+                  {sections.map(({ id, label, description, icon: Icon }) => (
+                    <Link
+                      key={id}
+                      to={`?section=${id}`}
+                      state={{ fromSettingsOverview: true }}
+                      className="hover:bg-accent focus-visible:bg-accent flex min-h-16 items-center gap-3 px-3 py-2.5 outline-none sm:px-4"
+                    >
+                      <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+                        <Icon className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="text-foreground block text-sm font-semibold">{label}</span>
+                        <span className="text-muted-foreground block text-xs">{description}</span>
+                      </span>
+                      <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+                    </Link>
+                  ))}
+                </nav>
+                <p className="text-muted-foreground py-4 text-center text-xs">{version}</p>
+              </>
+            )}
           </div>
         </div>
+      </div>
+    )
+  }
 
-        {/* Tabs Layout with glass effect */}
-        <div
-          className="border-border/50 bg-card/50 animate-fade-in min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-xl backdrop-blur-sm"
-          style={{ animationDelay: '100ms' }}
-        >
-          <Tabs defaultValue="profile" orientation="vertical" className="h-full w-full">
-            <div className="flex h-full w-full flex-1 flex-col md:flex-row">
-              {/* Vertical Tabs List */}
-              <div className="border-border/50 from-muted/30 to-muted/10 w-full shrink-0 border-b bg-gradient-to-br backdrop-blur-sm md:w-56 md:overflow-y-auto md:border-r md:border-b-0">
-                <TabsList
-                  variant="underline"
-                  className="no-scrollbar flex h-auto w-full !flex-row gap-0 overflow-x-auto bg-transparent md:!flex-col md:gap-1 md:overflow-x-visible md:p-3 [&_[data-slot=tab-indicator]]:hidden md:[&_[data-slot=tab-indicator]]:block"
-                >
-                  <TabsTab
-                    value="profile"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <User className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.profile')}</span>
-                  </TabsTab>
-                  <TabsTab
-                    value="read-later"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <Clock className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.readLater')}</span>
-                  </TabsTab>
-                  <TabsTab
-                    value="appearance"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <Sun className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.appearance')}</span>
-                  </TabsTab>
-                  <TabsTab
-                    value="manage-feeds"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <ListChecks className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.manageFeeds')}</span>
-                  </TabsTab>
-                  <TabsTab
-                    value="preferences"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <Sparkles className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.preferences')}</span>
-                  </TabsTab>
-                  <TabsTab
-                    value="api-tokens"
-                    className="hover:bg-accent/80 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary flex-1 flex-col gap-0.5 rounded-none border-b-2 border-transparent px-2 py-2.5 transition-all duration-200 data-[state=active]:font-medium md:w-full md:flex-none md:flex-row md:justify-start md:gap-2.5 md:rounded-md md:border-b-0 md:px-3 md:py-2.5"
-                  >
-                    <Key className="h-5 w-5 shrink-0 md:h-4 md:w-4" />
-                    <span className="text-[10px] md:text-sm">{t('tabs.apiTokens')}</span>
-                  </TabsTab>
-                </TabsList>
-              </div>
-
-              {/* Tab Panels with stagger animation */}
-              <div className="w-full min-w-0 flex-1 overflow-y-auto">
-                <TabsPanel value="profile" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <User className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('profile.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('profile.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in" style={{ animationDelay: '50ms' }}>
-                    <ProfileContent />
-                  </div>
-                </TabsPanel>
-
-                <TabsPanel value="read-later" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <Clock className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('readLater.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('readLater.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in" style={{ animationDelay: '50ms' }}>
-                    <ReadLaterContent />
-                  </div>
-                </TabsPanel>
-
-                <TabsPanel value="appearance" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <Sun className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('appearance.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('appearance.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in w-full" style={{ animationDelay: '50ms' }}>
-                    <AppearanceContent />
-                  </div>
-                </TabsPanel>
-
-                <TabsPanel value="manage-feeds" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <ListChecks className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('manageFeeds.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('manageFeeds.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in w-full" style={{ animationDelay: '50ms' }}>
-                    <SubscriptionsTab />
-                  </div>
-                </TabsPanel>
-
-                <TabsPanel value="preferences" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <Sparkles className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('preferences.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('preferences.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in" style={{ animationDelay: '50ms' }}>
-                    <PreferenceTab />
-                  </div>
-                </TabsPanel>
-
-                <TabsPanel value="api-tokens" className="h-full w-full min-w-0 p-6">
-                  <div className="animate-fade-in mb-8">
-                    <div className="mb-2 flex items-center gap-3">
-                      <div className="bg-primary/10 ring-primary/20 flex h-10 w-10 items-center justify-center rounded-xl ring-1">
-                        <Key className="text-primary h-5 w-5" />
-                      </div>
-                      <div>
-                        <h2 className="font-display text-foreground text-2xl font-semibold">
-                          {t('apiTokens.title')}
-                        </h2>
-                        <p className="text-muted-foreground text-sm">{t('apiTokens.desc')}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="animate-fade-in" style={{ animationDelay: '50ms' }}>
-                    <APITokensTab />
-                  </div>
-                </TabsPanel>
-              </div>
-            </div>
-          </Tabs>
+  return (
+    <div className="bg-background flex h-full flex-col p-8">
+      <div className="mb-2 flex items-center gap-4">
+        <div className="from-primary/20 to-primary/5 ring-primary/20 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ring-1">
+          <User className="text-primary h-6 w-6" />
         </div>
-
-        {/* App info with subtle animation */}
-        <div
-          className="text-muted-foreground/70 animate-fade-in py-3 text-center text-xs"
-          style={{ animationDelay: '200ms' }}
-        >
-          <p>{t('version', { version: import.meta.env.VITE_APP_VERSION || 'dev' })}</p>
+        <div>
+          <h1 className="font-display text-foreground text-3xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
         </div>
       </div>
+
+      <Tabs
+        key={section?.id}
+        defaultValue={section?.id ?? 'profile'}
+        orientation="vertical"
+        className="border-border/50 bg-card/50 min-h-0 w-full flex-1 gap-0 overflow-hidden rounded-2xl border shadow-xl"
+      >
+        <div className="border-border/50 from-muted/30 to-muted/10 w-56 shrink-0 overflow-y-auto border-r bg-gradient-to-br">
+          <TabsList variant="underline" className="w-full gap-1 p-3">
+            {sections.map(({ id, label, icon: Icon }) => (
+              <TabsTab
+                key={id}
+                value={id}
+                className="hover:bg-accent/80 data-active:bg-primary/10 data-active:text-primary w-full flex-none justify-start gap-2.5 px-3 py-2.5"
+              >
+                <Icon className="size-4" />
+                {label}
+              </TabsTab>
+            ))}
+          </TabsList>
+        </div>
+
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          {sections.map(({ id, label, description, icon: Icon, render }) => (
+            <TabsPanel key={id} value={id} className="min-w-0 p-6">
+              <div className="mb-8 flex items-center gap-3">
+                <div className="bg-primary/10 ring-primary/20 flex size-10 shrink-0 items-center justify-center rounded-xl ring-1">
+                  <Icon className="text-primary size-5" />
+                </div>
+                <div>
+                  <h2 className="font-display text-foreground text-2xl font-semibold">{label}</h2>
+                  <p className="text-muted-foreground text-sm">{description}</p>
+                </div>
+              </div>
+              {render()}
+            </TabsPanel>
+          ))}
+        </div>
+      </Tabs>
+
+      <p className="text-muted-foreground/70 py-3 text-center text-xs">{version}</p>
     </div>
   )
 }

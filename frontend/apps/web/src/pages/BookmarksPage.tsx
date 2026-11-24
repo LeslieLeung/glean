@@ -285,7 +285,10 @@ export default function BookmarksPage() {
   }, [hasActiveReader])
 
   return (
-    <div className="flex h-full">
+    <div
+      className="flex h-full max-md:overflow-hidden"
+      data-reader-active={hasActiveReader ? '' : undefined}
+    >
       {/* Bookmark List - Hidden when reader is active */}
       <div className={`${hasActiveReader ? 'hidden' : 'flex'} min-w-0 flex-1 flex-col`}>
         {/* Header */}

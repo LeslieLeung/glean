@@ -392,55 +392,33 @@ export function Layout() {
     }
   }, [])
 
-  // Track if we're reading an article (hide Layout header when ArticleReader is shown)
-  const [isReadingArticle, setIsReadingArticle] = useState(false)
-
-  useEffect(() => {
-    const handleShowArticle = () => setIsReadingArticle(true)
-    const handleHideArticle = () => setIsReadingArticle(false)
-
-    window.addEventListener('showArticleReader', handleShowArticle)
-    window.addEventListener('hideArticleReader', handleHideArticle)
-
-    return () => {
-      window.removeEventListener('showArticleReader', handleShowArticle)
-      window.removeEventListener('hideArticleReader', handleHideArticle)
-    }
-  }, [])
-
   return (
-    <div className="bg-background flex h-screen flex-col md:flex-row">
-      {/* Mobile Header - animate visibility when entering/leaving article reader */}
-      <header
-        className={`border-border bg-card flex shrink-0 items-center justify-between border-b px-4 transition-all duration-300 ease-out md:hidden ${
-          isReadingArticle
-            ? 'pointer-events-none h-0 min-h-0 translate-y-[-100%] opacity-0'
-            : 'h-14 min-h-14 translate-y-0 opacity-100'
-        }`}
-      >
+    <div className="app-shell bg-background relative flex h-screen flex-col overflow-hidden supports-[height:100dvh]:h-dvh md:flex-row">
+      <header className="app-mobile-header border-border bg-card flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 md:hidden">
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
           aria-label="Open sidebar"
         >
           <MenuIcon className="h-5 w-5" />
         </button>
-        <Link to="/" className="flex items-center gap-2">
-          <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br shadow-md">
+        <Link to="/" className="flex min-w-0 items-center gap-2">
+          <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br shadow-md">
             <Rss className="text-primary-foreground h-4 w-4" />
           </div>
           <span className="font-display text-foreground min-w-0 flex-1 truncate text-lg font-bold">
             {mobileHeaderTitle}
           </span>
         </Link>
-        <div className="w-10" />
+        <div className="w-10 shrink-0" />
       </header>
 
       {/* Mobile Sidebar Overlay */}
       <button
         type="button"
         aria-label="Close sidebar"
-        className={`bg-background/80 fixed inset-0 z-40 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
+        inert={!isMobileSidebarOpen}
+        className={`bg-background/80 absolute inset-0 z-40 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
           isMobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={() => setIsMobileSidebarOpen(false)}
@@ -449,7 +427,7 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className={`border-border bg-card fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[translate] duration-300 ease-out md:relative md:z-10 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'} `}
+        className={`border-border bg-card absolute inset-y-0 left-0 z-50 flex max-w-full flex-col border-r transition-[translate] duration-300 ease-out md:relative md:z-10 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'} `}
         style={{
           width: (() => {
             if (isMobileSidebarOpen) return '288px'
@@ -595,7 +573,7 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="bg-background min-h-0 flex-1 overflow-auto">
+      <main className="bg-background min-h-0 min-w-0 flex-1 overflow-auto">
         <div key={location.pathname} className="page-transition h-full">
           <Outlet />
           <BookmarkFeedback />

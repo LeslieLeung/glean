@@ -99,7 +99,7 @@ export function PreferenceButtons({
         <button
           onClick={handleLike}
           disabled={isPending}
-          className={`action-btn action-btn-mobile flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+          className={`action-btn action-btn-mobile transition-colors ${
             isLiked === true ? 'text-red-500' : 'text-muted-foreground'
           } ${isPending ? 'cursor-not-allowed opacity-50' : ''}`}
         >
@@ -110,7 +110,7 @@ export function PreferenceButtons({
         <button
           onClick={handleDislike}
           disabled={isPending}
-          className={`action-btn action-btn-mobile flex flex-col items-center gap-0.5 px-3 py-1.5 transition-colors ${
+          className={`action-btn action-btn-mobile transition-colors ${
             isLiked === false ? 'text-foreground' : 'text-muted-foreground'
           } ${isPending ? 'cursor-not-allowed opacity-50' : ''}`}
         >
