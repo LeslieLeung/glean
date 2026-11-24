@@ -2,7 +2,7 @@ import { BookmarkFeedback } from './BookmarkFeedback'
 import { Link, Outlet, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Rss, ChevronLeft, Menu as MenuIcon, X } from 'lucide-react'
+import { ChevronLeft, Menu as MenuIcon, X } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import {
   buttonVariants,
@@ -403,9 +403,11 @@ export function Layout() {
           <MenuIcon className="h-5 w-5" />
         </button>
         <Link to="/" className="flex min-w-0 items-center gap-2">
-          <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br shadow-md">
-            <Rss className="text-primary-foreground h-4 w-4" />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}glean-logo.png`}
+            alt=""
+            className="size-8 shrink-0"
+          />
           <span className="font-display text-foreground min-w-0 flex-1 truncate text-lg font-bold">
             {mobileHeaderTitle}
           </span>
@@ -442,10 +444,16 @@ export function Layout() {
             isMacElectron ? 'md:pt-12' : ''
           }`}
         >
-          <Link to="/" className="flex items-center gap-2 overflow-hidden md:gap-3">
-            <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg md:h-9 md:w-9">
-              <Rss className="text-primary-foreground h-3.5 w-3.5 md:h-5 md:w-5" />
-            </div>
+          <Link
+            to="/"
+            aria-label="Glean"
+            className="flex items-center gap-2 overflow-hidden md:gap-3"
+          >
+            <img
+              src={`${import.meta.env.BASE_URL}glean-logo.png`}
+              alt=""
+              className="size-7 shrink-0 md:size-9"
+            />
             {(isSidebarOpen || isMobileSidebarOpen) && (
               <span className="font-display text-foreground text-base font-bold md:text-xl">
                 Glean

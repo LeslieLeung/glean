@@ -103,9 +103,11 @@ export function Layout() {
         {/* Logo */}
         <div className="border-border flex items-center justify-between border-b p-4">
           <Link to="/dashboard" className="flex items-center gap-3">
-            <div className="from-primary-500 to-primary-600 shadow-primary/20 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg">
-              <Rss className="text-primary-foreground h-5 w-5" />
-            </div>
+            <img
+              src={`${import.meta.env.BASE_URL}glean-logo.png`}
+              alt=""
+              className="size-9 shrink-0"
+            />
             <div>
               <span className="font-display text-foreground text-xl font-bold">Glean</span>
               <Badge variant="secondary" className="ml-2 text-xs">

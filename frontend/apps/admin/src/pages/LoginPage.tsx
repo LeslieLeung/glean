@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { Button, Label, Alert, AlertTitle, AlertDescription } from '@glean/ui'
-import { Lock, User, Rss, AlertCircle } from 'lucide-react'
+import { Lock, User, AlertCircle } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 
 /**
@@ -39,9 +39,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 flex flex-col items-center">
-          <div className="from-primary-500 to-primary-600 shadow-primary/20 mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg">
-            <Rss className="text-primary-foreground h-8 w-8" />
-          </div>
+          <img src={`${import.meta.env.BASE_URL}glean-logo.png`} alt="" className="mb-4 size-16" />
           <h1 className="font-display text-foreground text-3xl font-bold">
             {t('admin:login.title')}
           </h1>
