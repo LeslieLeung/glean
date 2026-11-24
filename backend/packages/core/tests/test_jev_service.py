@@ -127,7 +127,6 @@ def test_article_text_strips_markup_and_non_article_content():
         {"base_url": "file:///tmp/key"},
         {"base_url": "https://user:key@example.com"},
         {"categories": []},
-        {"min_text_length": 10},
         {"categories": [{"id": "a", "label": "A"}, {"id": "a", "label": "B"}]},
         {"categories": [{"id": "a", "label": "A"}, {"id": "b", "label": "a"}]},
     ],
@@ -135,6 +134,14 @@ def test_article_text_strips_markup_and_non_article_content():
 def test_invalid_settings_are_rejected(changes):
     with pytest.raises(ValidationError):
         JevSettings(**changes)
+
+
+def test_legacy_saved_config_fields_are_ignored():
+    config = JevConfig.model_validate(
+        {"enabled": True, "api_key": "test-key", "show_confidence": True, "min_text_length": 200}
+    )
+    assert config.enabled is True
+    assert not hasattr(config, "min_text_length")
 
 
 def test_endpoint_urls_are_normalized():

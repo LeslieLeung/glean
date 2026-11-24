@@ -41,7 +41,6 @@ function settingsFrom(config: JevConfigResponse): JevSettings {
     classify_content: config.classify_content,
     content_prompt: config.content_prompt,
     categories: config.categories,
-    min_text_length: config.min_text_length,
   }
 }
 
@@ -413,19 +412,6 @@ function JevForm({ config }: { config: JevConfigResponse }) {
                 {JSON.stringify(prompt, null, 2)}
               </pre>
             </details>
-            <Field>
-              <FieldLabel htmlFor="jev-min-length">{t('jev.minTextLength')}</FieldLabel>
-              <Input
-                id="jev-min-length"
-                type="number"
-                min={50}
-                max={5000}
-                required
-                value={form.min_text_length}
-                onChange={(event) => change('min_text_length', Number(event.target.value))}
-              />
-              <FieldDescription>{t('jev.minTextLengthHint')}</FieldDescription>
-            </Field>
           </CardContent>
         </Card>
         <Card>
@@ -438,7 +424,12 @@ function JevForm({ config }: { config: JevConfigResponse }) {
               <p role="alert">{t('jev.statusError')}</p>
             ) : (
               <dl className="flex flex-wrap gap-6">
-                {['pending', 'done', 'skipped', 'failed'].map((state) => (
+                {[
+                  'pending',
+                  'done',
+                  ...(status.data?.counts.skipped ? ['skipped'] : []),
+                  'failed',
+                ].map((state) => (
                   <div key={state}>
                     <dt className="text-muted-foreground text-sm">{t(`jev.states.${state}`)}</dt>
                     <dd className="text-lg tabular-nums">{status.data?.counts[state] ?? '—'}</dd>

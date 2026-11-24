@@ -102,13 +102,20 @@ async def test_legacy_config_and_results_keep_both_scores(
 ):
     service = TypedConfigService(db_session)
     config = JevConfig(enabled=True, api_key="test-key")
-    db_session.add(SystemConfig(key="jev", value={**config.model_dump(), "show_confidence": True}))
+    db_session.add(
+        SystemConfig(
+            key="jev",
+            value={**config.model_dump(), "show_confidence": True, "min_text_length": 200},
+        )
+    )
     await db_session.commit()
     response = await client.get("/api/admin/jev/config", headers=admin_headers)
     assert response.status_code == 200
     assert response.json()["enabled"] is True
     assert "show_confidence" not in response.json()
     assert "show_confidence" not in response.json()["defaults"]
+    assert "min_text_length" not in response.json()
+    assert "min_text_length" not in response.json()["defaults"]
     response = await client.get("/api/entries", headers=auth_headers)
     assert response.status_code == 200
     result = response.json()["items"][0]["classification"]

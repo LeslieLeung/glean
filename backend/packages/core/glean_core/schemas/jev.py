@@ -80,7 +80,6 @@ class JevSettings(BaseModel):
     categories: list[ContentCategory] = Field(
         default_factory=default_categories, min_length=1, max_length=10
     )
-    min_text_length: int = Field(default=200, ge=50, le=5000)
 
     @field_validator("base_url")
     @classmethod
@@ -116,16 +115,15 @@ class JevConfig(JevSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def ignore_legacy_display_setting(cls, value: Any) -> Any:
-        # Older installations stored this preference in the system config.
+    def ignore_legacy_settings(cls, value: Any) -> Any:
+        # Older installations stored these settings in the system config.
         if not isinstance(value, dict):
             return value
         settings = cast(dict[str, Any], value)
-        if "show_confidence" not in settings:
+        legacy_keys = {"show_confidence", "min_text_length"}
+        if not any(key in settings for key in legacy_keys):
             return settings
-        settings = settings.copy()
-        settings.pop("show_confidence")
-        return settings
+        return {key: val for key, val in settings.items() if key not in legacy_keys}
 
 
 class JevConfigRequest(JevSettings):
