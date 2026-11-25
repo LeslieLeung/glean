@@ -16,8 +16,8 @@ from glean_core import get_logger
 from glean_core.published_at import FUTURE_PUBLISHED_AT_TOLERANCE, effective_published_at
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from glean_core.schemas.entry import RecommendationReason
-from glean_core.schemas.jev import JevConfig
-from glean_core.services.jev_service import classification_for_display
+from glean_core.schemas.systemone import SystemOneConfig
+from glean_core.services.systemone_service import classification_for_display
 from glean_core.services.typed_config_service import TypedConfigService
 from glean_database.models import (
     Bookmark,
@@ -173,7 +173,7 @@ class EntryService:
             candidates = candidates.where(Entry.feed_id == feed_id)
         ranked_entries = candidates.subquery()
         unique_ids = select(ranked_entries.c.entry_id).where(ranked_entries.c.url_rank == 1)
-        jev_config = await TypedConfigService(self.session).get(JevConfig)
+        classification_config = await TypedConfigService(self.session).get(SystemOneConfig)
 
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
         bookmark_id_subq = (
@@ -327,10 +327,10 @@ class EntryService:
                     content=entry.content,
                     summary=entry.summary,
                     classification=classification_for_display(
-                        entry.classification_result, jev_config
+                        entry.classification_result, classification_config
                     ),
                     classification_status=entry.classification_status
-                    if jev_config.enabled
+                    if classification_config.enabled
                     else None,
                     published_at=effective_published_at(
                         entry.published_at, entry.created_at, now=now
@@ -495,7 +495,7 @@ class EntryService:
         Raises:
             ValueError: If entry not found or user not subscribed.
         """
-        jev_config = await TypedConfigService(self.session).get(JevConfig)
+        classification_config = await TypedConfigService(self.session).get(SystemOneConfig)
 
         # Subquery to get bookmark_id for entry (limit 1 in case of duplicates)
         bookmark_id_subq = (
@@ -552,8 +552,12 @@ class EntryService:
             author=entry.author,
             content=entry.content,
             summary=entry.summary,
-            classification=classification_for_display(entry.classification_result, jev_config),
-            classification_status=entry.classification_status if jev_config.enabled else None,
+            classification=classification_for_display(
+                entry.classification_result, classification_config
+            ),
+            classification_status=entry.classification_status
+            if classification_config.enabled
+            else None,
             published_at=effective_published_at(entry.published_at, entry.created_at),
             created_at=entry.created_at,
             is_read=bool(user_entry.is_read) if user_entry else False,

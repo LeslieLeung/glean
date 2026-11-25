@@ -55,14 +55,14 @@
     }
   },
   "reading": {
-    "desc": "Customize article dates, keyboard navigation, and Jev labels",
+    "desc": "Customize article dates, keyboard navigation, and classification labels",
     "relativeDates": "Show relative dates",
     "relativeDatesDesc": "Show article and bookmark dates as “2 hours ago” or “3 days ago”.",
     "keyboardNavigation": "Keyboard Navigation",
     "keyboardNavigationDesc": "Use arrow keys (↑/↓) or j/k to navigate between articles in the reader",
     "saveError": "Could not save reading settings.",
     "jev": {
-      "title": "Jev labels",
+      "title": "Article classification labels",
       "showAI": "Show AI detection label",
       "showContentType": "Show content type label",
       "showConfidence": "Show confidence on visible labels"

@@ -221,29 +221,57 @@
   "common": {
     "loading": "Loading..."
   },
-  "jev": {
-    "title": "Jev Classification",
-    "subtitle": "Detect AI writing and classify articles with your own categories.",
-    "connection": "Jev connection",
-    "connectionHint": "Connect to Jev System One to analyze article text.",
-    "server": "Jev server",
-    "serverHint": "API root, for example https://api.typesafe.ai.",
+  "classification": {
+    "title": "Article Classification",
+    "subtitle": "Detect AI writing and classify articles using System One decision models.",
+    "connection": "Model connection",
+    "connectionHint": "Choose a System One provider and configure its connection to analyze article text.",
+    "provider": "Provider",
+    "providers": {
+      "jev": {
+        "hint": "TypeSafe decision model. Enter your server URL and API key, or pin a model version."
+      },
+      "clef": {
+        "hint": "Cloudflare Workers AI. Enter your 32-character account ID and a Workers AI API token. Choose clef-flash or clef."
+      },
+      "laya": {
+        "hint": "Connect to your own laya-serve instance. The multilingual model is recommended for Chinese and mixed-language articles."
+      },
+      "custom": {
+        "hint": "Connect to any custom System One-compatible endpoint exposing POST /v1/systemone."
+      }
+    },
+    "model": "Model",
+    "modelPlaceholder": "Enter model name",
+    "modelHint": "Pick a suggested model or enter a custom model ID.",
+    "fixedModelHint": "Choose one of the supported Workers AI models.",
+    "server": "Server URL",
+    "serverPlaceholder": "https://example.com",
+    "serverHint": "API root, for example {{url}}.",
+    "customServerHint": "API root URL for your System One server (for example https://example.com).",
+    "accountId": "Cloudflare account ID",
+    "accountIdPlaceholder": "32-character hex account ID",
+    "accountIdHint": "Find your 32-character account ID in the Cloudflare dashboard.",
     "apiKey": "API key",
+    "cloudflareApiToken": "Cloudflare API token",
     "keySaved": "Key saved — leave blank to keep it",
-    "keyPlaceholder": "Enter your Jev API key",
+    "keyPlaceholder": "Enter API key or token",
+    "optionalKeyPlaceholder": "Optional unless your server requires authentication",
     "keyHint": "The key is stored on the server and is never returned to the browser.",
+    "optionalKeyHint": "Stored on the server and never returned to the browser. Optional unless your server requires authentication.",
+    "inferenceTestHint": "Connection tests run a small inference request. Clef may charge for it; Laya's first request may load weights.",
     "testConnection": "Test connection",
-    "connected": "Connected to Jev successfully.",
+    "connected": "Connected to {{provider}} successfully.",
     "showKey": "Show key",
     "hideKey": "Hide key",
     "clearKey": "Clear saved key",
     "detection": "Detection",
     "detectionHint": "Changes apply to new classifications. Use Reclassify articles to update existing results.",
-    "enabled": "Enable Jev detection",
+    "enabled": "Enable article classification",
     "aiPrompt": "AI detection prompt",
     "aiPromptHint": "Ask whether the text is AI-generated. A positive answer means AI; a negative answer means Human.",
     "classifyContent": "Classify content",
-    "categoriesHint": "Category names and descriptions are sent to Jev as classification criteria. Add up to 10 categories.",
+    "categoriesHint": "Category names and descriptions are sent to the model as classification criteria. Add up to 10 categories.",
     "categoryNumber": "Category {{number}}",
     "categoryName": "Category name",
     "categoryDescription": "Description / prompt",
@@ -252,9 +280,9 @@
     "contentPrompt": "Content classification prompt",
     "promptPreview": "Prompt preview",
     "minTextLength": "Minimum text length (characters)",
-    "minTextLengthHint": "Articles below this length are skipped. Up to 6,000 characters of plain article text are sent to Jev.",
+    "minTextLengthHint": "Articles below this length are skipped. Up to 6,000 characters of plain article text are sent to the model.",
     "processing": "Article processing",
-    "processingHint": "When enabled, the worker processes existing and new articles in batches every minute. Reclassification uses the saved settings and sends article text to Jev again.",
+    "processingHint": "When enabled, the worker processes existing and new articles in batches every minute. Reclassification uses the saved settings and sends article text to the selected provider again.",
     "states": {
       "pending": "Pending",
       "done": "Classified",
@@ -267,8 +295,8 @@
     "unsaved": "Unsaved changes",
     "allSaved": "All changes saved",
     "save": "Save settings",
-    "saved": "Jev settings saved.",
-    "loadError": "Could not load Jev settings.",
+    "saved": "Classification settings saved.",
+    "loadError": "Could not load classification settings.",
     "requestError": "Request failed. Check the settings and try again.",
     "statusError": "Could not load processing status."
   }

@@ -55,14 +55,14 @@
     }
   },
   "reading": {
-    "desc": "设置文章日期、键盘导航和 Jev 标签",
+    "desc": "设置文章日期、键盘导航和分类标签",
     "relativeDates": "显示相对日期",
     "relativeDatesDesc": "将文章和收藏的日期显示为「2 小时前」或「3 天前」。",
     "keyboardNavigation": "键盘导航",
     "keyboardNavigationDesc": "使用方向键（↑/↓）或 j/k 在阅读器中切换文章",
     "saveError": "无法保存阅读设置。",
     "jev": {
-      "title": "Jev 标签",
+      "title": "文章分类标签",
       "showAI": "显示 AI 检测标签",
       "showContentType": "显示内容类型标签",
       "showConfidence": "显示可见标签的置信度"

@@ -81,6 +81,7 @@ export interface EntryClassification {
   label: 'human' | 'ai'
   score: number
   model_id: string
+  provider?: string | null
   content: { label: string; name: string; confidence: number } | null
 }
 
