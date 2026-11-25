@@ -56,21 +56,19 @@ async def classify_entry(ctx: dict[str, Any], entry_id: str) -> dict[str, str]:
 
     result = None
     error = None
-    status = "skipped"
     retry = False
-    if len(text) >= config.min_text_length:
-        try:
-            result = await classify_text(config, text, title, url)
-            status = "done"
-        except (httpx.RequestError, ValueError) as exc:
-            if isinstance(exc, httpx.RequestError):
-                error = "Could not connect to the Jev server"
-            elif isinstance(exc, ValidationError):
-                error = "Jev returned an invalid classification result"
-            else:
-                error = str(exc)[:300]
-            retry = ctx.get("job_try", 1) < 3
-            status = "pending" if retry else "failed"
+    try:
+        result = await classify_text(config, text, title, url)
+        status = "done"
+    except (httpx.RequestError, ValueError) as exc:
+        if isinstance(exc, httpx.RequestError):
+            error = "Could not connect to the Jev server"
+        elif isinstance(exc, ValidationError):
+            error = "Jev returned an invalid classification result"
+        else:
+            error = str(exc)[:300]
+        retry = ctx.get("job_try", 1) < 3
+        status = "pending" if retry else "failed"
 
     async with get_session_context() as session:
         # Serialize completion with settings changes; discard stale responses.
@@ -88,8 +86,6 @@ async def classify_entry(ctx: dict[str, Any], entry_id: str) -> dict[str, str]:
         entry.classified_at = datetime.now(UTC)
         if result is not None:
             entry.classification_result = result.model_dump(mode="json")
-        elif status == "skipped":
-            entry.classification_result = None
     if retry:
         raise Retry(defer=60 * ctx.get("job_try", 1))
     return {"status": status}

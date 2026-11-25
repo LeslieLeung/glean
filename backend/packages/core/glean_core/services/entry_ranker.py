@@ -22,6 +22,8 @@ SCORE_BATCH_SIZE = 200
 FEEDBACK_LIMIT = 50
 GLOBAL_CANDIDATE_LIMIT = 500
 GLOBAL_WINDOW_DAYS = 14
+# About four days of freshness, so a new ad sinks behind recent articles.
+AD_SCORE_PENALTY = 40.0
 
 _HTML = re.compile(r"<[^>]+>")
 _WORD = r"[^\W_\u3400-\u9fff]+"
@@ -74,6 +76,7 @@ class RankEntry:
     title: str
     summary: str | None
     reaction: bool | None
+    advertisement: bool = False
 
 
 @dataclass(frozen=True)
@@ -174,6 +177,10 @@ class EntryRanker:
                 reason = "similar_liked"
             elif adjustment < 0:
                 reason = "similar_disliked"
+        if entry.advertisement:
+            adjustment -= AD_SCORE_PENALTY
+            if entry.reaction is None:
+                reason = "advertisement"
         score = min(100.0, max(0.0, base + adjustment))
         return RankedEntry(entry.id, entry.feed_id, entry.published_at, score, reason)
 

@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Layout } from './components/Layout'
-import { Rss } from 'lucide-react'
 import { useAuthStore } from './stores/authStore'
 import { useTranslation } from '@glean/i18n'
 
@@ -31,9 +30,11 @@ function LoadingSpinner() {
       <div className="flex flex-col items-center gap-4">
         <div className="relative">
           <div className="bg-primary/30 absolute inset-0 animate-ping rounded-xl" />
-          <div className="from-primary-500 to-primary-600 relative flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br">
-            <Rss className="text-primary-foreground h-8 w-8" />
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}glean-logo.png`}
+            alt=""
+            className="relative size-16"
+          />
         </div>
         <div className="text-muted-foreground text-sm font-medium">{t('actions.loading')}</div>
       </div>

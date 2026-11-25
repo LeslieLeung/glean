@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { Rss, AlertCircle, Sparkles, Check } from 'lucide-react'
+import { AlertCircle, Sparkles, Check } from 'lucide-react'
 import { Button, Input, Label, Alert, AlertTitle, AlertDescription } from '@glean/ui'
 import { useTranslation } from '@glean/i18n'
 
@@ -92,9 +92,11 @@ export default function RegisterPage() {
             <div className="mb-6 flex justify-center lg:justify-start">
               <div className="relative">
                 <div className="animate-pulse-glow absolute inset-0 rounded-2xl" />
-                <div className="from-primary-500 to-primary-600 shadow-primary/30 relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg">
-                  <Rss className="text-primary-foreground h-8 w-8" />
-                </div>
+                <img
+                  src={`${import.meta.env.BASE_URL}glean-logo.png`}
+                  alt=""
+                  className="relative size-16"
+                />
               </div>
             </div>
             <h1 className="font-display text-foreground text-3xl font-bold tracking-tight">

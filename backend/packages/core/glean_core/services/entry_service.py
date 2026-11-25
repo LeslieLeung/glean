@@ -17,7 +17,7 @@ from glean_core.published_at import FUTURE_PUBLISHED_AT_TOLERANCE, effective_pub
 from glean_core.schemas import EntryListResponse, EntryResponse, UpdateEntryStateRequest
 from glean_core.schemas.entry import RecommendationReason
 from glean_core.schemas.jev import JevConfig
-from glean_core.services.jev_service import classification_for_display
+from glean_core.services.jev_service import classification_for_display, is_advertisement
 from glean_core.services.typed_config_service import TypedConfigService
 from glean_database.models import (
     Bookmark,
@@ -242,6 +242,7 @@ class EntryService:
                     Entry.title,
                     Entry.summary,
                     UserEntry.is_liked,
+                    Entry.classification_result,
                     maintain_column_froms=True,
                 )
                 if global_smart:
@@ -307,6 +308,7 @@ class EntryService:
                             entry.title,
                             entry.summary,
                             state.is_liked if state else None,
+                            is_advertisement(entry.classification_result),
                         )
                         for entry, state, *_ in rows
                     ]
@@ -440,8 +442,18 @@ class EntryService:
                                 title,
                                 summary,
                                 reaction,
+                                is_advertisement(classification),
                             )
-                            for entry_id, feed_id, published_at, created_at, title, summary, reaction in batch
+                            for (
+                                entry_id,
+                                feed_id,
+                                published_at,
+                                created_at,
+                                title,
+                                summary,
+                                reaction,
+                                classification,
+                            ) in batch
                         ]
                     )
                 )

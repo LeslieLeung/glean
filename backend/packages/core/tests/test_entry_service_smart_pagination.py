@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from glean_core.services.entry_rank_snapshot import SmartCursorExpiredError
+from glean_core.services.entry_ranker import AD_SCORE_PENALTY
 from glean_core.services.entry_service import EntryService
 from glean_database.models import Entry, Feed, Subscription, UserEntry
 
@@ -122,3 +123,34 @@ async def test_text_feedback_reorders_cross_feed_without_vectors(
     await db_session.flush()
     after = await service.get_entries(test_user.id, feed_id=destination.id, view="smart")
     assert after.items[0].id == unrelated.id
+
+
+async def test_jev_advertisement_sorts_below_the_same_article(
+    db_session, test_user, subscribed_feed
+) -> None:
+    now = datetime.now(UTC)
+    feed = await subscribed_feed("feed")
+    article = _entry(feed, now, "article", title="Release notes")
+    ad = _entry(feed, now, "ad", title="Release notes")
+    ad.classification_result = {
+        "label": "human",
+        "score": 0.8,
+        "model_id": "jev-test",
+        "content": {"label": "ad", "name": "Advertisement", "confidence": 0.95},
+    }
+    db_session.add_all([article, ad])
+    await db_session.flush()
+    service = EntryService(db_session)
+
+    smart = await service.get_entries(test_user.id, feed_id=feed.id, view="smart")
+    assert [item.id for item in smart.items] == [article.id, ad.id]
+    assert smart.items[1].recommendation_reason == "advertisement"
+    assert smart.items[0].preference_score is not None
+    assert smart.items[0].preference_score - smart.items[1].preference_score == pytest.approx(
+        AD_SCORE_PENALTY
+    )
+
+    timeline = await service.get_entries(test_user.id, feed_id=feed.id, include_score=True)
+    scored = {item.id: item.preference_score for item in timeline.items}
+    assert scored[article.id] is not None
+    assert scored[article.id] - scored[ad.id] == pytest.approx(AD_SCORE_PENALTY)

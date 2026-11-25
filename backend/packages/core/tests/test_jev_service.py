@@ -112,6 +112,24 @@ async def test_connection_test_uses_models_and_sanitizes_auth_failure(jev_http):
     assert "test-secret" not in str(error.value)
 
 
+def test_advertisement_mark_uses_the_ad_category_id():
+    ad = {
+        "label": "human",
+        "score": 0.8,
+        "model_id": "jev-test",
+        "content": {"label": "ad", "name": "Advertisement", "confidence": 0.91},
+    }
+    original = {
+        **ad,
+        "content": {"label": "original", "name": "Original", "confidence": 0.91},
+    }
+    assert jev_service.is_advertisement(ad)
+    assert not jev_service.is_advertisement(original)
+    assert not jev_service.is_advertisement(None)
+    assert not jev_service.is_advertisement({"label": "ai", "score": 0.8, "model_id": "jev"})
+    assert not jev_service.is_advertisement({"content": "ad"})
+
+
 def test_article_text_strips_markup_and_non_article_content():
     assert (
         jev_service.article_text(
@@ -127,7 +145,6 @@ def test_article_text_strips_markup_and_non_article_content():
         {"base_url": "file:///tmp/key"},
         {"base_url": "https://user:key@example.com"},
         {"categories": []},
-        {"min_text_length": 10},
         {"categories": [{"id": "a", "label": "A"}, {"id": "a", "label": "B"}]},
         {"categories": [{"id": "a", "label": "A"}, {"id": "b", "label": "a"}]},
     ],
@@ -137,7 +154,45 @@ def test_invalid_settings_are_rejected(changes):
         JevSettings(**changes)
 
 
+def test_legacy_saved_config_fields_are_ignored():
+    config = JevConfig.model_validate(
+        {"enabled": True, "api_key": "test-key", "show_confidence": True, "min_text_length": 200}
+    )
+    assert config.enabled is True
+    assert not hasattr(config, "min_text_length")
+
+
 def test_endpoint_urls_are_normalized():
     assert (
         JevSettings(base_url="https://example.com/v1/systemone/").base_url == "https://example.com"
     )
+
+
+def test_default_categories_and_prompt_cover_rss_content_types():
+    settings = JevSettings()
+    assert [category.id for category in settings.categories] == [
+        "original",
+        "news",
+        "release",
+        "digest",
+        "translation",
+        "repost",
+        "ad",
+    ]
+    assert all(category.description for category in settings.categories)
+
+    questions = jev_service.build_questions(settings)
+    content_type = questions["content_type"]
+    assert content_type["type"] == "choice"
+    assert set(content_type["criteria"]) == {
+        "original",
+        "news",
+        "release",
+        "digest",
+        "translation",
+        "repost",
+        "ad",
+    }
+    assert "release" in content_type["instructions"]
+    assert "digest" in content_type["instructions"]
+    assert "translation" in content_type["instructions"]

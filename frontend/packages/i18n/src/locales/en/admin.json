@@ -251,8 +251,6 @@
     "addCategory": "Add category",
     "contentPrompt": "Content classification prompt",
     "promptPreview": "Prompt preview",
-    "minTextLength": "Minimum text length (characters)",
-    "minTextLengthHint": "Articles below this length are skipped. Up to 6,000 characters of plain article text are sent to Jev.",
     "processing": "Article processing",
     "processingHint": "When enabled, the worker processes existing and new articles in batches every minute. Reclassification uses the saved settings and sends article text to Jev again.",
     "states": {

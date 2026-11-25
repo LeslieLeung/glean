@@ -14,7 +14,6 @@ export interface JevSettings {
   classify_content: boolean
   content_prompt: string
   categories: ContentCategory[]
-  min_text_length: number
 }
 
 export interface JevConfigResponse extends JevSettings {
