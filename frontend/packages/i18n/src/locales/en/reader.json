@@ -53,7 +53,8 @@
       "liked": "You liked this article",
       "disliked": "You disliked this article",
       "similar_liked": "Similar to articles you liked",
-      "similar_disliked": "Similar to articles you disliked"
+      "similar_disliked": "Similar to articles you disliked",
+      "advertisement": "Marked as an advertisement"
     }
   },
   "empty": {

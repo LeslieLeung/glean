@@ -1,11 +1,12 @@
 """Jev System One protocol, shared by the admin API and worker."""
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from bs4 import BeautifulSoup
 
 from glean_core.schemas.jev import (
+    AD_CATEGORY_ID,
     ContentClassification,
     EntryClassification,
     JevConfig,
@@ -98,6 +99,21 @@ async def classify_text(config: JevConfig, text: str, title: str, url: str) -> E
         model_id=data.model,
         content=content,
     )
+
+
+def is_advertisement(raw: dict[str, Any] | None) -> bool:
+    """Whether a stored Jev result chose the advertisement category.
+
+    Missing, failed, or malformed results are not advertisements, so they keep
+    their normal rank.
+    """
+    if not isinstance(raw, dict):
+        return False
+    content = raw.get("content")
+    if not isinstance(content, dict):
+        return False
+    label = cast(dict[str, Any], content).get("label")
+    return isinstance(label, str) and label == AD_CATEGORY_ID
 
 
 def classification_for_display(

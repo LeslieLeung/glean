@@ -112,6 +112,24 @@ async def test_connection_test_uses_models_and_sanitizes_auth_failure(jev_http):
     assert "test-secret" not in str(error.value)
 
 
+def test_advertisement_mark_uses_the_ad_category_id():
+    ad = {
+        "label": "human",
+        "score": 0.8,
+        "model_id": "jev-test",
+        "content": {"label": "ad", "name": "Advertisement", "confidence": 0.91},
+    }
+    original = {
+        **ad,
+        "content": {"label": "original", "name": "Original", "confidence": 0.91},
+    }
+    assert jev_service.is_advertisement(ad)
+    assert not jev_service.is_advertisement(original)
+    assert not jev_service.is_advertisement(None)
+    assert not jev_service.is_advertisement({"label": "ai", "score": 0.8, "model_id": "jev"})
+    assert not jev_service.is_advertisement({"content": "ad"})
+
+
 def test_article_text_strips_markup_and_non_article_content():
     assert (
         jev_service.article_text(

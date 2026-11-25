@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 
+# Stable id of the built-in advertisement category. Ranking keys off this id.
+AD_CATEGORY_ID = "ad"
+
 
 class ContentCategory(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -49,7 +52,7 @@ def default_categories() -> list[ContentCategory]:
             description="Copied, scraped, syndicated, or lightly rewritten content from another source with little original reporting, analysis, translation, or curation.",
         ),
         ContentCategory(
-            id="ad",
+            id=AD_CATEGORY_ID,
             label="Advertisement",
             description="Promotional or sponsored content aimed at selling a product, brand, or service—including 软广 (advertorials disguised as articles or reviews) and 硬广 (explicit sales pitches, discounts, coupons, or purchase CTAs). Excludes factual release notes and independent reviews.",
         ),

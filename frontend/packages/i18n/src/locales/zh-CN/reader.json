@@ -53,7 +53,8 @@
       "liked": "你赞过这篇文章",
       "disliked": "你踩过这篇文章",
       "similar_liked": "与你赞过的文章相近",
-      "similar_disliked": "与你踩过的文章相近"
+      "similar_disliked": "与你踩过的文章相近",
+      "advertisement": "被标为广告"
     }
   },
   "empty": {
