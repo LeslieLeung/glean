@@ -167,18 +167,27 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             feed.last_fetched_at = fetched_at
             feed.last_success_at = fetched_at
 
-            # Update cache headers
-            if cache_headers and "etag" in cache_headers:
-                feed.etag = cache_headers["etag"]
-            if cache_headers and "last-modified" in cache_headers:
-                feed.last_modified = cache_headers["last-modified"]
-
             # Check vectorization once for the entire batch
             should_embed = await _should_embed_entries(ctx, session)
 
-            # Process entries (bounded per fetch to prevent starvation on oversized feeds)
+            # Prefetch existing entries so oldest-first feeds skip already imported items
+            # without exhausting MAX_ENTRIES_PER_FETCH before reaching newly appended entries.
+            parsed_guids = list(dict.fromkeys(entry.guid for entry in parsed_feed.entries))
+            existing_by_guid: dict[str, Entry] = {}
+            guid_chunk_size = 500
+            for offset in range(0, len(parsed_guids), guid_chunk_size):
+                chunk = parsed_guids[offset : offset + guid_chunk_size]
+                existing_stmt = select(Entry).where(Entry.feed_id == feed.id, Entry.guid.in_(chunk))
+                existing_result = await session.execute(existing_stmt)
+                for existing_row in existing_result.scalars():
+                    if existing_row.guid is not None:
+                        existing_by_guid[existing_row.guid] = existing_row
+
+            # Process entries (bound newly inserted entries per fetch to prevent starvation on oversized feeds)
             new_entries = 0
             fulltext_fetches = 0
+            seen_new_guids: set[str] = set()
+            truncated_new_entries = False
             latest_entry_time = feed.last_entry_at
             # A previously stored future date would otherwise stay ahead of every later fetch.
             if latest_entry_time is not None and publication_time_was_replaced(
@@ -188,13 +197,8 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 latest_entry_time = None
                 feed.last_entry_at = None
 
-            for parsed_entry in parsed_feed.entries[:MAX_ENTRIES_PER_FETCH]:
-                # Check if entry already exists
-                stmt = select(Entry).where(
-                    Entry.feed_id == feed.id, Entry.guid == parsed_entry.guid
-                )
-                result = await session.execute(stmt)
-                existing_entry = result.scalar_one_or_none()
+            for parsed_entry in parsed_feed.entries:
+                existing_entry = existing_by_guid.get(parsed_entry.guid)
 
                 if existing_entry:
                     # Keep the original fetch time. Using "now" would pin an old
@@ -216,6 +220,13 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                     if latest_entry_time is None or published_at > latest_entry_time:
                         latest_entry_time = published_at
                     continue
+
+                if parsed_entry.guid in seen_new_guids:
+                    continue
+
+                if new_entries >= MAX_ENTRIES_PER_FETCH:
+                    truncated_new_entries = True
+                    break
 
                 published_at = effective_published_at(parsed_entry.published_at, fetched_at)
                 if publication_time_was_replaced(parsed_entry.published_at, published_at):
@@ -296,13 +307,33 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                                 "url": parsed_entry.url,
                             },
                         )
+                        seen_new_guids.add(parsed_entry.guid)
                         continue
                     raise
+                seen_new_guids.add(parsed_entry.guid)
                 new_entries += 1
 
                 # M3: Collect entry ID for embedding (enqueued after commit)
                 if should_embed:
                     pending_embedding_ids.append(entry.id)
+
+            # Persist cache validators only when the entire feed batch finished without truncating new entries.
+            if truncated_new_entries:
+                feed.etag = None
+                feed.last_modified = None
+                logger.info(
+                    "Deferred feed cache validators after hitting per-fetch new-entry cap",
+                    extra={
+                        "feed_id": feed_id,
+                        "new_entries": new_entries,
+                        "max_entries_per_fetch": MAX_ENTRIES_PER_FETCH,
+                    },
+                )
+            elif cache_headers:
+                if "etag" in cache_headers:
+                    feed.etag = cache_headers["etag"]
+                if "last-modified" in cache_headers:
+                    feed.last_modified = cache_headers["last-modified"]
 
             # Update last_entry_at and schedule next fetch
             if latest_entry_time:

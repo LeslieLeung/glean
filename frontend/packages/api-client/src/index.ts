@@ -17,6 +17,18 @@ export { SystemService, type VectorizationStatus } from './services/system'
 // MCP services
 export { APITokenService } from './services/apiTokens'
 export { tokenStorage } from './tokenStorage'
+export {
+  coordinateTokenRefresh,
+  extractBearerToken,
+  hasUpdatedAccessToken,
+  shouldClearTokensAfterRefreshFailure,
+  withCrossTabLock,
+  NoRefreshTokenError,
+  type CoordinateRefreshOptions,
+  type CrossTabLockOptions,
+  type RefreshResult,
+  type TokenPair,
+} from './refreshCoordinator'
 
 // Create service instances
 import { apiClient } from './client'

@@ -65,6 +65,9 @@ services:
       # Outbound fetch policy (bookmark extraction, feed discovery)
       SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
       SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
+      # Trusted reverse proxies for per-client auth rate limiting (bundled web/admin nginx)
+      AUTH_OIDC_TRUSTED_PROXY_IPS: ${AUTH_OIDC_TRUSTED_PROXY_IPS:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1,::1,fc00::/7}
+      AUTH_OIDC_CLIENT_IP_HEADERS: ${AUTH_OIDC_CLIENT_IP_HEADERS:-x-real-ip}
     volumes:
       - glean_logs:/app/logs
     depends_on:

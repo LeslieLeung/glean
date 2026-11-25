@@ -5,13 +5,19 @@ from typing import Any, cast
 from arq.connections import ArqRedis
 from arq.jobs import Job, JobStatus
 
+from glean_core import arq_json_deserializer
 from glean_core.feed_jobs import FEED_QUEUE_EXPIRY_SECONDS, feed_job_id
 from glean_core.schemas.feed import FeedRefreshResponse
 
 
 async def get_feed_refresh_status(redis: ArqRedis, feed_id: str) -> FeedRefreshResponse:
     job_id = feed_job_id(feed_id)
-    job = Job(job_id, redis, _queue_name=redis.default_queue_name)
+    job = Job(
+        job_id,
+        redis,
+        _queue_name=redis.default_queue_name,
+        _deserializer=arq_json_deserializer,
+    )
     status = await job.status()
     response = FeedRefreshResponse(status="idle", job_id=job_id, feed_id=feed_id)
     if status in (JobStatus.queued, JobStatus.deferred):

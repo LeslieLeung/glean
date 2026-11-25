@@ -40,12 +40,49 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-def _parse_ip(ip_value: str) -> str | None:
-    """Return normalized IP string when valid, otherwise None."""
+def _normalize_ip(ip_value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse an IP string and unwrap IPv4-mapped IPv6 addresses, or return None."""
     try:
-        return str(ipaddress.ip_address(ip_value.strip()))
+        addr = ipaddress.ip_address(ip_value.strip())
     except ValueError:
         return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
+
+
+def _parse_ip(ip_value: str) -> str | None:
+    """Return normalized IP string when valid, otherwise None."""
+    addr = _normalize_ip(ip_value)
+    return str(addr) if addr is not None else None
+
+
+def _parse_ip_network(value: str) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """Parse an IP or CIDR string into a network object, or return None."""
+    try:
+        return ipaddress.ip_network(value.strip(), strict=False)
+    except ValueError:
+        return None
+
+
+def _is_trusted_proxy(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    trusted_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network],
+) -> bool:
+    """Check whether addr belongs to any configured trusted proxy network."""
+    return any(
+        (
+            isinstance(addr, ipaddress.IPv4Address)
+            and isinstance(net, ipaddress.IPv4Network)
+            and addr in net
+        )
+        or (
+            isinstance(addr, ipaddress.IPv6Address)
+            and isinstance(net, ipaddress.IPv6Network)
+            and addr in net
+        )
+        for net in trusted_networks
+    )
 
 
 def _parse_csv_config(value: str) -> list[str]:
@@ -76,30 +113,43 @@ def _get_client_identifier(request: Request) -> str:
     """Get client IP for rate limiting with trusted proxy header handling."""
     from glean_core.config import auth_provider_config
 
-    direct_ip = _parse_ip(request.client.host) if request.client else None
-    if not direct_ip:
+    direct_addr = _normalize_ip(request.client.host) if request.client else None
+    if not direct_addr:
         return "unknown"
 
-    trusted_proxies = {
-        parsed
+    trusted_networks = [
+        net
         for value in _parse_csv_config(auth_provider_config.oidc_trusted_proxy_ips)
-        if (parsed := _parse_ip(value)) is not None
-    }
+        if (net := _parse_ip_network(value)) is not None
+    ]
     client_ip_headers = _parse_csv_config(auth_provider_config.oidc_client_ip_headers)
 
     # Only trust forwarding headers when request originates from a trusted proxy.
-    if direct_ip in trusted_proxies:
+    if _is_trusted_proxy(direct_addr, trusted_networks):
         for header_name in client_ip_headers:
             raw_header_value = request.headers.get(header_name)
             if not raw_header_value:
                 continue
+
+            if header_name.lower() == "x-forwarded-for":
+                parsed_addrs = [
+                    parsed
+                    for part in raw_header_value.split(",")
+                    if (parsed := _normalize_ip(part)) is not None
+                ]
+                if not parsed_addrs:
+                    continue
+                for addr in reversed(parsed_addrs):
+                    if not _is_trusted_proxy(addr, trusted_networks):
+                        return str(addr)
+                return str(parsed_addrs[0])
 
             header_candidate = raw_header_value.split(",")[0].strip()
             parsed_ip = _parse_ip(header_candidate)
             if parsed_ip:
                 return parsed_ip
 
-    return direct_ip
+    return str(direct_addr)
 
 
 async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, str]:

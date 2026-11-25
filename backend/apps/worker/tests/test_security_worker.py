@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -124,6 +125,144 @@ class TestFeedFetcherSecurity:
             select(func.count()).select_from(Entry).where(Entry.feed_id == feed.id)
         )
         assert entry_count == MAX_ENTRIES_PER_FETCH
+
+    async def test_oldest_first_feed_advances_past_existing_entries(
+        self, db_session: AsyncSession
+    ) -> None:
+        feed = Feed(
+            id=str(uuid4()),
+            url="https://example.com/oldest-first.xml",
+            title="Oldest First Feed",
+            status=FeedStatus.ACTIVE,
+        )
+        db_session.add(feed)
+        await db_session.flush()
+
+        now = datetime.now(UTC)
+        for i in range(MAX_ENTRIES_PER_FETCH):
+            db_session.add(
+                Entry(
+                    feed_id=feed.id,
+                    guid=f"guid-{i}",
+                    url=f"https://example.com/post-{i}",
+                    title=f"Post {i}",
+                    content="<p>old</p>",
+                    published_at=now,
+                )
+            )
+        await db_session.commit()
+
+        raw_entries = [
+            {
+                "id": f"guid-{i}",
+                "link": f"https://example.com/post-{i}",
+                "title": f"Post {i}",
+                "content": [{"value": "<p>body</p>"}],
+            }
+            for i in range(MAX_ENTRIES_PER_FETCH + 5)
+        ]
+        parsed_feed = SimpleNamespace(
+            title="Oldest First Feed",
+            description="desc",
+            site_url="https://example.com",
+            language="en",
+            icon_url=None,
+            entries=[ParsedEntry(item) for item in raw_entries],
+        )
+        headers = {"etag": '"v2"', "last-modified": "Tue, 02 Jan 2024 00:00:00 GMT"}
+
+        with (
+            patch(
+                "glean_worker.tasks.feed_fetcher.get_session_context", _session_ctx_for(db_session)
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher._should_embed_entries",
+                AsyncMock(return_value=False),
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher.fetch_feed",
+                AsyncMock(return_value=("<rss/>", headers)),
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher.parse_feed", AsyncMock(return_value=parsed_feed)
+            ),
+        ):
+            result = await fetch_feed_task({"redis": AsyncMock()}, feed.id)
+
+        assert result["new_entries"] == 5
+        entry_count = await db_session.scalar(
+            select(func.count()).select_from(Entry).where(Entry.feed_id == feed.id)
+        )
+        assert entry_count == MAX_ENTRIES_PER_FETCH + 5
+        await db_session.refresh(feed)
+        assert feed.etag == '"v2"'
+        assert feed.last_modified == "Tue, 02 Jan 2024 00:00:00 GMT"
+
+    async def test_truncated_fetch_defers_cache_headers_and_continues_on_next_fetch(
+        self, db_session: AsyncSession
+    ) -> None:
+        feed = Feed(
+            id=str(uuid4()),
+            url="https://example.com/batched-feed.xml",
+            title="Batched Feed",
+            status=FeedStatus.ACTIVE,
+            etag='"v0"',
+            last_modified="Sun, 31 Dec 2023 00:00:00 GMT",
+        )
+        db_session.add(feed)
+        await db_session.commit()
+
+        raw_entries = [
+            {
+                "id": f"batch-guid-{i}",
+                "link": f"https://example.com/batch-{i}",
+                "title": f"Batch Post {i}",
+                "content": [{"value": "<p>body</p>"}],
+            }
+            for i in range(MAX_ENTRIES_PER_FETCH + 25)
+        ]
+        parsed_feed = SimpleNamespace(
+            title="Batched Feed",
+            description="desc",
+            site_url="https://example.com",
+            language="en",
+            icon_url=None,
+            entries=[ParsedEntry(item) for item in raw_entries],
+        )
+        headers = {"etag": '"v1"', "last-modified": "Mon, 01 Jan 2024 00:00:00 GMT"}
+
+        with (
+            patch(
+                "glean_worker.tasks.feed_fetcher.get_session_context", _session_ctx_for(db_session)
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher._should_embed_entries",
+                AsyncMock(return_value=False),
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher.fetch_feed",
+                AsyncMock(return_value=("<rss/>", headers)),
+            ),
+            patch(
+                "glean_worker.tasks.feed_fetcher.parse_feed", AsyncMock(return_value=parsed_feed)
+            ),
+        ):
+            first = await fetch_feed_task({"redis": AsyncMock()}, feed.id)
+            assert first["new_entries"] == MAX_ENTRIES_PER_FETCH
+            await db_session.refresh(feed)
+            assert feed.etag is None
+            assert feed.last_modified is None
+
+            second = await fetch_feed_task({"redis": AsyncMock()}, feed.id)
+            assert second["new_entries"] == 25
+            await db_session.refresh(feed)
+            assert feed.etag == '"v1"'
+            assert feed.last_modified == "Mon, 01 Jan 2024 00:00:00 GMT"
+
+        entry_count = await db_session.scalar(
+            select(func.count()).select_from(Entry).where(Entry.feed_id == feed.id)
+        )
+        assert entry_count == MAX_ENTRIES_PER_FETCH + 25
 
 
 @pytest.mark.asyncio

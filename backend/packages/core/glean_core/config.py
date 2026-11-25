@@ -44,8 +44,8 @@ class AuthProviderConfig(BaseSettings):
     oidc_rate_limit_window_seconds: int = 60
     oidc_authorize_rate_limit: int = 10
     oidc_callback_rate_limit: int = 5
-    oidc_trusted_proxy_ips: str = ""  # Comma-separated proxy IPs allowed to set forwarded headers
-    oidc_client_ip_headers: str = "cf-connecting-ip,x-real-ip"  # Priority-ordered, comma-separated
+    oidc_trusted_proxy_ips: str = ""  # Comma-separated trusted proxy IPs or CIDRs
+    oidc_client_ip_headers: str = "x-real-ip"  # Priority-ordered, comma-separated
 
 
 # Global instance

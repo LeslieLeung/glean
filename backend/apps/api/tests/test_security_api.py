@@ -102,6 +102,123 @@ class TestAuthRotationRateLimitAndFlags:
         assert limited.status_code == 429
         assert "retry-after" in limited.headers
 
+    async def test_login_rate_limit_isolated_per_client_behind_trusted_proxy(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from glean_core.config import auth_provider_config
+
+        monkeypatch.setattr(
+            auth_provider_config, "oidc_trusted_proxy_ips", "127.0.0.1,172.16.0.0/12"
+        )
+        monkeypatch.setattr(auth_provider_config, "oidc_client_ip_headers", "x-real-ip")
+
+        for _ in range(10):
+            resp = await client.post(
+                "/api/auth/login",
+                json={"email": "nobody@example.com", "password": "wrongpassword"},
+                headers={"X-Real-IP": "203.0.113.10"},
+            )
+            assert resp.status_code == 401
+
+        blocked = await client.post(
+            "/api/auth/login",
+            json={"email": "nobody@example.com", "password": "wrongpassword"},
+            headers={"X-Real-IP": "203.0.113.10"},
+        )
+        assert blocked.status_code == 429
+
+        other_client = await client.post(
+            "/api/auth/login",
+            json={"email": "nobody@example.com", "password": "wrongpassword"},
+            headers={"X-Real-IP": "198.51.100.20"},
+        )
+        assert other_client.status_code == 401
+
+
+class TestClientIdentifierTrustedProxies:
+    """Tests for CIDR matching and forwarded header selection in _get_client_identifier."""
+
+    def test_client_identifier_cidr_and_forwarded_header_handling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from starlette.requests import Request
+
+        from glean_api.routers.auth import _get_client_identifier
+        from glean_core.config import auth_provider_config
+
+        def _make_request(client_host: str, headers: dict[str, str] | None = None) -> Request:
+            raw_headers = [
+                (k.lower().encode("latin-1"), v.encode("latin-1"))
+                for k, v in (headers or {}).items()
+            ]
+            scope = {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/auth/login",
+                "headers": raw_headers,
+                "client": (client_host, 12345),
+            }
+            return Request(scope)
+
+        # Matches Docker bridge CIDR and reads nginx's X-Real-IP
+        monkeypatch.setattr(auth_provider_config, "oidc_trusted_proxy_ips", "172.16.0.0/12")
+        monkeypatch.setattr(auth_provider_config, "oidc_client_ip_headers", "x-real-ip")
+        assert (
+            _get_client_identifier(
+                _make_request(
+                    "172.18.0.4",
+                    {"X-Real-IP": "203.0.113.5", "CF-Connecting-IP": "198.51.100.99"},
+                )
+            )
+            == "203.0.113.5"
+        )
+        # Unwraps IPv4-mapped IPv6 proxy socket addresses
+        assert (
+            _get_client_identifier(_make_request("::ffff:172.18.0.4", {"X-Real-IP": "203.0.113.6"}))
+            == "203.0.113.6"
+        )
+
+        # Default header setting ignores spoofed CF-Connecting-IP when X-Real-IP is absent
+        assert (
+            _get_client_identifier(
+                _make_request("172.18.0.4", {"CF-Connecting-IP": "198.51.100.99"})
+            )
+            == "172.18.0.4"
+        )
+
+        # Untrusted direct client IP ignores forwarding headers
+        assert (
+            _get_client_identifier(_make_request("198.51.100.40", {"X-Real-IP": "203.0.113.7"}))
+            == "198.51.100.40"
+        )
+        monkeypatch.setattr(auth_provider_config, "oidc_trusted_proxy_ips", "")
+        assert (
+            _get_client_identifier(_make_request("172.18.0.4", {"X-Real-IP": "203.0.113.8"}))
+            == "172.18.0.4"
+        )
+
+        # X-Forwarded-For picks rightmost non-trusted hop and prevents leftmost spoofing
+        monkeypatch.setattr(
+            auth_provider_config, "oidc_trusted_proxy_ips", "172.16.0.0/12,10.0.0.0/8"
+        )
+        monkeypatch.setattr(auth_provider_config, "oidc_client_ip_headers", "x-forwarded-for")
+        assert (
+            _get_client_identifier(
+                _make_request(
+                    "172.18.0.4",
+                    {"X-Forwarded-For": "198.51.100.1, 203.0.113.10, 10.0.0.5"},
+                )
+            )
+            == "203.0.113.10"
+        )
+        # If every hop is a private/trusted LAN address, falls back to the original client IP
+        assert (
+            _get_client_identifier(
+                _make_request("172.18.0.4", {"X-Forwarded-For": "10.0.0.9, 172.18.0.2"})
+            )
+            == "10.0.0.9"
+        )
+
 
 @pytest.mark.asyncio
 class TestAdminRBACRotationAndEmbeddingGuard:
