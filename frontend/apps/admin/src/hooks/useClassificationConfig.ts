@@ -40,7 +40,6 @@ export interface ClassificationSettings {
   classify_content: boolean
   content_prompt: string
   categories: ContentCategory[]
-  min_text_length: number
 }
 
 export interface ClassificationConfigResponse extends Omit<ClassificationSettings, 'providers'> {

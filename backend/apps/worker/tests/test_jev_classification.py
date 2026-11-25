@@ -56,12 +56,13 @@ async def test_classification_is_persisted_and_not_repeated(db_session, context)
     assert classify.await_count == 1
 
 
-async def test_short_article_is_skipped_without_api_call(db_session, context):
+async def test_short_article_is_classified_without_skipping(db_session, context):
     entry, _, classify = context
     entry.content = "<p>Short</p>"
     await db_session.commit()
-    assert await worker.classify_entry({}, entry.id) == {"status": "skipped"}
-    classify.assert_not_awaited()
+    assert await worker.classify_entry({}, entry.id) == {"status": "done"}
+    classify.assert_awaited_once()
+    assert classify.call_args.args[1] == "Short"
 
 
 async def test_disabled_jev_does_not_enqueue_or_classify(context):

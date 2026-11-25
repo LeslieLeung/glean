@@ -393,7 +393,10 @@ export function Layout() {
   }, [])
 
   return (
-    <div className="app-shell bg-background relative flex h-screen flex-col overflow-hidden supports-[height:100dvh]:h-dvh md:flex-row">
+    <div
+      className="app-shell bg-background relative flex h-screen flex-col overflow-hidden supports-[height:100dvh]:h-dvh md:flex-row"
+      data-mac-electron={isMacElectron ? '' : undefined}
+    >
       <header className="app-mobile-header border-border bg-card flex h-14 shrink-0 items-center justify-between gap-2 border-b px-4 md:hidden">
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
@@ -429,7 +432,7 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         ref={sidebarRef}
-        className={`border-border bg-card absolute inset-y-0 left-0 z-50 flex max-w-full flex-col border-r transition-[translate] duration-300 ease-out md:relative md:z-10 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'} `}
+        className={`app-sidebar border-border bg-card absolute inset-y-0 left-0 z-50 flex max-w-full flex-col border-r transition-[translate] duration-300 ease-out md:relative md:z-10 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isResizing ? 'sidebar-no-transition' : 'sidebar-transition'} `}
         style={{
           width: (() => {
             if (isMobileSidebarOpen) return '288px'

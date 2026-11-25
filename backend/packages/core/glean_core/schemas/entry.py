@@ -12,7 +12,12 @@ from pydantic import BaseModel, ConfigDict
 from .systemone import EntryClassification
 
 RecommendationReason = Literal[
-    "publication", "liked", "disliked", "similar_liked", "similar_disliked"
+    "publication",
+    "liked",
+    "disliked",
+    "similar_liked",
+    "similar_disliked",
+    "advertisement",
 ]
 
 

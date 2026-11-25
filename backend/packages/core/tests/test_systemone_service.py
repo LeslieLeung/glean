@@ -290,8 +290,10 @@ def test_legacy_jev_config_migrates_losslessly_and_roundtrips():
     assert legacy.base_url == "https://custom.jev.example"
     assert legacy.api_key == "legacy-secret"
     assert legacy.provider_api_keys == {"jev": "legacy-secret"}
+    assert not hasattr(legacy, "min_text_length")
     dumped = legacy.model_dump(mode="json")
     assert "show_confidence" not in dumped
+    assert "min_text_length" not in dumped
     assert "api_key" not in dumped
     reloaded = SystemOneConfig.model_validate(dumped)
     assert reloaded == legacy

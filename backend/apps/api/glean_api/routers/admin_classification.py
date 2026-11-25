@@ -79,7 +79,6 @@ async def _candidate(
         classify_content=request.classify_content,
         content_prompt=request.content_prompt,
         categories=request.categories,
-        min_text_length=request.min_text_length,
         version=str(uuid4()),
     )
 

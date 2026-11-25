@@ -31,6 +31,13 @@ describe('ClassificationBadge', () => {
     expect(screen.getByTitle('Original 85.0%').textContent).toContain('85.0%')
   })
 
+  it('keeps the full classification and confidence available in the inline label', () => {
+    useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_confidence: true } }))
+    render(<ClassificationBadge result={result} inline />)
+    const label = 'Human 90.0% · Original 85.0%'
+    expect(screen.getByTitle(label).textContent).toBe(label)
+  })
+
   it('hides AI detection independently', () => {
     useAuthStore.getState().setUser(createMockUser({ settings: { show_jev_ai_label: false } }))
     render(<ClassificationBadge result={result} />)
@@ -45,7 +52,7 @@ describe('ClassificationBadge', () => {
     expect(screen.queryByText('Original')).toBeNull()
   })
 
-  it('renders nothing when both labels are disabled', () => {
+  it.each([false, true])('renders nothing when both labels are disabled (inline=%s)', (inline) => {
     useAuthStore.getState().setUser(
       createMockUser({
         settings: {
@@ -55,7 +62,7 @@ describe('ClassificationBadge', () => {
         },
       })
     )
-    const { container } = render(<ClassificationBadge result={result} />)
+    const { container } = render(<ClassificationBadge result={result} inline={inline} />)
     expect(container.textContent).toBe('')
   })
 
@@ -68,5 +75,37 @@ describe('ClassificationBadge', () => {
   it('does not label articles without a successful result', () => {
     const { container } = render(<ClassificationBadge result={null} />)
     expect(container.textContent).toBe('')
+  })
+
+  it('distinguishes ad and repost badges from other content categories', () => {
+    const { rerender } = render(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'ad', name: 'Advertisement', confidence: 0.92 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Advertisement').className).toContain('text-destructive-foreground')
+
+    rerender(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'repost', name: 'Repost', confidence: 0.8 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Repost').className).toContain('border-border')
+
+    rerender(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'translation', name: 'Translation', confidence: 0.88 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Translation').className).toContain('bg-secondary')
   })
 })

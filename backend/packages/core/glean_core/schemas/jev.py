@@ -1,6 +1,7 @@
 """Backward-compatible Jev schema aliases for System One."""
 
 from .systemone import (
+    AD_CATEGORY_ID,
     ContentCategory,
     ContentClassification,
     EntryClassification,
@@ -26,6 +27,7 @@ JevAnswers = SystemOneAnswers
 JevResponse = SystemOneResponse
 
 __all__ = [
+    "AD_CATEGORY_ID",
     "ContentCategory",
     "ContentClassification",
     "EntryClassification",

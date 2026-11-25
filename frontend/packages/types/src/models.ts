@@ -115,7 +115,13 @@ export interface EntryWithState extends Entry {
   // M3: Preference score
   preference_score: number | null // 0-100 recommendation score
   recommendation_reason?:
-    'publication' | 'liked' | 'disliked' | 'similar_liked' | 'similar_disliked' | null
+    | 'publication'
+    | 'liked'
+    | 'disliked'
+    | 'similar_liked'
+    | 'similar_disliked'
+    | 'advertisement'
+    | null
   debug_info: ScoreDebugInfo | null // Debug information (if debug mode enabled)
 }
 

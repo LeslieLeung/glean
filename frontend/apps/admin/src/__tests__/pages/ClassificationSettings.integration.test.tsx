@@ -68,7 +68,6 @@ const { save, test, reclassify, config } = vi.hoisted(() => {
     classify_content: true,
     content_prompt: 'Choose one category.',
     categories: [{ id: 'original', label: 'Original', description: 'First-hand writing' }],
-    min_text_length: 200,
   }
 
   const initial: ClassificationConfigResponse = {
@@ -124,8 +123,10 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('Classification admin settings', () => {
-  it('saves custom criteria and prompts while preserving saved API keys', async () => {
+  it('collapses categories by default and saves custom criteria while preserving saved API keys', async () => {
     render(<ClassificationSettingsPage />)
+    expect(screen.queryByLabelText('classification.categoryName')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Original/ }))
     fireEvent.change(screen.getByLabelText('classification.aiPrompt'), {
       target: { value: 'Is this AI-generated?' },
     })
@@ -215,12 +216,12 @@ describe('Classification admin settings', () => {
     expect((screen.getByLabelText('classification.model') as HTMLInputElement).value).toBe('')
   })
 
-  it('can add a category and explicitly clear the active provider saved key', async () => {
+  it('auto-expands a newly added category and explicitly clears the active provider saved key', async () => {
     render(<ClassificationSettingsPage />)
     fireEvent.click(screen.getByRole('button', { name: 'classification.addCategory' }))
     const names = screen.getAllByLabelText('classification.categoryName')
-    expect(names).toHaveLength(2)
-    fireEvent.change(names[1], { target: { value: 'Repost' } })
+    expect(names).toHaveLength(1)
+    fireEvent.change(names[0], { target: { value: 'Repost' } })
     fireEvent.click(screen.getByRole('button', { name: 'classification.clearKey' }))
     fireEvent.click(screen.getByRole('button', { name: 'classification.save' }))
     await waitFor(() => expect(save).toHaveBeenCalledOnce())

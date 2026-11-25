@@ -44,6 +44,11 @@
   "smart": {
     "title": "智能列表",
     "description": "近期未读文章",
+    "layout": "智能列表布局",
+    "feedView": "信息流",
+    "listView": "列表",
+    "backToFeed": "返回信息流",
+    "unknownFeed": "未知订阅",
     "score": "推荐分：{{score}}",
     "refresh": "刷新智能列表",
     "empty": "可在时间线查看更早的文章。",
@@ -53,7 +58,8 @@
       "liked": "你赞过这篇文章",
       "disliked": "你踩过这篇文章",
       "similar_liked": "与你赞过的文章相近",
-      "similar_disliked": "与你踩过的文章相近"
+      "similar_disliked": "与你踩过的文章相近",
+      "advertisement": "被标为广告"
     }
   },
   "empty": {

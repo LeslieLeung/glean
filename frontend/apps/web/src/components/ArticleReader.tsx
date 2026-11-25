@@ -19,6 +19,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  ArrowLeft,
   ChevronLeft,
   Menu as MenuIcon,
 } from 'lucide-react'
@@ -55,6 +56,8 @@ interface ArticleReaderProps {
   bookmarkId?: string
   entry: EntryWithState
   onClose?: () => void
+  /** Label for a back button at the start of the reader header. */
+  backLabel?: string
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
   /**
@@ -134,6 +137,7 @@ export function ArticleReader({
   entry,
   bookmarkId,
   onClose,
+  backLabel,
   isFullscreen = false,
   onToggleFullscreen,
   showCloseButton,
@@ -236,7 +240,7 @@ export function ArticleReader({
       {isMobile && (
         <div
           className={`border-border bg-card/95 absolute inset-x-0 top-0 z-10 border-b backdrop-blur-sm transition-transform duration-300 ${
-            barsVisible ? 'translate-y-0' : '-translate-y-full'
+            barsVisible || backLabel ? 'translate-y-0' : '-translate-y-full'
           }`}
         >
           <div className="flex h-14 items-center gap-2 px-4">
@@ -244,10 +248,10 @@ export function ArticleReader({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label={t('article.back')}
+                aria-label={backLabel ?? t('article.back')}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors"
               >
-                <ChevronLeft className="h-5 w-5" />
+                {backLabel ? <ArrowLeft className="size-5" /> : <ChevronLeft className="size-5" />}
               </button>
             ) : (
               <button
@@ -270,9 +274,22 @@ export function ArticleReader({
       {!isMobile && (
         <div className="border-border bg-card border-b px-6 py-4">
           <div className="mb-3 flex items-start justify-between gap-4">
-            <h1 className="font-display text-foreground text-2xl leading-tight font-bold">
-              {entry.title}
-            </h1>
+            <div className="flex min-w-0 items-start gap-2">
+              {backLabel && onClose && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  aria-label={backLabel}
+                  title={backLabel}
+                >
+                  <ArrowLeft />
+                </Button>
+              )}
+              <h1 className="font-display text-foreground min-w-0 text-2xl leading-tight font-bold wrap-anywhere">
+                {entry.title}
+              </h1>
+            </div>
             <div className="flex shrink-0 items-center gap-1">
               {shouldShowFullscreenButton && onToggleFullscreen && (
                 <Button
@@ -289,7 +306,7 @@ export function ArticleReader({
                   )}
                 </Button>
               )}
-              {shouldShowCloseButton && onClose && (
+              {shouldShowCloseButton && onClose && !backLabel && (
                 <Button
                   variant="ghost"
                   size="icon"

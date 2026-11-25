@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isAxiosError } from 'axios'
-import { Eye, EyeOff, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Eye, EyeOff, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import {
   Alert,
@@ -11,6 +11,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Collapsible,
+  CollapsiblePanel,
+  CollapsibleTrigger,
   Field,
   FieldDescription,
   FieldLabel,
@@ -110,7 +113,6 @@ function settingsFrom(config: ClassificationConfigResponse): ClassificationSetti
     classify_content: config.classify_content,
     content_prompt: config.content_prompt,
     categories: config.categories,
-    min_text_length: config.min_text_length,
   }
 }
 
@@ -143,6 +145,7 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
   const [draftKeys, setDraftKeys] = useState<Partial<Record<SystemOneProviderId, string>>>({})
   const [clearedKeys, setClearedKeys] = useState<Partial<Record<SystemOneProviderId, boolean>>>({})
   const [showKey, setShowKey] = useState(false)
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(() => new Set())
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null)
   const save = useSaveClassificationConfig()
   const test = useTestClassificationConfig()
@@ -224,6 +227,18 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
     )
   }
 
+  function setCategoryExpanded(id: string, open: boolean) {
+    setExpandedCategoryIds((current) => {
+      const next = new Set(current)
+      if (open) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
   const request: ClassificationConfigRequest = {
     ...form,
     ...(hasKeyEdits ? { provider_api_keys: providerKeyUpdates } : {}),
@@ -243,6 +258,17 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    const emptyCategories = form.classify_content
+      ? form.categories.filter((category) => !category.label.trim())
+      : []
+    if (emptyCategories.length > 0) {
+      setExpandedCategoryIds((current) => {
+        const next = new Set(current)
+        for (const category of emptyCategories) next.add(category.id)
+        return next
+      })
+      return
+    }
     try {
       const updated = await save.mutateAsync(request)
       const settings = settingsFrom(updated)
@@ -530,68 +556,106 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
                 <p className="text-muted-foreground text-sm">
                   {t('classification.categoriesHint')}
                 </p>
-                {form.categories.map((category, index) => (
-                  <fieldset
-                    key={category.id}
-                    className="border-border flex min-w-0 flex-col gap-3 rounded-lg border p-4"
-                  >
-                    <legend className="px-1 text-sm">
-                      {t('classification.categoryNumber', { number: index + 1 })}
-                    </legend>
-                    <Field>
-                      <FieldLabel htmlFor={`category-${category.id}`}>
-                        {t('classification.categoryName')}
-                      </FieldLabel>
-                      <Input
-                        id={`category-${category.id}`}
-                        required
-                        maxLength={40}
-                        value={category.label}
-                        onChange={(event) => changeCategory(index, { label: event.target.value })}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel htmlFor={`description-${category.id}`}>
-                        {t('classification.categoryDescription')}
-                      </FieldLabel>
-                      <Textarea
-                        id={`description-${category.id}`}
-                        rows={2}
-                        maxLength={2000}
-                        value={category.description}
-                        onChange={(event) =>
-                          changeCategory(index, { description: event.target.value })
-                        }
-                      />
-                    </Field>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="self-end"
-                      disabled={form.categories.length <= 1}
-                      onClick={() =>
-                        change(
-                          'categories',
-                          form.categories.filter((_, i) => i !== index)
-                        )
-                      }
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      {t('classification.removeCategory')}
-                    </Button>
-                  </fieldset>
-                ))}
+                <div className="border-border divide-border divide-y rounded-lg border">
+                  {form.categories.map((category, index) => {
+                    const expanded = expandedCategoryIds.has(category.id)
+                    const title =
+                      category.label.trim() ||
+                      t('classification.categoryNumber', { number: index + 1 })
+                    return (
+                      <Collapsible
+                        key={category.id}
+                        open={expanded}
+                        onOpenChange={(open) => setCategoryExpanded(category.id, open)}
+                      >
+                        <CollapsibleTrigger
+                          aria-expanded={expanded}
+                          className="hover:bg-accent/50 flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors"
+                        >
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <ChevronRight
+                              className={`text-muted-foreground size-4 shrink-0 transition-transform duration-200 ${
+                                expanded ? 'rotate-90' : ''
+                              }`}
+                            />
+                            <span className="text-foreground shrink-0 text-sm font-medium">
+                              {title}
+                            </span>
+                            {category.description && (
+                              <span className="text-muted-foreground min-w-0 truncate text-xs">
+                                {category.description}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                            {index + 1}
+                          </span>
+                        </CollapsibleTrigger>
+                        <CollapsiblePanel>
+                          <fieldset className="border-border flex min-w-0 flex-col gap-3 border-t px-4 py-4">
+                            <legend className="sr-only">
+                              {t('classification.categoryNumber', { number: index + 1 })}
+                            </legend>
+                            <Field>
+                              <FieldLabel htmlFor={`category-${category.id}`}>
+                                {t('classification.categoryName')}
+                              </FieldLabel>
+                              <Input
+                                id={`category-${category.id}`}
+                                required
+                                maxLength={40}
+                                value={category.label}
+                                onChange={(event) =>
+                                  changeCategory(index, { label: event.target.value })
+                                }
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel htmlFor={`description-${category.id}`}>
+                                {t('classification.categoryDescription')}
+                              </FieldLabel>
+                              <Textarea
+                                id={`description-${category.id}`}
+                                rows={2}
+                                maxLength={2000}
+                                value={category.description}
+                                onChange={(event) =>
+                                  changeCategory(index, { description: event.target.value })
+                                }
+                              />
+                            </Field>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="self-end"
+                              disabled={form.categories.length <= 1}
+                              onClick={() => {
+                                setCategoryExpanded(category.id, false)
+                                change(
+                                  'categories',
+                                  form.categories.filter((_, i) => i !== index)
+                                )
+                              }}
+                            >
+                              <Trash2 data-icon="inline-start" />
+                              {t('classification.removeCategory')}
+                            </Button>
+                          </fieldset>
+                        </CollapsiblePanel>
+                      </Collapsible>
+                    )
+                  })}
+                </div>
                 <div className="flex items-center justify-between">
                   <Button
                     type="button"
                     variant="outline"
                     disabled={form.categories.length >= 10}
-                    onClick={() =>
-                      change('categories', [
-                        ...form.categories,
-                        { id: crypto.randomUUID(), label: '', description: '' },
-                      ])
-                    }
+                    onClick={() => {
+                      const id = crypto.randomUUID()
+                      change('categories', [...form.categories, { id, label: '', description: '' }])
+                      setCategoryExpanded(id, true)
+                    }}
                   >
                     <Plus data-icon="inline-start" />
                     {t('classification.addCategory')}
@@ -622,21 +686,6 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
                 {JSON.stringify(prompt, null, 2)}
               </pre>
             </details>
-            <Field>
-              <FieldLabel htmlFor="classification-min-length">
-                {t('classification.minTextLength')}
-              </FieldLabel>
-              <Input
-                id="classification-min-length"
-                type="number"
-                min={50}
-                max={5000}
-                required
-                value={form.min_text_length}
-                onChange={(event) => change('min_text_length', Number(event.target.value))}
-              />
-              <FieldDescription>{t('classification.minTextLengthHint')}</FieldDescription>
-            </Field>
           </CardContent>
         </Card>
         <Card>
@@ -649,7 +698,12 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
               <p role="alert">{t('classification.statusError')}</p>
             ) : (
               <dl className="flex flex-wrap gap-6">
-                {['pending', 'done', 'skipped', 'failed'].map((state) => (
+                {[
+                  'pending',
+                  'done',
+                  ...(status.data?.counts.skipped ? ['skipped'] : []),
+                  'failed',
+                ].map((state) => (
                   <div key={state}>
                     <dt className="text-muted-foreground text-sm">
                       {t(`classification.states.${state}`)}
@@ -697,6 +751,7 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
             setForm(config.defaults)
             setDraftKeys({})
             setClearedKeys({})
+            setExpandedCategoryIds(new Set())
             setShowKey(false)
             setMessage(null)
           }}

@@ -4,6 +4,14 @@
 
 import { sanitizeArticleHtml } from '@glean/ui/utils'
 
+function parseInertHtml(html: string): HTMLDivElement {
+  // Nodes in the template document do not load resources from untrusted feed HTML.
+  const template = document.createElement('template')
+  const container = template.content.ownerDocument.createElement('div')
+  container.innerHTML = html
+  return container
+}
+
 /**
  * Strip HTML tags from a string and return plain text.
  * Also removes image tags, scripts, and style elements.
@@ -11,9 +19,7 @@ import { sanitizeArticleHtml } from '@glean/ui/utils'
 export function stripHtmlTags(html: string | null | undefined): string {
   if (!html) return ''
 
-  // Create a temporary DOM element to parse HTML
-  const temp = document.createElement('div')
-  temp.innerHTML = html
+  const temp = parseInertHtml(html)
 
   // Remove unwanted elements
   const unwantedTags = ['img', 'script', 'style', 'iframe', 'svg']
@@ -147,8 +153,7 @@ function removeMetadataRanges(root: Element): void {
 export function stripFeedMetadataHtml(html: string): string {
   if (!html) return ''
 
-  const temp = document.createElement('div')
-  temp.innerHTML = html
+  const temp = parseInertHtml(html)
   const blocks = [...temp.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6')]
   // Match inside each block. Structural boundaries keep a URL from consuming the next line.
   const targets = blocks.length > 0 ? blocks : [temp]

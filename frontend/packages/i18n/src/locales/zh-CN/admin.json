@@ -279,8 +279,6 @@
     "addCategory": "添加分类",
     "contentPrompt": "内容分类提示词",
     "promptPreview": "提示词预览",
-    "minTextLength": "最少正文长度（字符数）",
-    "minTextLengthHint": "短于此长度的文章会跳过检测。每篇文章最多发送 6,000 个纯文本字符给模型。",
     "processing": "文章处理",
     "processingHint": "启用后，Worker 每分钟分批处理已有文章和新文章。重新分类使用已保存的设置，并会再次将正文发送给当前模型服务。",
     "states": {
