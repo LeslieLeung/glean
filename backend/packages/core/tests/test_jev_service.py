@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from glean_core.schemas.jev import ContentCategory, JevConfig, JevSettings
-from glean_core.services import jev_service
+from glean_core.services import jev_service, systemone_service
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def jev_http(monkeypatch):
 
     def install(handler):
         monkeypatch.setattr(
-            jev_service.httpx,
+            systemone_service.httpx,
             "AsyncClient",
             lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
         )

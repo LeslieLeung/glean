@@ -90,8 +90,8 @@ export function Layout() {
       icon: Settings,
     },
     {
-      path: '/jev',
-      label: t('admin:jev.title'),
+      path: '/classification',
+      label: t('admin:classification.title'),
       icon: ScanText,
     },
   ]

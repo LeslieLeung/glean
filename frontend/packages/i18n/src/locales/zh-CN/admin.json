@@ -221,29 +221,57 @@
   "common": {
     "loading": "加载中..."
   },
-  "jev": {
-    "title": "Jev 分类",
-    "subtitle": "检测 AI 写作，并按自定义类别对文章进行分类。",
-    "connection": "Jev 连接",
-    "connectionHint": "连接 Jev System One，分析文章正文。",
-    "server": "Jev 服务器",
-    "serverHint": "填写 API 根地址，例如 https://api.typesafe.ai。",
+  "classification": {
+    "title": "文章分类",
+    "subtitle": "使用 System One 决策模型检测 AI 写作并按自定义类别分类文章。",
+    "connection": "模型连接",
+    "connectionHint": "选择 System One 模型服务并配置连接，以分析文章正文。",
+    "provider": "模型服务",
+    "providers": {
+      "jev": {
+        "hint": "TypeSafe 决策模型。填写服务器地址和 API 密钥，也可指定固定版本的模型名。"
+      },
+      "clef": {
+        "hint": "Cloudflare Workers AI。填写 32 位账户 ID 和 Workers AI API 令牌，模型可选 clef-flash 或 clef。"
+      },
+      "laya": {
+        "hint": "连接自行部署的 laya-serve 实例。中文及中英文混排文章推荐使用 multilingual 模型。"
+      },
+      "custom": {
+        "hint": "连接任意暴露 POST /v1/systemone 接口的自定义 System One 服务。"
+      }
+    },
+    "model": "模型",
+    "modelPlaceholder": "输入模型名称",
+    "modelHint": "可选择推荐模型或输入自定义模型 ID。",
+    "fixedModelHint": "请选择支持的 Workers AI 模型。",
+    "server": "服务器地址",
+    "serverPlaceholder": "https://example.com",
+    "serverHint": "填写 API 根地址，例如 {{url}}。",
+    "customServerHint": "填写 System One 服务的 API 根地址（例如 https://example.com）。",
+    "accountId": "Cloudflare 账户 ID",
+    "accountIdPlaceholder": "32 位十六进制账户 ID",
+    "accountIdHint": "可在 Cloudflare 控制台查看你的 32 位账户 ID。",
     "apiKey": "API 密钥",
+    "cloudflareApiToken": "Cloudflare API 令牌",
     "keySaved": "已保存密钥，留空以保留",
-    "keyPlaceholder": "输入 Jev API 密钥",
+    "keyPlaceholder": "输入 API 密钥或令牌",
+    "optionalKeyPlaceholder": "可选，仅当服务端开启鉴权时填写",
     "keyHint": "密钥保存在服务端，不会返回到浏览器。",
+    "optionalKeyHint": "密钥保存在服务端，不会返回到浏览器；服务端未启用鉴权时可留空。",
+    "inferenceTestHint": "连接测试会发送一次小型推理请求。Clef 可能产生费用；Laya 首次请求可能需要加载模型权重。",
     "testConnection": "测试连接",
-    "connected": "已成功连接 Jev。",
+    "connected": "已成功连接 {{provider}}。",
     "showKey": "显示密钥",
     "hideKey": "隐藏密钥",
     "clearKey": "清除已保存密钥",
     "detection": "检测设置",
     "detectionHint": "设置变更用于后续分类。如需更新已有结果，请点击“重新分类文章”。",
-    "enabled": "启用 Jev 检测",
+    "enabled": "启用文章分类",
     "aiPrompt": "AI 检测提示词",
     "aiPromptHint": "请询问文章是否由 AI 生成。肯定回答对应 AI，否定回答对应 Human。",
     "classifyContent": "内容分类",
-    "categoriesHint": "分类名称和描述将作为判断标准发送给 Jev，最多可添加 10 个分类。",
+    "categoriesHint": "分类名称和描述将作为判断标准发送给模型，最多可添加 10 个分类。",
     "categoryNumber": "分类 {{number}}",
     "categoryName": "分类名称",
     "categoryDescription": "描述 / 提示词",
@@ -252,7 +280,7 @@
     "contentPrompt": "内容分类提示词",
     "promptPreview": "提示词预览",
     "processing": "文章处理",
-    "processingHint": "启用后，Worker 每分钟分批处理已有文章和新文章。重新分类使用已保存的设置，并会再次将正文发送给 Jev。",
+    "processingHint": "启用后，Worker 每分钟分批处理已有文章和新文章。重新分类使用已保存的设置，并会再次将正文发送给当前模型服务。",
     "states": {
       "pending": "待处理",
       "done": "已分类",
@@ -265,8 +293,8 @@
     "unsaved": "有未保存的更改",
     "allSaved": "所有更改已保存",
     "save": "保存设置",
-    "saved": "Jev 设置已保存。",
-    "loadError": "无法加载 Jev 设置。",
+    "saved": "分类设置已保存。",
+    "loadError": "无法加载分类设置。",
     "requestError": "请求失败，请检查设置后重试。",
     "statusError": "无法加载处理状态。"
   }

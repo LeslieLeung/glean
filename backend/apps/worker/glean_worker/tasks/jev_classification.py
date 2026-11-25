@@ -1,4 +1,4 @@
-"""Durable, bounded Jev classification independent of vectorization."""
+"""Durable, bounded System One classification independent of vectorization."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -8,9 +8,10 @@ from arq import Retry
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from glean_core.schemas.jev import JevConfig
+from glean_core.schemas.systemone import SystemOneConfig
 from glean_core.services import TypedConfigService
-from glean_core.services.jev_service import article_text, classify_text
+from glean_core.services.systemone_providers import get_provider
+from glean_core.services.systemone_service import article_text, classify_text, is_configured
 from glean_database.models import Entry, SystemConfig
 from glean_database.session import get_session_context
 
@@ -18,8 +19,8 @@ from glean_database.session import get_session_context
 async def enqueue_jev_classifications(ctx: dict[str, Any]) -> dict[str, int]:
     """Recover pending articles, including old articles and missed feed enqueues."""
     async with get_session_context() as session:
-        config = await TypedConfigService(session).get(JevConfig)
-        if not config.enabled or not config.api_key:
+        config = await TypedConfigService(session).get(SystemOneConfig)
+        if not config.enabled or not is_configured(config):
             return {"queued": 0}
         ids = list(
             (
@@ -45,15 +46,16 @@ async def enqueue_jev_classifications(ctx: dict[str, Any]) -> dict[str, int]:
 
 async def classify_entry(ctx: dict[str, Any], entry_id: str) -> dict[str, str]:
     async with get_session_context() as session:
-        config = await TypedConfigService(session).get(JevConfig)
+        config = await TypedConfigService(session).get(SystemOneConfig)
         entry = await session.get(Entry, entry_id)
-        if not config.enabled or not config.api_key or not entry:
+        if not config.enabled or not is_configured(config) or not entry:
             return {"status": "disabled"}
         if entry.classification_status != "pending":
             return {"status": entry.classification_status}
         text = article_text(entry.content or entry.summary or "")
         title, url = entry.title, entry.url
 
+    provider_name = get_provider(config.provider).descriptor.name
     result = None
     error = None
     retry = False
@@ -62,9 +64,9 @@ async def classify_entry(ctx: dict[str, Any], entry_id: str) -> dict[str, str]:
         status = "done"
     except (httpx.RequestError, ValueError) as exc:
         if isinstance(exc, httpx.RequestError):
-            error = "Could not connect to the Jev server"
+            error = f"Could not connect to {provider_name}"
         elif isinstance(exc, ValidationError):
-            error = "Jev returned an invalid classification result"
+            error = f"{provider_name} returned an invalid classification result"
         else:
             error = str(exc)[:300]
         retry = ctx.get("job_try", 1) < 3
@@ -73,9 +75,11 @@ async def classify_entry(ctx: dict[str, Any], entry_id: str) -> dict[str, str]:
     async with get_session_context() as session:
         # Serialize completion with settings changes; discard stale responses.
         row = await session.scalar(
-            select(SystemConfig).where(SystemConfig.key == JevConfig.NAMESPACE).with_for_update()
+            select(SystemConfig)
+            .where(SystemConfig.key == SystemOneConfig.NAMESPACE)
+            .with_for_update()
         )
-        current = JevConfig.model_validate(row.value) if row else JevConfig()
+        current = SystemOneConfig.model_validate(row.value) if row else SystemOneConfig()
         if not current.enabled or current.version != config.version:
             return {"status": "stale"}
         entry = await session.get(Entry, entry_id)

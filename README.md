@@ -121,9 +121,10 @@ curl -fsSL https://raw.githubusercontent.com/LeslieLeung/glean/main/.env.example
 
 For all configuration options, see [.env.example](.env.example).
 
-Configure article AI detection and custom content categories under **Jev Classification**
-in the admin panel. Enter your Jev server and API key, test the connection, and enable detection.
-Results appear on reader list cards.
+Configure article AI detection and custom content categories under **Article Classification**
+in the admin panel. Choose a System One model provider (Jev, Clef on Cloudflare Workers AI,
+Laya, or a custom System One-compatible server), configure its credentials, test the connection,
+and enable detection. Results appear on reader list cards.
 
 ## Docker Images
 
