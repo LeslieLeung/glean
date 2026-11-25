@@ -1,5 +1,8 @@
 name: Pre-Release (Alpha/Beta)
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:
@@ -204,16 +207,20 @@ jobs:
       - name: Update package.json version
         shell: bash
         working-directory: frontend/apps/web
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          npm pkg set version=${{ steps.version.outputs.version }}
+          npm pkg set "version=${RELEASE_VERSION}"
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build Electron app
         working-directory: frontend/apps/web
-        run: pnpm build:electron --${{ matrix.platform }} --publish never
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+        run: pnpm build:electron --"${TARGET_PLATFORM}" --publish never
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v7
