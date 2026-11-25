@@ -69,4 +69,36 @@ describe('ClassificationBadge', () => {
     const { container } = render(<ClassificationBadge result={null} />)
     expect(container.textContent).toBe('')
   })
+
+  it('distinguishes ad and repost badges from other content categories', () => {
+    const { rerender } = render(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'ad', name: 'Advertisement', confidence: 0.92 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Advertisement').className).toContain('text-destructive-foreground')
+
+    rerender(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'repost', name: 'Repost', confidence: 0.8 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Repost').className).toContain('border-border')
+
+    rerender(
+      <ClassificationBadge
+        result={{
+          ...result,
+          content: { label: 'translation', name: 'Translation', confidence: 0.88 },
+        }}
+      />
+    )
+    expect(screen.getByTitle('Translation').className).toContain('bg-secondary')
+  })
 })

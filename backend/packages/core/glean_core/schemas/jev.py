@@ -21,17 +21,37 @@ def default_categories() -> list[ContentCategory]:
         ContentCategory(
             id="original",
             label="Original",
-            description="first-hand writing with the author's own reporting, experience, or analysis.",
+            description="First-hand writing featuring the author's own analysis, experience, tutorial, independent review, or opinion.",
+        ),
+        ContentCategory(
+            id="news",
+            label="News",
+            description="Timely reporting or briefs covering events, industry updates, or announcements written by media or observers, rather than deep first-hand analysis.",
+        ),
+        ContentCategory(
+            id="release",
+            label="Release",
+            description="Official release notes, changelogs, security advisories, or factual product or project updates focused on what changed, rather than commercial sales promotion.",
+        ),
+        ContentCategory(
+            id="digest",
+            label="Digest",
+            description="Curated roundups, weekly newsletters, or link collections that summarize or select multiple external items with editorial curation.",
+        ),
+        ContentCategory(
+            id="translation",
+            label="Translation",
+            description="Faithful translation or localized edition of an article originally published in another language, preserving the source work rather than low-effort scraping or light rewriting.",
         ),
         ContentCategory(
             id="repost",
             label="Repost",
-            description="copied, aggregated, or lightly rewritten from another source, with little original reporting.",
+            description="Copied, scraped, syndicated, or lightly rewritten content from another source with little original reporting, analysis, translation, or curation.",
         ),
         ContentCategory(
             id="ad",
             label="Advertisement",
-            description="promotional content. Includes 软广 (reads like an article or review but promotes a brand, product, or service) and 硬广 (explicit sales pitch, price, coupon, or purchase call-to-action).",
+            description="Promotional or sponsored content aimed at selling a product, brand, or service—including 软广 (advertorials disguised as articles or reviews) and 硬广 (explicit sales pitches, discounts, coupons, or purchase CTAs). Excludes factual release notes and independent reviews.",
         ),
     ]
 
@@ -48,14 +68,18 @@ class JevSettings(BaseModel):
     )
     classify_content: bool = True
     content_prompt: str = Field(
-        default="Classify this page into exactly one category.",
+        default=(
+            "Classify this RSS article into exactly one category based on its primary purpose. "
+            "Treat factual changelogs and release notes as release rather than ad, "
+            "curated link roundups as digest rather than repost, "
+            "and faithful cross-language translations as translation rather than repost."
+        ),
         min_length=1,
         max_length=4000,
     )
     categories: list[ContentCategory] = Field(
         default_factory=default_categories, min_length=1, max_length=10
     )
-    min_text_length: int = Field(default=200, ge=50, le=5000)
 
     @field_validator("base_url")
     @classmethod
@@ -91,16 +115,15 @@ class JevConfig(JevSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def ignore_legacy_display_setting(cls, value: Any) -> Any:
-        # Older installations stored this preference in the system config.
+    def ignore_legacy_settings(cls, value: Any) -> Any:
+        # Older installations stored these settings in the system config.
         if not isinstance(value, dict):
             return value
         settings = cast(dict[str, Any], value)
-        if "show_confidence" not in settings:
+        legacy_keys = {"show_confidence", "min_text_length"}
+        if not any(key in settings for key in legacy_keys):
             return settings
-        settings = settings.copy()
-        settings.pop("show_confidence")
-        return settings
+        return {key: val for key, val in settings.items() if key not in legacy_keys}
 
 
 class JevConfigRequest(JevSettings):

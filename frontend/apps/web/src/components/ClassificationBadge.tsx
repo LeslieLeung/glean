@@ -2,6 +2,12 @@ import { Badge } from '@glean/ui'
 import type { EntryClassification } from '@glean/types'
 import { useAuthStore } from '../stores/authStore'
 
+function contentBadgeVariant(label: string): 'error' | 'outline' | 'secondary' {
+  if (label === 'ad') return 'error'
+  if (label === 'repost') return 'outline'
+  return 'secondary'
+}
+
 export function ClassificationBadge({ result }: { result?: EntryClassification | null }) {
   const settings = useAuthStore((state) => state.user?.settings)
   if (!result) return null
@@ -26,7 +32,7 @@ export function ClassificationBadge({ result }: { result?: EntryClassification |
       )}
       {content && (
         <Badge
-          variant="secondary"
+          variant={contentBadgeVariant(content.label)}
           className="max-w-full min-w-0 shrink"
           title={content.name + contentConfidence}
         >
