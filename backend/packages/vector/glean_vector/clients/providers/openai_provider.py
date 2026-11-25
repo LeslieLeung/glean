@@ -7,6 +7,7 @@ import httpx
 from openai import AsyncOpenAI, OpenAIError
 
 from .base import EmbeddingProvider
+from .ssrf import create_safe_embedding_http_client, validate_embedding_url
 
 
 class OpenAIProvider(EmbeddingProvider):
@@ -34,18 +35,24 @@ class OpenAIProvider(EmbeddingProvider):
 
         self.api_key = kwargs.get("api_key", "")
         self.base_url = kwargs.get("base_url")
+        if self.base_url:
+            validate_embedding_url(str(self.base_url))
         self.timeout = kwargs.get("timeout", 30)
         self.max_retries = kwargs.get("max_retries", 3)
         self.batch_size = kwargs.get("batch_size", 20)
 
         self._client: AsyncOpenAI | None = None
+        self._http_client: httpx.AsyncClient | None = None
 
     def _get_client(self) -> AsyncOpenAI:
         """Get or create OpenAI client."""
         if self._client is None:
+            if self._http_client is None:
+                self._http_client = create_safe_embedding_http_client(timeout=float(self.timeout))
             self._client = AsyncOpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
+                http_client=self._http_client,
                 timeout=httpx.Timeout(self.timeout, connect=10.0),
                 max_retries=0,  # We handle retries manually
             )
@@ -132,3 +139,6 @@ class OpenAIProvider(EmbeddingProvider):
         if self._client is not None:
             await self._client.close()
             self._client = None
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None

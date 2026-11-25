@@ -21,8 +21,11 @@ RUN apt-get update && apt-get install -y \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv (pinned version)
+COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /uvx /bin/
+
+# Create unprivileged runtime user
+RUN groupadd --system appuser && useradd --system --gid appuser --create-home appuser
 
 # Copy workspace files
 COPY pyproject.toml uv.lock ./
@@ -30,11 +33,16 @@ COPY apps/ apps/
 COPY packages/ packages/
 COPY scripts/ scripts/
 
-# Make scripts executable
-RUN chmod +x scripts/*.sh 2>/dev/null || true
+# Make scripts executable and grant appuser ownership of /app and logs
+RUN chmod +x scripts/*.sh 2>/dev/null || true \
+    && mkdir -p /app/logs \
+    && chown -R appuser:appuser /app
 
 # Install dependencies
-RUN uv sync --locked --all-packages --no-dev --no-cache
+RUN uv sync --locked --all-packages --no-dev --no-cache \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 # Expose API port
 EXPOSE 8000

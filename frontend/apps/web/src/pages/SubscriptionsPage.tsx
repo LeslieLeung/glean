@@ -12,6 +12,7 @@ import { AddFeedDialog, EditFeedDialog } from '../components/dialogs/AddFeedDial
 import { OPMLImportResultDialog } from '../components/dialogs/OPMLImportResultDialog'
 import { useFolderStore } from '../stores/folderStore'
 import { useTranslation } from '@glean/i18n'
+import { toSafeExternalUrl, toSafeImageUrl } from '../lib/html'
 import type { Subscription, OPMLImportResponse, FolderTreeNode } from '@glean/types'
 import {
   Button,
@@ -626,9 +627,9 @@ function SubscriptionRow({
 
       {/* Feed Info */}
       <div className="flex flex-1 items-center gap-3 overflow-hidden">
-        {subscription.feed.icon_url ? (
+        {toSafeImageUrl(subscription.feed.icon_url) ? (
           <img
-            src={subscription.feed.icon_url}
+            src={toSafeImageUrl(subscription.feed.icon_url)}
             alt=""
             className="bg-muted h-8 w-8 shrink-0 rounded object-cover"
           />
@@ -646,16 +647,20 @@ function SubscriptionRow({
               </span>
             )}
           </div>
-          <a
-            href={subscription.feed.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground flex items-center gap-1 truncate text-xs"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="truncate">{subscription.feed.url}</span>
-            <ExternalLink className="h-3 w-3 shrink-0" />
-          </a>
+          {toSafeExternalUrl(subscription.feed.url) ? (
+            <a
+              href={toSafeExternalUrl(subscription.feed.url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground flex items-center gap-1 truncate text-xs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="truncate">{subscription.feed.url}</span>
+              <ExternalLink className="h-3 w-3 shrink-0" />
+            </a>
+          ) : (
+            <span className="text-muted-foreground truncate text-xs">{subscription.feed.url}</span>
+          )}
         </div>
       </div>
 

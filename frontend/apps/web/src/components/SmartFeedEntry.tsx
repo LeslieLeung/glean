@@ -2,7 +2,7 @@ import { useMemo, type MouseEventHandler, type ReactNode } from 'react'
 import type { EntryWithState } from '@glean/types'
 import { Avatar, AvatarFallback, AvatarImage, Skeleton, cn } from '@glean/ui'
 import { Rss } from 'lucide-react'
-import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
+import { stripFeedMetadataHtml, stripHtmlTags, toSafeImageUrl } from '../lib/html'
 import { SmartEntryByline, SmartEntryMetadata } from './SmartEntryDetails'
 
 function previewImage(summary: string | null, content: string | null, entryUrl: string) {
@@ -56,7 +56,9 @@ export function SmartFeedEntry({
       className="hover:bg-muted/40 focus-visible:ring-ring flex w-full cursor-pointer items-start gap-3 px-4 py-4 text-start transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset sm:px-6 sm:py-5"
     >
       <Avatar className="size-10" aria-hidden="true">
-        {entry.feed_icon_url && <AvatarImage src={entry.feed_icon_url} alt="" loading="lazy" />}
+        {toSafeImageUrl(entry.feed_icon_url) && (
+          <AvatarImage src={toSafeImageUrl(entry.feed_icon_url)} alt="" loading="lazy" />
+        )}
         <AvatarFallback>
           <Rss className="text-muted-foreground size-4" />
         </AvatarFallback>

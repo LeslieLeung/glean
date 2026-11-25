@@ -12,7 +12,13 @@ from sqlalchemy import select
 from glean_core import get_logger
 from glean_database.models import Bookmark
 from glean_database.session import get_session_context
-from glean_rss import extract_fulltext, safe_async_client
+from glean_rss import (
+    DEFAULT_MAX_RESPONSE_BYTES,
+    InvalidContentTypeError,
+    extract_fulltext,
+    safe_async_client,
+    safe_fetch_bytes,
+)
 
 logger = get_logger(__name__)
 
@@ -150,14 +156,24 @@ async def fetch_bookmark_metadata_task(
             async with safe_async_client(
                 timeout=30.0, follow_redirects=True, headers={"User-Agent": USER_AGENT}
             ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                if "text/html" not in response.headers.get("content-type", "").lower():
+                try:
+                    body_bytes, response = await safe_fetch_bytes(
+                        client,
+                        url,
+                        max_bytes=DEFAULT_MAX_RESPONSE_BYTES,
+                        allowed_content_types=("text/html", "application/xhtml+xml"),
+                    )
+                except InvalidContentTypeError as err:
+                    logger.warning(
+                        "Non-HTML content type",
+                        extra={"bookmark_id": bookmark_id, "content_type": str(err)},
+                    )
                     failed = True
                 else:
-                    title = extract_title(response.text)
-                    description = extract_description(response.text)
-                    content = await extract_fulltext(response.text, url=url)
+                    html = body_bytes.decode(response.encoding or "utf-8", errors="replace")
+                    title = extract_title(html)
+                    description = extract_description(html)
+                    content = await extract_fulltext(html, url=url)
         except Exception:
             logger.exception("Failed to fetch bookmark content", extra={"bookmark_id": bookmark_id})
             failed = True

@@ -5,15 +5,39 @@ Pydantic models for admin API requests and responses.
 """
 
 from datetime import datetime
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from glean_core.auth.password import MAX_BCRYPT_PASSWORD_BYTES
 
 
 class AdminLoginRequest(BaseModel):
     """Admin login request schema."""
 
     username: str = Field(..., min_length=1, max_length=50)
-    password: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def check_password_bytes(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+            raise ValueError("Password must be at most 72 bytes")
+        return v
+
+
+class AdminChangePasswordRequest(BaseModel):
+    """Admin password change request schema."""
+
+    current_password: str = Field(..., min_length=1, max_length=72)
+    new_password: str = Field(..., min_length=8, max_length=72)
+
+    @field_validator("current_password", "new_password")
+    @classmethod
+    def check_password_bytes(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > MAX_BCRYPT_PASSWORD_BYTES:
+            raise ValueError("Password must be at most 72 bytes")
+        return v
 
 
 class AdminLoginResponse(BaseModel):
@@ -118,9 +142,19 @@ class AdminFeedDetailResponse(AdminFeedListItem):
 class AdminFeedUpdateRequest(BaseModel):
     """Admin feed update request schema."""
 
-    url: str | None = None
+    url: str | None = Field(None, max_length=2048)
     title: str | None = None
     status: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_http_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        parsed = urlparse(v.strip())
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Feed URL must use http or https scheme with a valid host")
+        return v.strip()
 
 
 class AdminBatchFeedRequest(BaseModel):

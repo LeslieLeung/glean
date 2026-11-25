@@ -101,13 +101,22 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   const isValidUrl = (url: string): boolean => {
     try {
       const parsed = new URL(url)
-      // Only allow http and https protocols
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
+      if (parsed.username || parsed.password) {
         return false
       }
-      // Allow URLs with or without path components
-      // Some deployments may host the API at a subpath (e.g., http://example.com/glean)
-      return true
+      if (parsed.protocol === 'https:') {
+        return true
+      }
+      if (parsed.protocol === 'http:') {
+        const hostname = parsed.hostname.toLowerCase()
+        return (
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname === '::1' ||
+          hostname === '[::1]'
+        )
+      }
+      return false
     } catch {
       return false
     }

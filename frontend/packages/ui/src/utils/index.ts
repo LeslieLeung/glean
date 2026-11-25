@@ -3,4 +3,4 @@
  */
 
 export { cn } from './cn'
-export { sanitizeArticleHtml } from './html'
+export { escapeHtml, sanitizeArticleHtml, toSafeExternalUrl, toSafeImageUrl } from './html'

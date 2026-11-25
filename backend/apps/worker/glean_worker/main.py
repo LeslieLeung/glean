@@ -13,7 +13,7 @@ from arq.connections import RedisSettings
 from arq.cron import CronJob
 from arq.worker import Function
 
-from glean_core import get_logger, init_logging
+from glean_core import arq_json_deserializer, arq_json_serializer, get_logger, init_logging
 from glean_core.feed_jobs import FEED_RESULT_SECONDS
 from glean_database.session import init_database
 from glean_vector.clients.vector_store import create_vector_store_client
@@ -180,6 +180,10 @@ class WorkerSettings:
 
     # Redis connection settings
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
+
+    # Safe JSON serialization (never use default pickle)
+    job_serializer = staticmethod(arq_json_serializer)
+    job_deserializer = staticmethod(arq_json_deserializer)
 
     # Worker settings
     max_jobs = WORKER_MAX_JOBS

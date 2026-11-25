@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import type { FolderTreeNode, OPMLImportResponse, Subscription } from '@glean/types'
 import { useTranslation } from '@glean/i18n'
+import { toSafeExternalUrl, toSafeImageUrl } from '../../lib/html'
 import {
   Alert,
   AlertDescription,
@@ -374,9 +375,9 @@ export function SubscriptionsTab() {
                     )}
                   >
                     <div className="flex min-w-0 flex-1 gap-3">
-                      {subscription.feed.icon_url ? (
+                      {toSafeImageUrl(subscription.feed.icon_url) ? (
                         <img
-                          src={subscription.feed.icon_url}
+                          src={toSafeImageUrl(subscription.feed.icon_url)}
                           alt=""
                           className="mt-1 size-5 shrink-0 rounded"
                           onError={(event) => {
@@ -399,16 +400,25 @@ export function SubscriptionsTab() {
                             subscription.feed.title ||
                             t('manager.untitled')}
                         </span>
-                        <a
-                          href={subscription.feed.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-muted-foreground flex min-w-0 items-center gap-1 text-xs"
-                          title={subscription.feed.url}
-                        >
-                          <span className="truncate">{subscription.feed.url}</span>
-                          <ExternalLink className="size-3 shrink-0" />
-                        </a>
+                        {toSafeExternalUrl(subscription.feed.url) ? (
+                          <a
+                            href={toSafeExternalUrl(subscription.feed.url)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground flex min-w-0 items-center gap-1 text-xs"
+                            title={subscription.feed.url}
+                          >
+                            <span className="truncate">{subscription.feed.url}</span>
+                            <ExternalLink className="size-3 shrink-0" />
+                          </a>
+                        ) : (
+                          <span
+                            className="text-muted-foreground truncate text-xs"
+                            title={subscription.feed.url}
+                          >
+                            {subscription.feed.url}
+                          </span>
+                        )}
                         <span className="text-muted-foreground text-xs">
                           {folders.find((folder) => folder.id === subscription.folder_id)?.path ||
                             t('manager.ungrouped')}

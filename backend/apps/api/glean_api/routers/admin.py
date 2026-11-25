@@ -5,21 +5,27 @@ Provides endpoints for administrative operations.
 """
 
 import contextlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from math import ceil
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
 from arq.connections import ArqRedis
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from jose import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import RedisKeys, get_logger
-from glean_core.schemas import EmbeddingConfigUpdateRequest
+from glean_core.auth import (
+    JWTConfig,
+    create_admin_access_token,
+    create_admin_refresh_token,
+    verify_admin_token,
+)
+from glean_core.schemas import EmbeddingConfigUpdateRequest, LogoutRequest
 from glean_core.schemas.admin import (
     AdminBatchEntryRequest,
     AdminBatchFeedRequest,
+    AdminChangePasswordRequest,
     AdminEntryDetailResponse,
     AdminEntryListItem,
     AdminEntryListResponse,
@@ -44,16 +50,20 @@ from glean_vector.config import (
     vector_store_fingerprint,
 )
 
-from ..config import settings
 from ..dependencies import (
     get_admin_service,
     get_current_admin,
+    get_jwt_config,
     get_redis_pool,
     get_typed_config_service,
+    require_super_admin,
 )
+from .auth import enforce_auth_rate_limit
 
 router = APIRouter()
 logger = get_logger(__name__)
+_ADMIN_LOGIN_RATE_LIMIT = 5
+_ADMIN_REFRESH_RATE_LIMIT = 30
 
 
 async def _enqueue_feed_deletion_effects(
@@ -79,15 +89,21 @@ async def _enqueue_feed_deletion_effects(
 
 @router.post("/auth/login", response_model=AdminLoginResponse)
 async def admin_login(
+    http_request: Request,
     request: AdminLoginRequest,
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
 ) -> AdminLoginResponse:
     """
     Admin login endpoint.
 
     Args:
+        http_request: Incoming HTTP request for rate limiting.
         request: Login credentials.
         admin_service: Admin service instance.
+        redis: Redis connection pool.
+        jwt_config: JWT configuration.
 
     Returns:
         Access token and admin info.
@@ -95,6 +111,8 @@ async def admin_login(
     Raises:
         HTTPException: If credentials are invalid.
     """
+    await enforce_auth_rate_limit(redis, http_request, "admin_login", _ADMIN_LOGIN_RATE_LIMIT)
+
     admin = await admin_service.authenticate_admin(request.username, request.password)
 
     if not admin:
@@ -103,36 +121,9 @@ async def admin_login(
             detail="Invalid username or password",
         )
 
-    # Create JWT tokens with admin claims
-    now = datetime.now(UTC)
-    access_expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-    refresh_expire = now + timedelta(days=settings.jwt_refresh_token_expire_days)
-
-    # Handle both enum (in-memory) and string (from database) cases
     role_value = admin.role.value if hasattr(admin.role, "value") else admin.role
-
-    # Access token payload
-    access_payload = {
-        "sub": admin.id,
-        "username": admin.username,
-        "role": role_value,
-        "type": "admin",
-        "exp": int(access_expire.timestamp()),
-        "iat": int(now.timestamp()),
-    }
-
-    # Refresh token payload
-    refresh_payload = {
-        "sub": admin.id,
-        "type": "admin_refresh",
-        "exp": int(refresh_expire.timestamp()),
-        "iat": int(now.timestamp()),
-    }
-
-    access_token = jwt.encode(access_payload, settings.secret_key, algorithm=settings.jwt_algorithm)
-    refresh_token = jwt.encode(
-        refresh_payload, settings.secret_key, algorithm=settings.jwt_algorithm
-    )
+    access_token = create_admin_access_token(admin.id, admin.username, str(role_value), jwt_config)
+    refresh_token = create_admin_refresh_token(admin.id, jwt_config)
 
     # Build response with explicit field values to avoid lazy loading issues
     admin_response = AdminUserResponse(
@@ -155,15 +146,21 @@ async def admin_login(
 
 @router.post("/auth/refresh")
 async def admin_refresh_token(
+    http_request: Request,
     request: dict[str, str],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
 ) -> dict[str, str]:
     """
     Refresh admin access token using refresh token.
 
     Args:
+        http_request: Incoming HTTP request for rate limiting.
         request: Request body with refresh_token.
         admin_service: Admin service instance.
+        redis: Redis connection pool.
+        jwt_config: JWT configuration.
 
     Returns:
         New access and refresh tokens.
@@ -171,87 +168,112 @@ async def admin_refresh_token(
     Raises:
         HTTPException: If refresh token is invalid.
     """
-    try:
-        refresh_token = request.get("refresh_token")
-        if not refresh_token:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="refresh_token is required",
-            )
+    await enforce_auth_rate_limit(redis, http_request, "admin_refresh", _ADMIN_REFRESH_RATE_LIMIT)
 
-        # Verify refresh token
-        payload = jwt.decode(
-            refresh_token, settings.secret_key, algorithms=[settings.jwt_algorithm]
+    refresh_token = request.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="refresh_token is required",
         )
 
-        # Check token type
-        if payload.get("type") != "admin_refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token type",
-            )
-
-        # Get admin ID from token
-        admin_id = payload.get("sub")
-        if not admin_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token",
-            )
-
-        # Verify admin still exists and is active
-        admin = await admin_service.get_admin_by_id(admin_id)
-        if not admin or not admin.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Admin not found or inactive",
-            )
-
-        # Generate new tokens
-        now = datetime.now(UTC)
-        access_expire = now + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-        refresh_expire = now + timedelta(days=settings.jwt_refresh_token_expire_days)
-
-        # Handle both enum (in-memory) and string (from database) cases
-        role_value = admin.role.value if hasattr(admin.role, "value") else admin.role
-
-        # Access token payload
-        access_payload = {
-            "sub": admin.id,
-            "username": admin.username,
-            "role": role_value,
-            "type": "admin",
-            "exp": int(access_expire.timestamp()),
-            "iat": int(now.timestamp()),
-        }
-
-        # Refresh token payload
-        refresh_payload = {
-            "sub": admin.id,
-            "type": "admin_refresh",
-            "exp": int(refresh_expire.timestamp()),
-            "iat": int(now.timestamp()),
-        }
-
-        new_access_token = jwt.encode(
-            access_payload, settings.secret_key, algorithm=settings.jwt_algorithm
-        )
-        new_refresh_token = jwt.encode(
-            refresh_payload, settings.secret_key, algorithm=settings.jwt_algorithm
-        )
-
-        return {
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token,
-            "token_type": "bearer",
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
+    payload = verify_admin_token(refresh_token, jwt_config)
+    if not payload or payload.get("type") != "admin_refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid refresh token: {str(e)}",
-        ) from e
+            detail="Invalid refresh token",
+        )
+
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if not jti or not isinstance(jti, str) or not isinstance(exp, int):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
+    claimed = await redis.set(
+        RedisKeys.revoked_refresh_token(jti),
+        "1",
+        ex=ttl,
+        nx=True,
+    )
+    if not claimed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    admin_id = payload.get("sub")
+    if not admin_id or not isinstance(admin_id, str):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    admin = await admin_service.get_admin_by_id(admin_id)
+    if not admin or not admin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    role_value = admin.role.value if hasattr(admin.role, "value") else admin.role
+    new_access_token = create_admin_access_token(
+        admin.id, admin.username, str(role_value), jwt_config
+    )
+    new_refresh_token = create_admin_refresh_token(admin.id, jwt_config)
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/auth/logout")
+async def admin_logout(
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
+    data: LogoutRequest | None = None,
+) -> dict[str, str]:
+    """Logout admin and revoke the supplied refresh token."""
+    if data and data.refresh_token:
+        payload = verify_admin_token(data.refresh_token, jwt_config)
+        if (
+            payload
+            and payload.get("type") == "admin_refresh"
+            and isinstance(payload.get("jti"), str)
+            and isinstance(payload.get("exp"), int)
+        ):
+            ttl = max(int(payload["exp"] - datetime.now(UTC).timestamp()), 1)
+            await redis.set(
+                RedisKeys.revoked_refresh_token(payload["jti"]),
+                "1",
+                ex=ttl,
+            )
+    return {"message": "Logged out successfully"}
+
+
+@router.post("/auth/change-password")
+async def change_admin_password(
+    request: AdminChangePasswordRequest,
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    admin_service: Annotated[AdminService, Depends(get_admin_service)],
+) -> dict[str, str]:
+    """Update the authenticated admin's password."""
+    updated = await admin_service.change_admin_password(
+        current_admin.id,
+        request.current_password,
+        request.new_password,
+    )
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    return {"message": "Password changed successfully"}
 
 
 @router.get("/me", response_model=AdminUserResponse)
@@ -336,7 +358,7 @@ async def list_users(
 async def toggle_user_status(
     user_id: UUID,
     request: ToggleUserStatusRequest,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
 ) -> UserListItem:
     """
@@ -499,7 +521,7 @@ async def reset_feed_error(
 @router.delete("/feeds/{feed_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_feed(
     feed_id: UUID,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> None:
@@ -524,7 +546,7 @@ async def delete_feed(
 @router.post("/feeds/batch")
 async def batch_feed_operation(
     request: AdminBatchFeedRequest,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     admin_service: Annotated[AdminService, Depends(get_admin_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, int]:
@@ -697,7 +719,7 @@ async def get_embedding_config(
 @router.post("/embedding/test")
 async def test_embedding_provider(
     request: EmbeddingConfigUpdateRequest,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
 ):
     """
     Test embedding provider and infer dimension without saving configuration.
@@ -730,7 +752,7 @@ async def test_embedding_provider(
 @router.put("/embedding/config")
 async def update_embedding_config(
     request: EmbeddingConfigUpdateRequest,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ):
@@ -772,6 +794,18 @@ async def update_embedding_config(
         )
 
     _require_embedding_provider(updates.get("provider", current.provider))
+
+    base_url_changed = "base_url" in updates and updates["base_url"] != current.base_url
+    provider_changed_value = "provider" in updates and updates["provider"] != current.provider
+    if (
+        (base_url_changed or provider_changed_value)
+        and "api_key" not in updates
+        and current.api_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A new api_key must be supplied when changing embedding provider or base_url",
+        )
 
     rebuild_fields = {"provider", "model", "dimension", "base_url"}
     config_changed = any(
@@ -895,7 +929,7 @@ async def update_embedding_config(
 
 @router.post("/embedding/enable")
 async def enable_embedding(
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ):
@@ -975,7 +1009,7 @@ async def enable_embedding(
 
 @router.post("/embedding/disable")
 async def disable_embedding(
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ):
@@ -1028,7 +1062,7 @@ async def disable_embedding(
 
 @router.post("/embedding/validate")
 async def validate_embedding_config(
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, Any]:
     """
@@ -1055,7 +1089,7 @@ async def validate_embedding_config(
 
 @router.post("/embedding/rebuild")
 async def trigger_embedding_rebuild(
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, Any]:
@@ -1140,7 +1174,7 @@ async def trigger_embedding_rebuild(
 
 @router.post("/embedding/cancel-rebuild")
 async def cancel_embedding_rebuild(
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
     redis_pool: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, Any]:
@@ -1300,7 +1334,7 @@ async def get_registration_status(
 @router.post("/settings/registration", response_model=dict[str, bool])
 async def set_registration_status(
     enabled: bool,
-    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+    current_admin: Annotated[AdminUserResponse, Depends(require_super_admin)],
     config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
 ) -> dict[str, bool]:
     """

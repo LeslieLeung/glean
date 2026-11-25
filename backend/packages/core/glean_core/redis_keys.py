@@ -86,6 +86,16 @@ class RedisKeys:
         """
         return f"oidc_rate_limit:{action}:{client_id}"
 
+    @staticmethod
+    def auth_rate_limit(action: str, client_id: str) -> str:
+        """Get general auth/admin/token endpoint rate-limit key."""
+        return f"auth_rate_limit:{action}:{client_id}"
+
+    @staticmethod
+    def revoked_refresh_token(jti: str) -> str:
+        """Key marking a consumed or revoked refresh token jti."""
+        return f"revoked_refresh:{jti}"
+
     # ============================================================================
     # Embedding Rebuild Keys
     # ============================================================================

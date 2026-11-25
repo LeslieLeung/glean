@@ -56,12 +56,19 @@ export class AuthService {
    * Logout current user.
    */
   async logout(): Promise<void> {
-    await this.client.post<{ message: string }>('/auth/logout')
-    await tokenStorage.clearTokens()
-    // Clear OIDC state to prevent stale data on next login
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('oidc_state')
-      localStorage.removeItem('oidc_state')
+    const refreshToken = await tokenStorage.getRefreshToken()
+    try {
+      await this.client.post<{ message: string }>(
+        '/auth/logout',
+        refreshToken ? { refresh_token: refreshToken } : undefined
+      )
+    } finally {
+      await tokenStorage.clearTokens()
+      // Clear OIDC state to prevent stale data on next login
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('oidc_state')
+        localStorage.removeItem('oidc_state')
+      }
     }
   }
 

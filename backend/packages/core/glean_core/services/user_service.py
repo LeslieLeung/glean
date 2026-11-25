@@ -7,7 +7,7 @@ Handles user profile management and settings.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core.auth.password import hash_password
+from glean_core.auth.password import hash_password_async
 from glean_core.schemas import UserResponse, UserUpdate
 from glean_core.schemas.user import UserCreate
 from glean_database.models import User
@@ -38,7 +38,7 @@ class UserService:
         user = User(
             email=user_create.email,
             name=user_create.name,
-            password_hash=hash_password(user_create.password),
+            password_hash=await hash_password_async(user_create.password),
             is_active=True,
             is_verified=False,
         )

@@ -1,8 +1,10 @@
 """Volcengine Ark embedding provider using official SDK."""
 
+import asyncio
 from typing import Any
 
 from .base import EmbeddingProvider
+from .ssrf import EmbeddingSSRFError, validate_embedding_url, validate_embedding_url_and_dns
 
 
 class VolcEngineProvider(EmbeddingProvider):
@@ -31,6 +33,8 @@ class VolcEngineProvider(EmbeddingProvider):
 
         self.api_key = kwargs.get("api_key", "")
         self.base_url = kwargs.get("base_url")
+        if self.base_url:
+            validate_embedding_url(str(self.base_url))
         self.timeout = kwargs.get("timeout", 30)
         self.max_retries = kwargs.get("max_retries", 3)
         self.batch_size = kwargs.get("batch_size", 4)
@@ -66,6 +70,8 @@ class VolcEngineProvider(EmbeddingProvider):
 
     async def generate_embedding(self, text: str) -> tuple[list[float], dict[str, Any]]:
         """Generate embedding for a single text."""
+        if self.base_url:
+            await asyncio.to_thread(validate_embedding_url_and_dns, str(self.base_url))
         client = self._get_client()
 
         try:
@@ -93,7 +99,7 @@ class VolcEngineProvider(EmbeddingProvider):
 
             return embedding, metadata
 
-        except ImportError:
+        except (ImportError, EmbeddingSSRFError):
             raise
         except Exception as e:
             raise ValueError(f"Volcengine Ark API error: {str(e)}") from e
@@ -108,6 +114,8 @@ class VolcEngineProvider(EmbeddingProvider):
                 f"Volcengine recommends batch size <= 4 for optimal performance."
             )
 
+        if self.base_url:
+            await asyncio.to_thread(validate_embedding_url_and_dns, str(self.base_url))
         client = self._get_client()
 
         try:
@@ -139,7 +147,7 @@ class VolcEngineProvider(EmbeddingProvider):
 
             return embeddings, metadata
 
-        except ImportError:
+        except (ImportError, EmbeddingSSRFError):
             raise
         except Exception as e:
             raise ValueError(f"Volcengine Ark API error: {str(e)}") from e

@@ -4,7 +4,9 @@ Authentication router.
 Provides endpoints for user registration, login, token refresh, and user profile.
 """
 
+import hmac
 import ipaddress
+from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from arq.connections import ArqRedis
@@ -13,8 +15,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from glean_core import RedisKeys, get_logger
+from glean_core.auth import JWTConfig, verify_token
 from glean_core.schemas import (
     LoginRequest,
+    LogoutRequest,
     RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
@@ -26,6 +30,7 @@ from glean_core.services import AuthService, TypedConfigService, UserService
 from ..dependencies import (
     get_auth_service,
     get_current_user,
+    get_jwt_config,
     get_redis_pool,
     get_typed_config_service,
     get_user_service,
@@ -139,18 +144,32 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     return str(nonce), str(code_verifier)
 
 
-async def _enforce_oidc_rate_limit(
-    redis: ArqRedis, request: Request, action: str, limit: int
+_REGISTER_RATE_LIMIT = 5
+_LOGIN_RATE_LIMIT = 10
+_REFRESH_RATE_LIMIT = 30
+_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
+_OIDC_STATE_COOKIE_NAME = "glean_oidc_state"
+_OIDC_STATE_COOKIE_PATH = "/api/auth/oauth/oidc"
+
+
+def _is_https_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded_proto == "https"
+
+
+async def enforce_rate_limit(
+    redis: ArqRedis,
+    _request: Request,
+    key: str,
+    *,
+    limit: int,
+    window_seconds: int = 60,
 ) -> None:
-    """Apply Redis-backed fixed-window rate limiting for OIDC endpoints."""
-    client_id = _get_client_identifier(request)
-    key = RedisKeys.oidc_rate_limit(action, client_id)
+    """Apply Redis-backed fixed-window rate limiting."""
     current_count = await redis.incr(key)
 
     if current_count == 1:
-        from glean_core.config import auth_provider_config
-
-        await redis.expire(key, auth_provider_config.oidc_rate_limit_window_seconds)
+        await redis.expire(key, window_seconds)
 
     if current_count > limit:
         retry_after = await redis.ttl(key)
@@ -161,11 +180,60 @@ async def _enforce_oidc_rate_limit(
         )
 
 
+async def enforce_auth_rate_limit(
+    redis: ArqRedis,
+    request: Request,
+    action: str,
+    limit: int,
+    window_seconds: int = _AUTH_RATE_LIMIT_WINDOW_SECONDS,
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting using the validated client IP."""
+    client_id = _get_client_identifier(request)
+    await enforce_rate_limit(
+        redis,
+        request,
+        RedisKeys.auth_rate_limit(action, client_id),
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+
+
+async def _enforce_auth_rate_limit(
+    redis: ArqRedis, request: Request, action: str, limit: int
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting for auth endpoints."""
+    await enforce_auth_rate_limit(
+        redis,
+        request,
+        action,
+        limit,
+        window_seconds=_AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+
+async def _enforce_oidc_rate_limit(
+    redis: ArqRedis, request: Request, action: str, limit: int
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting for OIDC endpoints."""
+    from glean_core.config import auth_provider_config
+
+    client_id = _get_client_identifier(request)
+    await enforce_rate_limit(
+        redis,
+        request,
+        RedisKeys.oidc_rate_limit(action, client_id),
+        limit=limit,
+        window_seconds=auth_provider_config.oidc_rate_limit_window_seconds,
+    )
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
+    request: Request,
     data: RegisterRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, UserResponse | TokenResponse]:
     """
     Register a new user account.
@@ -181,6 +249,14 @@ async def register(
     Raises:
         HTTPException: If email is already registered or registration is disabled.
     """
+    from glean_core.config import auth_provider_config
+
+    await _enforce_auth_rate_limit(redis, request, "register", _REGISTER_RATE_LIMIT)
+    if not auth_provider_config.local_enabled or not auth_provider_config.local_allow_registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local registration is disabled",
+        )
     if not await config_service.is_registration_enabled():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -196,8 +272,10 @@ async def register(
 
 @router.post("/login")
 async def login(
+    request: Request,
     data: LoginRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, UserResponse | TokenResponse]:
     """
     Authenticate user and issue tokens.
@@ -212,6 +290,14 @@ async def login(
     Raises:
         HTTPException: If credentials are invalid.
     """
+    from glean_core.config import auth_provider_config
+
+    await _enforce_auth_rate_limit(redis, request, "login", _LOGIN_RATE_LIMIT)
+    if not auth_provider_config.local_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local password login is disabled",
+        )
     try:
         user, tokens = await auth_service.login(data)
         return {"user": user, "tokens": tokens}
@@ -222,8 +308,11 @@ async def login(
 
 @router.post("/refresh")
 async def refresh_token(
+    request: Request,
     data: RefreshTokenRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
 ) -> TokenResponse:
     """
     Refresh access token using refresh token.
@@ -238,6 +327,24 @@ async def refresh_token(
     Raises:
         HTTPException: If refresh token is invalid or expired.
     """
+    await _enforce_auth_rate_limit(redis, request, "refresh", _REFRESH_RATE_LIMIT)
+
+    token_data = verify_token(data.refresh_token, jwt_config)
+    if not token_data or token_data.type != "refresh" or not token_data.jti:
+        logger.info("Token refresh failed", extra={"error_type": "InvalidToken"})
+        raise _authentication_failed_exception()
+
+    ttl = max(int(token_data.exp - datetime.now(UTC).timestamp()), 1)
+    claimed = await redis.set(
+        RedisKeys.revoked_refresh_token(token_data.jti),
+        "1",
+        ex=ttl,
+        nx=True,
+    )
+    if not claimed:
+        logger.info("Rejected reused or revoked refresh token")
+        raise _authentication_failed_exception()
+
     try:
         tokens = await auth_service.refresh_access_token(data.refresh_token)
         return tokens
@@ -247,15 +354,26 @@ async def refresh_token(
 
 
 @router.post("/logout")
-async def logout() -> dict[str, str]:
+async def logout(
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
+    data: LogoutRequest | None = None,
+) -> dict[str, str]:
     """
-    Logout user (placeholder for token invalidation).
+    Logout user and revoke supplied refresh token.
 
     Returns:
         Success message.
     """
-    # In a production system, you might want to invalidate the refresh token
-    # by storing it in Redis with an expiration
+    if data and data.refresh_token:
+        token_data = verify_token(data.refresh_token, jwt_config)
+        if token_data and token_data.type == "refresh" and token_data.jti:
+            ttl = max(int(token_data.exp - datetime.now(UTC).timestamp()), 1)
+            await redis.set(
+                RedisKeys.revoked_refresh_token(token_data.jti),
+                "1",
+                ex=ttl,
+            )
     return {"message": "Logged out successfully"}
 
 
@@ -404,14 +522,24 @@ async def oidc_authorize(
                 detail="Failed to generate authorization URL",
             )
 
-        # Return response with no-cache headers to prevent browser caching
-        return JSONResponse(
+        # Return response with no-cache headers and cookie-bound OIDC state
+        response = JSONResponse(
             content={
                 "authorization_url": auth_url,
                 "state": state,
             },
             headers=_oidc_no_cache_headers(),
         )
+        response.set_cookie(
+            key=_OIDC_STATE_COOKIE_NAME,
+            value=state,
+            max_age=RedisKeys.OIDC_STATE_TTL,
+            httponly=True,
+            samesite="lax",
+            secure=_is_https_request(request),
+            path=_OIDC_STATE_COOKIE_PATH,
+        )
+        return response
     except HTTPException:
         raise
     except Exception:
@@ -434,6 +562,7 @@ async def oidc_callback(
     request: Request,
     data: OIDCCallbackRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> JSONResponse:
     """
@@ -462,6 +591,13 @@ async def oidc_callback(
         redis, request, "callback", auth_provider_config.oidc_callback_rate_limit
     )
 
+    cookie_state = request.cookies.get(_OIDC_STATE_COOKIE_NAME)
+    if not cookie_state or not hmac.compare_digest(cookie_state, data.state):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or missing OIDC state binding",
+        )
+
     nonce, code_verifier = await _consume_oidc_auth_context(redis, data.state)
 
     # Get provider config
@@ -482,14 +618,21 @@ async def oidc_callback(
 
     try:
         # Authenticate with OIDC provider
-        user, tokens = await auth_service.login_with_provider("oidc", credentials)
-        return JSONResponse(
+        allow_registration = await config_service.is_registration_enabled()
+        user, tokens = await auth_service.login_with_provider(
+            "oidc",
+            credentials,
+            allow_registration=allow_registration,
+        )
+        response = JSONResponse(
             content={
                 "user": user.model_dump(mode="json"),
                 "tokens": tokens.model_dump(mode="json"),
             },
             headers=_oidc_no_cache_headers(),
         )
+        response.delete_cookie(_OIDC_STATE_COOKIE_NAME, path=_OIDC_STATE_COOKIE_PATH)
+        return response
     except ValueError as e:
         logger.warning(
             "[OIDC] callback authentication failed",

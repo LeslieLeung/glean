@@ -188,7 +188,7 @@ async def test_find_or_create_oauth_user_links_existing_email(db_session) -> Non
         primary_auth_provider="oidc",
         provider_user_id="existing-provider-user",
         is_active=True,
-        is_verified=False,
+        is_verified=True,
     )
     db_session.add(existing)
     await db_session.commit()
@@ -209,3 +209,33 @@ async def test_find_or_create_oauth_user_links_existing_email(db_session) -> Non
 
     assert user.id == existing.id
     assert user.email == "shared@example.com"
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_oauth_user_rejects_unverified_existing_email(db_session) -> None:
+    service = AuthService(db_session, _jwt_config())
+    existing = User(
+        email="unverified-local@example.com",
+        name="Local Unverified User",
+        password_hash="hashed",
+        primary_auth_provider="local",
+        provider_user_id="unverified-local@example.com",
+        is_active=True,
+        is_verified=False,
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    auth_result = {
+        "user_info": {"sub": "attacker-sub"},
+        "provider_user_id": "attacker-sub",
+        "email": "unverified-local@example.com",
+        "name": "Attacker",
+        "username": None,
+        "phone": None,
+        "avatar_url": None,
+        "metadata": {"email_verified": True},
+    }
+
+    with pytest.raises(ValueError, match="cannot be automatically linked"):
+        await service._find_or_create_oauth_user("oidc", auth_result)

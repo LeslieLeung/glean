@@ -17,7 +17,7 @@ from glean_core.schemas.tag import (
     TagUpdate,
     TagWithCountsResponse,
 )
-from glean_database.models import BookmarkTag, Tag, UserEntryTag
+from glean_database.models import Bookmark, BookmarkTag, Tag, UserEntry, UserEntryTag
 
 
 class TagService:
@@ -208,9 +208,16 @@ class TagService:
         # Verify tag exists and belongs to user
         await self._get_tag_or_raise(tag_id, user_id)
 
+        if not target_ids:
+            return 0
+
         added = 0
         if target_type == "bookmark":
-            for target_id in target_ids:
+            owned_result = await self.session.execute(
+                select(Bookmark.id).where(Bookmark.id.in_(target_ids), Bookmark.user_id == user_id)
+            )
+            owned_ids = [row[0] for row in owned_result.all()]
+            for target_id in owned_ids:
                 # Check if already exists
                 existing = await self.session.execute(
                     select(BookmarkTag).where(
@@ -222,7 +229,13 @@ class TagService:
                     self.session.add(BookmarkTag(bookmark_id=target_id, tag_id=tag_id))
                     added += 1
         elif target_type == "user_entry":
-            for target_id in target_ids:
+            owned_result = await self.session.execute(
+                select(UserEntry.id).where(
+                    UserEntry.id.in_(target_ids), UserEntry.user_id == user_id
+                )
+            )
+            owned_ids = [row[0] for row in owned_result.all()]
+            for target_id in owned_ids:
                 # Check if already exists
                 existing = await self.session.execute(
                     select(UserEntryTag).where(
@@ -264,14 +277,31 @@ class TagService:
         # Verify tag exists and belongs to user
         await self._get_tag_or_raise(tag_id, user_id)
 
+        if not target_ids:
+            return 0
+
         if target_type == "bookmark":
+            owned_result = await self.session.execute(
+                select(Bookmark.id).where(Bookmark.id.in_(target_ids), Bookmark.user_id == user_id)
+            )
+            owned_ids = [row[0] for row in owned_result.all()]
+            if not owned_ids:
+                return 0
             stmt = delete(BookmarkTag).where(
-                BookmarkTag.bookmark_id.in_(target_ids),
+                BookmarkTag.bookmark_id.in_(owned_ids),
                 BookmarkTag.tag_id == tag_id,
             )
         elif target_type == "user_entry":
+            owned_result = await self.session.execute(
+                select(UserEntry.id).where(
+                    UserEntry.id.in_(target_ids), UserEntry.user_id == user_id
+                )
+            )
+            owned_ids = [row[0] for row in owned_result.all()]
+            if not owned_ids:
+                return 0
             stmt = delete(UserEntryTag).where(
-                UserEntryTag.user_entry_id.in_(target_ids),
+                UserEntryTag.user_entry_id.in_(owned_ids),
                 UserEntryTag.tag_id == tag_id,
             )
         else:

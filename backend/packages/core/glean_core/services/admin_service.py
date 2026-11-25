@@ -12,6 +12,7 @@ from uuid import uuid4
 from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core import escape_like_pattern
 from glean_core.published_at import effective_published_at
 from glean_database.models.admin import AdminRole, AdminUser
 from glean_database.models.api_token import APIToken
@@ -21,8 +22,23 @@ from glean_database.models.subscription import Subscription
 from glean_database.models.user import User
 from glean_database.models.vector_cleanup_pending import VectorCleanupPending
 
-from ..auth.password import hash_password, verify_password
+from ..auth.password import hash_password_async, verify_password_async
 from .system_config_service import SystemConfigService
+
+_ALLOWED_FEED_SORTS = {
+    "created_at": Feed.created_at,
+    "updated_at": Feed.updated_at,
+    "title": Feed.title,
+    "status": Feed.status,
+    "last_fetched_at": Feed.last_fetched_at,
+    "error_count": Feed.error_count,
+}
+
+_ALLOWED_ENTRY_SORTS = {
+    "created_at": Entry.created_at,
+    "published_at": Entry.published_at,
+    "title": Entry.title,
+}
 
 
 @dataclass(frozen=True)
@@ -62,7 +78,7 @@ class AdminService:
         )
         admin = result.scalar_one_or_none()
 
-        if not admin or not verify_password(password, admin.password_hash):
+        if not admin or not await verify_password_async(password, admin.password_hash):
             return None
 
         # Update last login time
@@ -87,12 +103,28 @@ class AdminService:
             Created admin user.
         """
         admin = AdminUser(
-            username=username, password_hash=hash_password(password), role=role, is_active=True
+            username=username,
+            password_hash=await hash_password_async(password),
+            role=role,
+            is_active=True,
         )
         self.session.add(admin)
         await self.session.commit()
         await self.session.refresh(admin)
         return admin
+
+    async def change_admin_password(
+        self, admin_id: str, current_password: str, new_password: str
+    ) -> bool:
+        """Verify current password and update admin password hash."""
+        admin = await self.get_admin_by_id(admin_id)
+        if not admin or not admin.is_active:
+            return False
+        if not await verify_password_async(current_password, admin.password_hash):
+            return False
+        admin.password_hash = await hash_password_async(new_password)
+        await self.session.commit()
+        return True
 
     async def get_admin_by_id(self, admin_id: str) -> AdminUser | None:
         """
@@ -126,7 +158,8 @@ class AdminService:
         count_query = select(func.count()).select_from(User)
 
         if search:
-            search_filter = User.email.ilike(f"%{search}%")
+            escaped = escape_like_pattern(search)
+            search_filter = User.email.ilike(f"%{escaped}%", escape="\\")
             query = query.where(search_filter)
             count_query = count_query.where(search_filter)
 
@@ -261,7 +294,10 @@ class AdminService:
             count_query = count_query.where(Feed.status == status)
 
         if search:
-            search_filter = Feed.title.ilike(f"%{search}%") | Feed.url.ilike(f"%{search}%")
+            escaped = escape_like_pattern(search)
+            search_filter = Feed.title.ilike(f"%{escaped}%", escape="\\") | Feed.url.ilike(
+                f"%{escaped}%", escape="\\"
+            )
             query = query.where(search_filter)
             count_query = count_query.where(search_filter)
 
@@ -269,8 +305,8 @@ class AdminService:
         result = await self.session.execute(count_query)
         total = result.scalar_one()
 
-        # Apply sorting
-        sort_column = getattr(Feed, sort, Feed.created_at)
+        # Apply sorting (allowlisted columns only)
+        sort_column = _ALLOWED_FEED_SORTS.get(sort, Feed.created_at)
         if order == "desc":
             query = query.order_by(sort_column.desc())
         else:
@@ -506,15 +542,17 @@ class AdminService:
             count_query = count_query.where(Entry.feed_id == feed_id)
 
         if search:
-            query = query.where(Entry.title.ilike(f"%{search}%"))
-            count_query = count_query.where(Entry.title.ilike(f"%{search}%"))
+            escaped = escape_like_pattern(search)
+            title_filter = Entry.title.ilike(f"%{escaped}%", escape="\\")
+            query = query.where(title_filter)
+            count_query = count_query.where(title_filter)
 
         # Get total count
         result = await self.session.execute(count_query)
         total = result.scalar_one()
 
         # Apply sorting. Abnormal feed dates are already stored in published_at.
-        sort_column = getattr(Entry, sort, Entry.created_at)
+        sort_column = _ALLOWED_ENTRY_SORTS.get(sort, Entry.created_at)
         if order == "desc":
             query = query.order_by(sort_column.desc())
         else:

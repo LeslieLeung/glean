@@ -9,6 +9,7 @@ extension layers (e.g. SaaS) to create a customised application
 instance with additional routers, middleware and lifecycle hooks.
 """
 
+import os
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -19,14 +20,14 @@ from arq.connections import ArqRedis, RedisSettings
 from fastapi import APIRouter, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from glean_core import get_logger, init_logging
+from glean_core import arq_json_deserializer, arq_json_serializer, get_logger, init_logging
 from glean_vector.config import (
     embedding_model_fingerprint,
     vector_backend_config,
     vector_store_fingerprint,
 )
 
-from .config import settings
+from .config import settings, validate_runtime_security_settings
 from .mcp import create_mcp_server
 from .middleware import LoggingMiddleware
 from .routers import (
@@ -127,11 +128,17 @@ def create_app(
         from glean_database.session import get_session_context, init_database
 
         logger.info(f"Starting Glean API v{settings.version}")
+        if not os.getenv("PYTEST_CURRENT_TEST"):
+            validate_runtime_security_settings(settings)
         init_database(settings.database_url)
 
-        # Initialize Redis pool for task queue
+        # Initialize Redis pool for task queue using safe JSON serializer
         redis_settings = RedisSettings.from_dsn(settings.redis_url)
-        _app.state.redis_pool = await create_pool(redis_settings)
+        _app.state.redis_pool = await create_pool(
+            redis_settings,
+            job_serializer=arq_json_serializer,
+            job_deserializer=arq_json_deserializer,
+        )
         logger.info("Redis pool initialized")
 
         initialize_vector_client_state(_app)
@@ -284,10 +291,11 @@ async def health_check(request: Request) -> dict[str, str]:
             config_service = TypedConfigService(session)
             config = await config_service.get(EmbeddingConfig)
     except Exception as exc:
+        logger.warning("Health check database failure", extra={"error": str(exc)})
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Database unavailable: {exc}",
-        ) from exc
+            detail="Database unavailable",
+        ) from None
 
     # VALIDATING/REBUILDING may intentionally point at a not-yet-recreated
     # store. Keep the API ready so the worker can perform that rebuild; IDLE is
@@ -303,13 +311,16 @@ async def health_check(request: Request) -> dict[str, str]:
             dimension=config.dimension,
             base_url=config.base_url,
         ):
+            logger.warning(
+                "Health check vector backend transition pending",
+                extra={
+                    "stored": config.vector_backend or "unknown",
+                    "runtime": vector_backend_config.backend,
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    "Vector backend transition is pending: "
-                    f"stored={config.vector_backend or 'unknown'}, "
-                    f"runtime={vector_backend_config.backend}"
-                ),
+                detail="Vector backend transition is pending",
             )
         vector_client, vector_error = await ensure_app_vector_client(
             request.app,
@@ -318,9 +329,13 @@ async def health_check(request: Request) -> dict[str, str]:
             config.model,
         )
         if vector_client is None:
+            logger.warning(
+                "Health check vector backend unavailable",
+                extra={"error": vector_error or "unknown error"},
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Vector backend unavailable: {vector_error or 'unknown error'}",
+                detail="Vector backend unavailable",
             )
 
     return {"status": "healthy", "version": settings.version}

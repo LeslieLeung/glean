@@ -14,9 +14,9 @@ command -v npm >/dev/null 2>&1 || { echo "npm is required but not installed. Abo
 echo "Setting up backend..."
 cd backend
 if ! command -v uv >/dev/null 2>&1; then
-    echo "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+    echo "Error: uv is required but not installed." >&2
+    echo "Install uv via your package manager or verify an official signed release from https://docs.astral.sh/uv/." >&2
+    exit 1
 fi
 
 echo "Syncing dependencies with uv..."
@@ -28,7 +28,7 @@ echo "Setting up frontend..."
 cd frontend
 if ! command -v pnpm >/dev/null 2>&1; then
     echo "Installing pnpm..."
-    npm install -g pnpm
+    npm install -g pnpm@12.23.0
 fi
 pnpm install
 cd ..

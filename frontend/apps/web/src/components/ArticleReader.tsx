@@ -23,7 +23,12 @@ import {
   ChevronLeft,
   Menu as MenuIcon,
 } from 'lucide-react'
-import { articleHtmlHasContent, processHtmlContent, stripFeedMetadataHtml } from '../lib/html'
+import {
+  articleHtmlHasContent,
+  processHtmlContent,
+  stripFeedMetadataHtml,
+  toSafeExternalUrl,
+} from '../lib/html'
 import { Button, Skeleton } from '@glean/ui'
 import { ReadingDate } from './ReadingDate'
 import { ArticleOutline } from './ArticleOutline'
@@ -161,6 +166,7 @@ export function ArticleReader({
   }, [source])
   const contentRef = useContentRenderer(articleHtml || undefined)
   const articleMarkup = useMemo(() => ({ __html: articleHtml }), [articleHtml])
+  const safeEntryUrl = toSafeExternalUrl(entry.url)
   const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY)
@@ -333,8 +339,9 @@ export function ArticleReader({
             <Button
               variant="outline"
               size="sm"
+              disabled={!safeEntryUrl}
               render={(props) => (
-                <a {...props} href={entry.url} target="_blank" rel="noopener noreferrer" />
+                <a {...props} href={safeEntryUrl} target="_blank" rel="noopener noreferrer" />
               )}
               className="action-btn action-btn-external text-muted-foreground"
             >
@@ -429,8 +436,9 @@ export function ArticleReader({
                   variant="outline"
                   size="sm"
                   className="mt-4"
+                  disabled={!safeEntryUrl}
                   render={(props) => (
-                    <a {...props} href={entry.url} target="_blank" rel="noopener noreferrer" />
+                    <a {...props} href={safeEntryUrl} target="_blank" rel="noopener noreferrer" />
                   )}
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -461,8 +469,11 @@ export function ArticleReader({
         >
           <div className="flex min-h-14 items-stretch px-2">
             <button
-              onClick={() => window.open(entry.url, '_blank', 'noopener,noreferrer')}
-              className="action-btn action-btn-mobile action-btn-external text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() =>
+                safeEntryUrl && window.open(safeEntryUrl, '_blank', 'noopener,noreferrer')
+              }
+              disabled={!safeEntryUrl}
+              className="action-btn action-btn-mobile action-btn-external text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
               <ExternalLink className="h-5 w-5" />
               <span className="text-[10px]">{t('actions.open')}</span>

@@ -48,6 +48,7 @@ async def test_vectorization_status_reports_runtime_backend_failure() -> None:
     ):
         response = await get_vectorization_status(
             request=request,
+            _current_user=SimpleNamespace(id="test-user"),
             config_service=config_service,
             session=AsyncMock(),
         )
@@ -72,6 +73,7 @@ async def test_vectorization_status_clears_transient_error_after_recovery() -> N
     ):
         response = await get_vectorization_status(
             request=request,
+            _current_user=SimpleNamespace(id="test-user"),
             config_service=config_service,
             session=AsyncMock(),
         )

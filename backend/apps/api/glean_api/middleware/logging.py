@@ -38,11 +38,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # Get user agent
         user_agent = request.headers.get("user-agent", "unknown")
 
-        # Bind context information to logger
+        # Bind context information to logger (omit query string to avoid secret/PII leakage)
         context_logger = logger.bind(
             request_id=request_id,
             method=request.method,
-            url=str(request.url),
+            url=request.url.path,
             client_ip=client_ip,
             user_agent=user_agent,
         )

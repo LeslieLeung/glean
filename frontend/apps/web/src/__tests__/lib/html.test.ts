@@ -5,6 +5,9 @@ import {
   stripFeedMetadataText,
   stripFeedMetadataHtml,
   articleHtmlHasContent,
+  escapeHtml,
+  toSafeExternalUrl,
+  toSafeImageUrl,
 } from '@/lib/html'
 
 describe('stripHtmlTags', () => {
@@ -89,16 +92,15 @@ describe('processHtmlContent', () => {
     expect(result).toContain('<img')
   })
 
-  it('should preserve allowed attributes', () => {
+  it('should preserve allowed attributes and add noopener noreferrer', () => {
     const html = '<a href="https://example.com" title="Link">Test</a>'
     const result = processHtmlContent(html)
     expect(result).toContain('href="https://example.com"')
     expect(result).toContain('title="Link"')
+    expect(result).toContain('rel="noopener noreferrer"')
   })
 
-  it('should decode entities for plain text content', () => {
-    // Entity decoding happens via textarea, then DOMPurify re-sanitizes
-    // The result wraps in <p> and the & gets re-encoded by DOMPurify
+  it('should decode entities for plain text content safely', () => {
     const result = processHtmlContent('Hello &amp; World')
     expect(result).toContain('Hello')
     expect(result).toContain('World')
@@ -124,20 +126,72 @@ describe('processHtmlContent', () => {
     expect(result).toContain('&lt;img&gt;')
   })
 
-  it('sanitizes event handlers after decoding plain text entities', () => {
-    const container = document.createElement('div')
-    container.innerHTML = processHtmlContent('&lt;img src=x onerror=alert(1)&gt;')
-    expect(container.querySelector('img')?.getAttribute('src')).toBe('x')
-    expect(container.querySelector('[onerror]')).toBeNull()
+  it('should neutralize entity-smuggled HTML injection in plain text mode', () => {
+    const payload = 'Look &lt;img src=x onerror=alert(1)&gt;'
+    const result = processHtmlContent(payload)
+    expect(result).not.toContain('<img')
+    expect(result).toContain('&lt;img')
   })
 
-  it('applies the article allowlist after decoding plain text entities', () => {
+  it('neutralizes entity-encoded svg and style tags in plain text mode', () => {
     const container = document.createElement('div')
     container.innerHTML = processHtmlContent(
       '&lt;svg&gt;&lt;circle&gt;&lt;/circle&gt;&lt;/svg&gt;&lt;p style="color:red"&gt;Text&lt;/p&gt;'
     )
-    expect(container.querySelector('svg, [style]')).toBeNull()
-    expect(container.textContent).toBe('Text')
+    expect(container.querySelector('svg, p[style], [style]')).toBeNull()
+    expect(container.textContent).toContain('Text')
+  })
+
+  it('should strip javascript links, svg data images, non-image data attributes, and forbidden tags', () => {
+    const dirty =
+      '<p data-sub-html="<script>evil</script>" data-foo="bar">' +
+      '<a href="javascript:alert(1)" data-src="https://evil.test/x.png">click</a>' +
+      '<img src="data:image/svg+xml;base64,PHN2Zz4=" onerror="alert(2)">' +
+      '<img src="small.png" data-src="full.png" alt="ok">' +
+      '<img src="data:image/png;base64,iVBORw0KGgo=" alt="ok-png">' +
+      '<svg onload="alert(3)"></svg>' +
+      '<form action="https://evil.test"><input type="text"></form>' +
+      '</p>'
+    const result = processHtmlContent(dirty)
+    expect(result).not.toContain('javascript:')
+    expect(result).not.toContain('data:image/svg+xml')
+    expect(result).not.toContain('data-sub-html')
+    expect(result).not.toContain('data-foo')
+    expect(result).not.toContain('onerror')
+    expect(result).not.toContain('<svg')
+    expect(result).not.toContain('<form')
+    expect(result).toContain('data-src="full.png"')
+    expect(result).toContain('data:image/png;base64,iVBORw0KGgo=')
+    const parsed = document.createElement('div')
+    parsed.innerHTML = result
+    expect(parsed.querySelector('a')?.hasAttribute('data-src')).toBe(false)
+  })
+})
+
+describe('URL & HTML helpers', () => {
+  it('escapeHtml encodes all HTML metacharacters', () => {
+    expect(escapeHtml(`<h4 title="x">'&</h4>`)).toBe(
+      '&lt;h4 title=&quot;x&quot;&gt;&#39;&amp;&lt;/h4&gt;'
+    )
+  })
+
+  it('toSafeExternalUrl permits only http and https', () => {
+    expect(toSafeExternalUrl('https://example.com/a')).toBe('https://example.com/a')
+    expect(toSafeExternalUrl('http://localhost:8000/test')).toBe('http://localhost:8000/test')
+    expect(toSafeExternalUrl('javascript:alert(1)')).toBeUndefined()
+    expect(toSafeExternalUrl('data:text/html,<script>')).toBeUndefined()
+    expect(toSafeExternalUrl('file:///etc/passwd')).toBeUndefined()
+  })
+
+  it('toSafeImageUrl blocks svg data URIs and javascript schemes', () => {
+    expect(toSafeImageUrl('https://cdn.example.com/a.png')).toBe('https://cdn.example.com/a.png')
+    expect(toSafeImageUrl('/icons/feed.png')).toBe('/icons/feed.png')
+    expect(toSafeImageUrl('data:image/png;base64,iVBORw0KGgo=')).toBe(
+      'data:image/png;base64,iVBORw0KGgo='
+    )
+    expect(toSafeImageUrl('data:image/svg+xml;base64,PHN2Zz4=')).toBeUndefined()
+    expect(toSafeImageUrl('javascript:alert(1)')).toBeUndefined()
+    expect(toSafeImageUrl('//evil.com/x.png')).toBeUndefined()
   })
 })
 

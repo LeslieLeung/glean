@@ -4,10 +4,12 @@ User schemas.
 Request and response models for user-related operations.
 """
 
+import json
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
@@ -44,8 +46,28 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     """User update request."""
 
-    name: str | None = None
-    username: str | None = None
-    phone: str | None = None
-    avatar_url: str | None = None
+    name: str | None = Field(None, max_length=100)
+    username: str | None = Field(None, max_length=100)
+    phone: str | None = Field(None, max_length=50)
+    avatar_url: str | None = Field(None, max_length=2048)
     settings: dict[str, Any] | None = None
+
+    @field_validator("avatar_url")
+    @classmethod
+    def validate_avatar_url(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        cleaned = v.strip()
+        parsed = urlparse(cleaned)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("avatar_url must use http or https scheme with a valid host")
+        return cleaned
+
+    @field_validator("settings")
+    @classmethod
+    def validate_settings_size(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return None
+        if len(json.dumps(v)) > 32768:
+            raise ValueError("settings payload exceeds maximum allowed size")
+        return v

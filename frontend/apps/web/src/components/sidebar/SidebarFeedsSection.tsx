@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from '@glean/i18n'
+import { toSafeImageUrl } from '../../lib/html'
 import {
   Button,
   buttonVariants,
@@ -699,9 +700,9 @@ function SidebarFeedItem({
           onClick={onClick}
           className="touch-target-none flex h-5 min-w-0 flex-1 items-center gap-3"
         >
-          {subscription.feed.icon_url ? (
+          {toSafeImageUrl(subscription.feed.icon_url) ? (
             <img
-              src={subscription.feed.icon_url}
+              src={toSafeImageUrl(subscription.feed.icon_url)}
               alt=""
               className="h-4 w-4 shrink-0 rounded object-cover"
               draggable={false}

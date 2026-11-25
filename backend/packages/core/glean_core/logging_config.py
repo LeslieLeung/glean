@@ -20,6 +20,7 @@ def setup_logging(
     retention: str = "30 days",
     compression: str = "gz",
     serialize: bool = False,
+    diagnose: bool = False,
 ) -> None:
     """
     Configure Loguru logging system.
@@ -32,6 +33,7 @@ def setup_logging(
         retention: Log retention time
         compression: Log compression format
         serialize: Whether to serialize to JSON format
+        diagnose: Whether to include local variable values in tracebacks (unsafe in prod)
     """
     # Remove default handler
     logger.remove()
@@ -56,7 +58,7 @@ def setup_logging(
             level=log_level,
             colorize=True,
             backtrace=True,
-            diagnose=True,
+            diagnose=diagnose,
         )
     else:
         logger.add(
@@ -64,7 +66,7 @@ def setup_logging(
             level=log_level,
             colorize=True,
             backtrace=True,
-            diagnose=True,
+            diagnose=diagnose,
             serialize=True,
         )
 
@@ -84,7 +86,7 @@ def setup_logging(
                 compression=compression,
                 serialize=serialize,
                 backtrace=True,
-                diagnose=True,
+                diagnose=diagnose,
             )
         else:
             logger.add(
@@ -95,7 +97,7 @@ def setup_logging(
                 compression=compression,
                 serialize=True,
                 backtrace=True,
-                diagnose=True,
+                diagnose=diagnose,
             )
 
         # Error log separate file
@@ -110,7 +112,7 @@ def setup_logging(
                 compression=compression,
                 serialize=serialize,
                 backtrace=True,
-                diagnose=True,
+                diagnose=diagnose,
             )
         else:
             logger.add(
@@ -121,7 +123,7 @@ def setup_logging(
                 compression=compression,
                 serialize=True,
                 backtrace=True,
-                diagnose=True,
+                diagnose=diagnose,
             )
 
 
@@ -137,6 +139,7 @@ def setup_logging_from_env() -> None:
     - LOG_RETENTION: Log retention time (default: 30 days)
     - LOG_COMPRESSION: Log compression format (default: gz)
     - LOG_SERIALIZE: Whether to serialize to JSON (default: False)
+    - LOG_DIAGNOSE: Include locals in tracebacks (default: False)
     """
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     log_file = os.getenv("LOG_FILE")
@@ -145,6 +148,7 @@ def setup_logging_from_env() -> None:
     log_retention = os.getenv("LOG_RETENTION", "30 days")
     log_compression = os.getenv("LOG_COMPRESSION", "gz")
     log_serialize = os.getenv("LOG_SERIALIZE", "false").lower() == "true"
+    log_diagnose = os.getenv("LOG_DIAGNOSE", "false").lower() == "true"
 
     setup_logging(
         log_level=log_level,
@@ -154,6 +158,7 @@ def setup_logging_from_env() -> None:
         retention=log_retention,
         compression=log_compression,
         serialize=log_serialize,
+        diagnose=log_diagnose,
     )
 
 

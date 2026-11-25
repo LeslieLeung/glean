@@ -1,8 +1,25 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, dialog } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  Menu,
+  dialog,
+  safeStorage,
+  session,
+  type IpcMainInvokeEvent,
+} from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
+import {
+  buildProductionCsp,
+  isAllowedApiUrl,
+  isAllowedNavigation,
+  isSafeExternalUrl,
+  isTrustedIpcSender,
+} from './security'
 
 // __dirname polyfill for ES modules
 const __filename = fileURLToPath(import.meta.url)
@@ -15,17 +32,29 @@ interface StoreType {
   refreshToken?: string
 }
 
-/**
- * Validate API URL format and protocol
- * Only allows HTTP and HTTPS protocols
- */
-function isValidApiUrl(url: string): boolean {
-  try {
-    const parsedUrl = new URL(url)
-    return ['http:', 'https:'].includes(parsedUrl.protocol)
-  } catch {
-    return false
+const ENCRYPTED_TOKEN_PREFIX = 'enc:'
+
+function encryptToken(token: string): string {
+  if (safeStorage.isEncryptionAvailable()) {
+    return `${ENCRYPTED_TOKEN_PREFIX}${safeStorage.encryptString(token).toString('base64')}`
   }
+  return token
+}
+
+function decryptToken(stored: string | undefined): string | null {
+  if (!stored) return null
+  if (stored.startsWith(ENCRYPTED_TOKEN_PREFIX)) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return null
+    }
+    try {
+      const cipher = Buffer.from(stored.slice(ENCRYPTED_TOKEN_PREFIX.length), 'base64')
+      return safeStorage.decryptString(cipher)
+    } catch {
+      return null
+    }
+  }
+  return stored
 }
 
 const store = new Store<StoreType>({
@@ -37,6 +66,17 @@ const store = new Store<StoreType>({
 let mainWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+const navigationPolicy = {
+  isDev,
+  devOrigin: 'http://localhost:3000',
+  allowedFilePrefix: pathToFileURL(path.join(__dirname, '../dist')).href,
+}
+
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  if (!isTrustedIpcSender(event, navigationPolicy)) {
+    throw new Error('Untrusted IPC sender')
+  }
+}
 
 // Auto-updater configuration
 autoUpdater.autoDownload = false
@@ -225,6 +265,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       webSecurity: true,
     },
     title: 'Glean',
@@ -285,13 +326,24 @@ function createWindow() {
     })
   }
 
-  // Open links in external browser
+  // Restrict in-app navigation to trusted origins/files and open safe external URLs externally
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url)
-      return { action: 'deny' }
+    if (isSafeExternalUrl(url)) {
+      void shell.openExternal(url)
     }
-    return { action: 'allow' }
+    return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedNavigation(url, navigationPolicy)) {
+      event.preventDefault()
+    }
+  })
+
+  mainWindow.webContents.on('will-frame-navigate', (details) => {
+    if (!isAllowedNavigation(details.url, navigationPolicy)) {
+      details.preventDefault()
+    }
   })
 
   mainWindow.on('closed', () => {
@@ -305,6 +357,22 @@ app.whenReady().then(() => {
 
   // Create application menu
   createApplicationMenu()
+
+  // Enforce strict CSP on packaged renderer responses
+  if (!isDev) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      if (details.url.startsWith('file://')) {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            'Content-Security-Policy': [buildProductionCsp(store.get('apiUrl'))],
+          },
+        })
+        return
+      }
+      callback({ responseHeaders: details.responseHeaders })
+    })
+  }
 
   // Log configured API URL for debugging
   const apiUrl = store.get('apiUrl')
@@ -340,14 +408,16 @@ app.on('window-all-closed', () => {
 })
 
 // IPC handler: get API URL
-ipcMain.handle('get-api-url', () => {
+ipcMain.handle('get-api-url', (event) => {
+  assertTrustedSender(event)
   return store.get('apiUrl')
 })
 
 // IPC handler: set API URL with validation
-ipcMain.handle('set-api-url', (_event, url: string) => {
-  if (!isValidApiUrl(url)) {
-    console.error(`[Main] Invalid API URL: ${url}. Only HTTP and HTTPS protocols are allowed.`)
+ipcMain.handle('set-api-url', (event, url: string) => {
+  assertTrustedSender(event)
+  if (!isAllowedApiUrl(url)) {
+    console.error(`[Main] Invalid API URL: ${url}. HTTPS or loopback HTTP is required.`)
     return false
   }
 
@@ -356,7 +426,8 @@ ipcMain.handle('set-api-url', (_event, url: string) => {
 })
 
 // IPC handler: get platform information
-ipcMain.handle('get-platform', () => {
+ipcMain.handle('get-platform', (event) => {
+  assertTrustedSender(event)
   return {
     platform: process.platform,
     arch: process.arch,
@@ -366,44 +437,50 @@ ipcMain.handle('get-platform', () => {
 })
 
 // IPC handler: get access token
-ipcMain.handle('get-access-token', () => {
-  return store.get('accessToken') || null
+ipcMain.handle('get-access-token', (event) => {
+  assertTrustedSender(event)
+  return decryptToken(store.get('accessToken'))
 })
 
 // IPC handler: get refresh token
-ipcMain.handle('get-refresh-token', () => {
-  return store.get('refreshToken') || null
+ipcMain.handle('get-refresh-token', (event) => {
+  assertTrustedSender(event)
+  return decryptToken(store.get('refreshToken'))
 })
 
 // IPC handler: set access token
-ipcMain.handle('set-access-token', (_event, token: string | null) => {
+ipcMain.handle('set-access-token', (event, token: string | null) => {
+  assertTrustedSender(event)
   if (token === null) {
     store.delete('accessToken')
   } else {
-    store.set('accessToken', token)
+    store.set('accessToken', encryptToken(token))
   }
   return true
 })
 
 // IPC handler: set refresh token
-ipcMain.handle('set-refresh-token', (_event, token: string | null) => {
+ipcMain.handle('set-refresh-token', (event, token: string | null) => {
+  assertTrustedSender(event)
   if (token === null) {
     store.delete('refreshToken')
   } else {
-    store.set('refreshToken', token)
+    store.set('refreshToken', encryptToken(token))
   }
   return true
 })
 
 // IPC handler: clear all tokens
-ipcMain.handle('clear-tokens', () => {
+ipcMain.handle('clear-tokens', (event) => {
+  assertTrustedSender(event)
   store.delete('accessToken')
   store.delete('refreshToken')
   return true
 })
 
 // IPC handler: check for updates
-ipcMain.handle('check-for-updates', async () => {
+ipcMain.handle('check-for-updates', async (event) => {
+  assertTrustedSender(event)
   if (isDev) {
     console.log('[Main] Skipping update check in development mode')
     return { available: false, isDev: true }
@@ -423,7 +500,8 @@ ipcMain.handle('check-for-updates', async () => {
 })
 
 // IPC handler: download update
-ipcMain.handle('download-update', async () => {
+ipcMain.handle('download-update', async (event) => {
+  assertTrustedSender(event)
   if (!updateAvailable) {
     return { success: false, error: 'No update available' }
   }
@@ -438,7 +516,8 @@ ipcMain.handle('download-update', async () => {
 })
 
 // IPC handler: install update (quit and install)
-ipcMain.handle('install-update', () => {
+ipcMain.handle('install-update', (event) => {
+  assertTrustedSender(event)
   if (!updateDownloaded) {
     return { success: false, error: 'Update not downloaded' }
   }
@@ -448,7 +527,8 @@ ipcMain.handle('install-update', () => {
 })
 
 // IPC handler: get update status
-ipcMain.handle('get-update-status', () => {
+ipcMain.handle('get-update-status', (event) => {
+  assertTrustedSender(event)
   return {
     available: updateAvailable,
     downloaded: updateDownloaded,

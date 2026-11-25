@@ -39,7 +39,14 @@ class _FakeAuthService:
         self.should_fail = should_fail
         self.provider_configs = {"oidc": {"redirect_uri": "http://localhost:3000/auth/callback"}}
 
-    async def login_with_provider(self, provider_id: str, credentials: dict[str, str]):
+    async def login_with_provider(
+        self,
+        provider_id: str,
+        credentials: dict[str, str],
+        *,
+        allow_registration: bool = True,
+    ):
+        assert isinstance(allow_registration, bool)
         assert provider_id == "oidc"
         assert credentials["nonce"]
         assert credentials["code_verifier"]
@@ -98,6 +105,7 @@ async def test_oidc_authorize_success(
     assert response.headers["cache-control"].startswith("no-store")
 
     state = payload["state"]
+    assert response.cookies.get("glean_oidc_state") == state
     assert test_mock_redis.has_key(f"oidc_state:{state}")
     assert test_mock_redis.has_key(f"oidc_nonce:{state}")
     assert test_mock_redis.has_key(f"oidc_pkce_verifier:{state}")
@@ -131,10 +139,38 @@ async def test_oidc_callback_rejects_invalid_state(client: AsyncClient, _enable_
     response = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "missing-state"},
+        cookies={"glean_oidc_state": "missing-state"},
     )
 
     assert response.status_code == 400
     assert "Invalid or expired state" in response.text
+
+
+@pytest.mark.asyncio
+async def test_oidc_callback_rejects_missing_or_mismatched_state_cookie(
+    client: AsyncClient, test_mock_redis, _enable_oidc
+) -> None:
+    app.dependency_overrides[get_auth_service] = lambda: _FakeAuthService()
+    test_mock_redis.seed("oidc_state:state-cookie", "1")
+    test_mock_redis.seed("oidc_nonce:state-cookie", "nonce-cookie")
+    test_mock_redis.seed("oidc_pkce_verifier:state-cookie", "code-verifier")
+
+    missing_cookie = await client.post(
+        "/api/auth/oauth/oidc/callback",
+        json={"code": "auth-code", "state": "state-cookie"},
+    )
+    assert missing_cookie.status_code == 400
+    assert "Invalid or missing OIDC state binding" in missing_cookie.text
+
+    mismatch_cookie = await client.post(
+        "/api/auth/oauth/oidc/callback",
+        json={"code": "auth-code", "state": "state-cookie"},
+        cookies={"glean_oidc_state": "different-state"},
+    )
+    assert mismatch_cookie.status_code == 400
+    assert "Invalid or missing OIDC state binding" in mismatch_cookie.text
+    # Ensure Redis state was NOT consumed when cookie binding failed
+    assert test_mock_redis.has_key("oidc_state:state-cookie")
 
 
 @pytest.mark.asyncio
@@ -148,6 +184,7 @@ async def test_oidc_callback_rejects_missing_nonce(
     response = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "state-1"},
+        cookies={"glean_oidc_state": "state-1"},
     )
 
     assert response.status_code == 400
@@ -164,6 +201,7 @@ async def test_oidc_callback_success(client: AsyncClient, test_mock_redis, _enab
     response = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "state-2"},
+        cookies={"glean_oidc_state": "state-2"},
     )
 
     assert response.status_code == 200
@@ -187,6 +225,7 @@ async def test_oidc_callback_auth_failure_returns_401(
     response = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "state-3"},
+        cookies={"glean_oidc_state": "state-3"},
     )
 
     assert response.status_code == 401
@@ -211,10 +250,12 @@ async def test_oidc_callback_rate_limited(
     first = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "state-4a"},
+        cookies={"glean_oidc_state": "state-4a"},
     )
     second = await client.post(
         "/api/auth/oauth/oidc/callback",
         json={"code": "auth-code", "state": "state-4b"},
+        cookies={"glean_oidc_state": "state-4b"},
     )
 
     assert first.status_code == 200

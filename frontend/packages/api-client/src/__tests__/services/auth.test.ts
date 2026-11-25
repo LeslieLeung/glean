@@ -8,6 +8,7 @@ vi.mock('../../crypto', () => ({
 
 vi.mock('../../tokenStorage', () => ({
   tokenStorage: {
+    getRefreshToken: vi.fn().mockResolvedValue('rt'),
     setAccessToken: vi.fn().mockResolvedValue(undefined),
     setRefreshToken: vi.fn().mockResolvedValue(undefined),
     clearTokens: vi.fn().mockResolvedValue(undefined),
@@ -26,7 +27,10 @@ describe('AuthService', () => {
   })
 
   it('should register with hashed password', async () => {
-    const authResponse = { user: { id: '1', email: 'a@b.com' }, tokens: { access_token: 'at', refresh_token: 'rt' } }
+    const authResponse = {
+      user: { id: '1', email: 'a@b.com' },
+      tokens: { access_token: 'at', refresh_token: 'rt' },
+    }
     vi.mocked(mockClient.post).mockResolvedValue(authResponse)
 
     const result = await service.register({ email: 'a@b.com', password: 'pass', name: 'Test' })
@@ -68,7 +72,15 @@ describe('AuthService', () => {
 
     await service.logout()
 
-    expect(mockClient.post).toHaveBeenCalledWith('/auth/logout')
+    expect(mockClient.post).toHaveBeenCalledWith('/auth/logout', { refresh_token: 'rt' })
+    expect(tokenStorage.clearTokens).toHaveBeenCalled()
+  })
+
+  it('should clear local tokens even when logout API call fails', async () => {
+    vi.mocked(mockClient.post).mockRejectedValue(new Error('network down'))
+    const { tokenStorage } = await import('../../tokenStorage')
+
+    await expect(service.logout()).rejects.toThrow('network down')
     expect(tokenStorage.clearTokens).toHaveBeenCalled()
   })
 

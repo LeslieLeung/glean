@@ -12,7 +12,8 @@ from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
 from readability import Document
 
-from .safe_http import safe_async_client
+from .safe_http import DEFAULT_MAX_RESPONSE_BYTES, safe_async_client, safe_fetch_bytes
+from .sanitizer import sanitize_html
 
 # Minimum content length threshold for successful extraction.
 # 100 characters is chosen as a reasonable minimum to avoid storing
@@ -91,62 +92,71 @@ async def postprocess_html(html: str, base_url: str | None = None) -> str:
     Returns:
         Processed HTML content.
     """
-    # Parse HTML in thread pool (CPU-intensive operation)
-    soup = await asyncio.to_thread(BeautifulSoup, html, "html.parser")
 
-    # Fix relative URLs for images
-    if base_url:
-        for img in soup.find_all("img"):
-            src = img.get("src")
-            if isinstance(src, str) and _is_relative_url(src):
-                img["src"] = urljoin(base_url, src)
-            # Also handle data-src for lazy-loaded images
-            data_src = img.get("data-src")
-            if isinstance(data_src, str) and _is_relative_url(data_src):
-                img["data-src"] = urljoin(base_url, data_src)
-                # If src is missing or a placeholder, use data-src
-                if not src or (isinstance(src, str) and ("data:" in src or "placeholder" in src)):
-                    img["src"] = urljoin(base_url, data_src)
-            # Handle srcset attribute on img elements (used by Astro, responsive images, etc.)
-            img_srcset = img.get("srcset")
-            if isinstance(img_srcset, str):
-                img_srcset_parts = img_srcset.split(",")
-                img_srcset_fixed: list[str] = []
-                for img_srcset_part in img_srcset_parts:
-                    img_srcset_part = img_srcset_part.strip()
-                    if img_srcset_part:
-                        img_url_parts = img_srcset_part.split()
-                        if img_url_parts and _is_relative_url(img_url_parts[0]):
-                            img_url_parts[0] = urljoin(base_url, img_url_parts[0])
-                        img_srcset_fixed.append(" ".join(img_url_parts))
-                img["srcset"] = ", ".join(img_srcset_fixed)
+    # Parse HTML and sanitize in thread pool (CPU-intensive operation)
+    def _process() -> str:
+        soup = BeautifulSoup(html, "html.parser")
 
-        # Fix relative URLs for links
-        for a in soup.find_all("a"):
-            href = a.get("href")
-            if isinstance(href, str) and _is_relative_url(href):
-                a["href"] = urljoin(base_url, href)
+        # Fix relative URLs for images
+        if base_url:
+            for img in soup.find_all("img"):
+                src = img.get("src")
+                if isinstance(src, str) and _is_relative_url(src):
+                    img["src"] = urljoin(base_url, src)
+                # Also handle data-src for lazy-loaded images
+                data_src = img.get("data-src")
+                if isinstance(data_src, str) and _is_relative_url(data_src):
+                    img["data-src"] = urljoin(base_url, data_src)
+                    # If src is missing or a placeholder, use data-src
+                    if not src or (
+                        isinstance(src, str) and ("data:" in src or "placeholder" in src)
+                    ):
+                        img["src"] = urljoin(base_url, data_src)
+                # Handle srcset attribute on img elements (used by Astro, responsive images, etc.)
+                img_srcset = img.get("srcset")
+                if isinstance(img_srcset, str):
+                    img_srcset_parts = img_srcset.split(",")
+                    img_srcset_fixed: list[str] = []
+                    for img_srcset_part in img_srcset_parts:
+                        img_srcset_part = img_srcset_part.strip()
+                        if img_srcset_part:
+                            img_url_parts = img_srcset_part.split()
+                            if img_url_parts and _is_relative_url(img_url_parts[0]):
+                                img_url_parts[0] = urljoin(base_url, img_url_parts[0])
+                            img_srcset_fixed.append(" ".join(img_url_parts))
+                    img["srcset"] = ", ".join(img_srcset_fixed)
 
-        # Fix relative URLs for source tags (picture elements)
-        for source in soup.find_all("source"):
-            source_srcset = source.get("srcset")
-            if isinstance(source_srcset, str) and _is_relative_url(source_srcset.split()[0]):
-                # srcset can have multiple URLs with sizes, handle them all
-                source_parts = source_srcset.split(",")
-                source_fixed_parts: list[str] = []
-                for source_part in source_parts:
-                    source_part = source_part.strip()
-                    if source_part:
-                        source_url_parts = source_part.split()
-                        source_url_parts[0] = urljoin(base_url, source_url_parts[0])
-                        source_fixed_parts.append(" ".join(source_url_parts))
-                source["srcset"] = ", ".join(source_fixed_parts)
+            # Fix relative URLs for links
+            for a in soup.find_all("a"):
+                href = a.get("href")
+                if isinstance(href, str) and _is_relative_url(href):
+                    a["href"] = urljoin(base_url, href)
 
-    # Convert backtick-wrapped text to <code> tags using proper HTML parsing
-    _convert_backticks_to_code(soup)
+            # Fix relative URLs for source tags (picture elements)
+            for source in soup.find_all("source"):
+                source_srcset = source.get("srcset")
+                if (
+                    isinstance(source_srcset, str)
+                    and source_srcset.split()
+                    and _is_relative_url(source_srcset.split()[0])
+                ):
+                    # srcset can have multiple URLs with sizes, handle them all
+                    source_parts = source_srcset.split(",")
+                    source_fixed_parts: list[str] = []
+                    for source_part in source_parts:
+                        source_part = source_part.strip()
+                        if source_part:
+                            source_url_parts = source_part.split()
+                            source_url_parts[0] = urljoin(base_url, source_url_parts[0])
+                            source_fixed_parts.append(" ".join(source_url_parts))
+                    source["srcset"] = ", ".join(source_fixed_parts)
 
-    # Convert back to string in thread pool
-    return await asyncio.to_thread(str, soup)
+        # Convert backtick-wrapped text to <code> tags using proper HTML parsing
+        _convert_backticks_to_code(soup)
+
+        return sanitize_html(str(soup)) or ""
+
+    return await asyncio.to_thread(_process)
 
 
 async def extract_fulltext(html: str, url: str | None = None) -> str | None:
@@ -161,11 +171,15 @@ async def extract_fulltext(html: str, url: str | None = None) -> str | None:
         Extracted HTML content or None if extraction fails.
     """
     try:
-        doc = Document(html, url=url)
-        content = cast(str, doc.summary())
+
+        def _extract() -> str:
+            doc = Document(html, url=url)
+            return cast(str, doc.summary())
+
+        content = await asyncio.to_thread(_extract)
         # Return None if content is too short (likely extraction failure)
         if content and len(content) > MIN_CONTENT_LENGTH:
-            # Post-process to fix URLs and formatting
+            # Post-process to fix URLs, formatting, and sanitize HTML
             return await postprocess_html(content, base_url=url)
         return None
     except Exception:
@@ -188,8 +202,13 @@ async def fetch_and_extract_fulltext(url: str) -> str | None:
         follow_redirects=True,
     ) as client:
         try:
-            response = await client.get(url)
-            response.raise_for_status()
-            return await extract_fulltext(response.text, url=url)
+            body_bytes, response = await safe_fetch_bytes(
+                client,
+                url,
+                max_bytes=DEFAULT_MAX_RESPONSE_BYTES,
+                allowed_content_types=("text/html", "application/xhtml+xml"),
+            )
+            html_text = body_bytes.decode(response.encoding or "utf-8", errors="replace")
+            return await extract_fulltext(html_text, url=str(response.url))
         except Exception:
             return None

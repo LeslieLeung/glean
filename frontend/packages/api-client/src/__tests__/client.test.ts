@@ -59,23 +59,20 @@ describe('ApiClient', () => {
         baseURL: '/api',
         timeout: 30000,
         headers: { 'Content-Type': 'application/json' },
+        withCredentials: true,
       })
     })
 
     it('should accept custom baseURL', () => {
       new ApiClient({ baseURL: '/custom' })
 
-      expect(axios.create).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: '/custom' })
-      )
+      expect(axios.create).toHaveBeenCalledWith(expect.objectContaining({ baseURL: '/custom' }))
     })
 
     it('should accept custom timeout', () => {
       new ApiClient({ timeout: 60000 })
 
-      expect(axios.create).toHaveBeenCalledWith(
-        expect.objectContaining({ timeout: 60000 })
-      )
+      expect(axios.create).toHaveBeenCalledWith(expect.objectContaining({ timeout: 60000 }))
     })
 
     it('should register request interceptor', () => {
@@ -191,6 +188,32 @@ describe('ApiClient', () => {
       const result = await (requestInterceptor as any)(config)
 
       expect(result.headers.Authorization).toBeUndefined()
+    })
+
+    it('should reject non-loopback HTTP API URL in Electron mode', async () => {
+      Object.defineProperty(window, 'electronAPI', {
+        configurable: true,
+        writable: true,
+        value: {
+          getApiUrl: vi.fn().mockResolvedValue('http://remote.example.com:8000'),
+        },
+      })
+
+      new ApiClient()
+      const instance = getAxiosInstance()
+      const requestInterceptor = vi.mocked(instance.interceptors.request.use).mock.calls[0][0]
+
+      const config = {
+        headers: {} as Record<string, string>,
+        baseURL: '/api',
+        method: 'get',
+        url: '/test',
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = await (requestInterceptor as any)(config)
+
+      // Refused insecure URL leaves relative baseURL instead of prepending remote http://
+      expect(result.baseURL).toBe('/api')
     })
   })
 

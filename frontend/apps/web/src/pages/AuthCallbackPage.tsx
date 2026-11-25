@@ -41,6 +41,12 @@ export default function AuthCallbackPage() {
           throw new Error('Missing authorization code or state')
         }
 
+        const expectedState = sessionStorage.getItem('oidc_state')
+        sessionStorage.removeItem('oidc_state')
+        if (!expectedState || expectedState !== state) {
+          throw new Error('Invalid or missing OIDC session state')
+        }
+
         // Exchange code for tokens
         const { user, tokens } = await authService.handleOIDCCallback(code, state)
 
@@ -67,20 +73,20 @@ export default function AuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="bg-background flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <h1 className="mb-2 text-2xl font-bold text-destructive">Authentication Failed</h1>
-          <p className="mb-4 text-muted-foreground">{error}</p>
-          <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+          <h1 className="text-destructive mb-2 text-2xl font-bold">Authentication Failed</h1>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <p className="text-muted-foreground text-sm">Redirecting to login...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="bg-background flex min-h-screen items-center justify-center">
       <div className="text-center">
-        <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+        <div className="border-primary mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2" />
         <p className="text-muted-foreground">Completing authentication...</p>
       </div>
     </div>

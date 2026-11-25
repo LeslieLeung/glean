@@ -26,7 +26,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       refreshToken: null,
       admin: null,
@@ -58,6 +58,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const currentRefreshToken = get().refreshToken
+        if (currentRefreshToken) {
+          void axios
+            .post('/api/admin/auth/logout', { refresh_token: currentRefreshToken })
+            .catch(() => {})
+        }
+
         set({
           token: null,
           refreshToken: null,

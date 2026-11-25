@@ -21,8 +21,8 @@ RUN pnpm install --frozen-lockfile
 # Build the web app
 RUN pnpm --filter=@glean/web build
 
-# Production stage
-FROM nginx:alpine
+# Production stage (unprivileged non-root nginx listening on 8080)
+FROM nginxinc/nginx-unprivileged:alpine
 
 # Copy built files
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
@@ -30,6 +30,6 @@ COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 # Copy nginx configuration
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

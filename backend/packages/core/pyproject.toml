@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.6.0",
     "numpy>=1.24.0",
     "bcrypt>=4.0.0",
+    "pyjwt>=2.8.0",
     "python-jose[cryptography]>=3.3.0",
     "glean-database",
     "glean-rss",

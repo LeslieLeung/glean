@@ -2,7 +2,9 @@
  * HTML utility functions.
  */
 
-import { sanitizeArticleHtml } from '@glean/ui/utils'
+import { escapeHtml, sanitizeArticleHtml, toSafeExternalUrl, toSafeImageUrl } from '@glean/ui/utils'
+
+export { escapeHtml, sanitizeArticleHtml, toSafeExternalUrl, toSafeImageUrl }
 
 function parseInertHtml(html: string): HTMLDivElement {
   // Nodes in the template document do not load resources from untrusted feed HTML.
@@ -22,7 +24,17 @@ export function stripHtmlTags(html: string | null | undefined): string {
   const temp = parseInertHtml(html)
 
   // Remove unwanted elements
-  const unwantedTags = ['img', 'script', 'style', 'iframe', 'svg']
+  const unwantedTags = [
+    'img',
+    'script',
+    'style',
+    'iframe',
+    'svg',
+    'noscript',
+    'template',
+    'object',
+    'embed',
+  ]
   unwantedTags.forEach((tag) => {
     const elements = temp.getElementsByTagName(tag)
     while (elements[0]) {
@@ -187,15 +199,14 @@ export function stripFeedMetadataHtml(html: string): string {
 export function articleHtmlHasContent(html: string): boolean {
   if (!html) return false
   if (stripHtmlTags(html)) return true
-  const temp = document.createElement('div')
-  temp.innerHTML = html
+  const temp = parseInertHtml(html)
   return hasPreservedContent(temp)
 }
 
 /**
  * Process HTML content for safe rendering.
  * Sanitizes HTML to prevent XSS attacks while preserving safe formatting.
- * Handles HTML entity decoding for plain text and ensures proper formatting.
+ * Handles HTML entity escaping safely for plain text and prevents entity-smuggled HTML injection.
  *
  * NOTE: We do NOT decode HTML entities for content that already contains HTML tags,
  * because that would convert escaped code examples like `&lt;img&gt;` into actual
@@ -207,25 +218,18 @@ export function processHtmlContent(html: string | null | undefined): string {
   // Check if content already contains HTML tags BEFORE decoding
   // This preserves escaped entities inside <code> tags like &lt;img&gt;
   if (html.match(/<[a-z][\s\S]*>/i)) {
-    // Content has HTML tags - sanitize to prevent XSS attacks
-    // DOMPurify removes dangerous elements (script, iframe with javascript:, etc.)
-    // while keeping safe HTML tags for article content
     return sanitizeArticleHtml(html)
   }
 
-  // For plain text content, decode HTML entities
-  const temp = document.createElement('textarea')
-  temp.innerHTML = html
-  const decoded = temp.value
+  // Decode HTML entities safely via inert template doc, then escape HTML before wrapping
+  const decoded = parseInertHtml(html).textContent ?? html
 
-  // Wrap plain text in paragraphs and sanitize the result
   const wrapped = decoded
     .split(/\n\n+/)
     .map((para) => para.trim())
     .filter((para) => para.length > 0)
-    .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+    .map((para) => `<p>${escapeHtml(para).replace(/\n/g, '<br>')}</p>`)
     .join('')
 
-  // Sanitize even plain text content to be safe
   return sanitizeArticleHtml(wrapped)
 }

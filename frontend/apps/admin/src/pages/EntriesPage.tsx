@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { sanitizeArticleHtml } from '@glean/ui/utils'
+import { sanitizeArticleHtml, toSafeExternalUrl } from '@glean/ui/utils'
 import { useEntries, useEntry, useDeleteEntry } from '../hooks/useEntries'
 import { useFeeds } from '../hooks/useFeeds'
 import {
@@ -268,10 +268,11 @@ export default function EntriesPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={!toSafeExternalUrl(selectedEntry.url)}
                     render={(props) => (
                       <a
                         {...props}
-                        href={selectedEntry.url}
+                        href={toSafeExternalUrl(selectedEntry.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                       />
@@ -322,10 +323,11 @@ export default function EntriesPage() {
                     variant="outline"
                     size="sm"
                     className="mt-4"
+                    disabled={!toSafeExternalUrl(selectedEntry.url)}
                     render={(props) => (
                       <a
                         {...props}
-                        href={selectedEntry.url}
+                        href={toSafeExternalUrl(selectedEntry.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                       />
@@ -419,15 +421,19 @@ function EntryCard({
           </button>
 
           {/* URL */}
-          <a
-            href={entry.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary mb-3 flex items-center gap-1 truncate text-xs transition-colors"
-          >
-            <span className="truncate">{entry.url}</span>
-            <ExternalLink className="h-3 w-3 flex-shrink-0" />
-          </a>
+          {toSafeExternalUrl(entry.url) ? (
+            <a
+              href={toSafeExternalUrl(entry.url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary mb-3 flex items-center gap-1 truncate text-xs transition-colors"
+            >
+              <span className="truncate">{entry.url}</span>
+              <ExternalLink className="h-3 w-3 flex-shrink-0" />
+            </a>
+          ) : (
+            <span className="text-muted-foreground mb-3 block truncate text-xs">{entry.url}</span>
+          )}
 
           {/* Meta Info */}
           <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
@@ -457,8 +463,14 @@ function EntryCard({
           <Button
             size="icon-sm"
             variant="ghost"
+            disabled={!toSafeExternalUrl(entry.url)}
             render={(props) => (
-              <a {...props} href={entry.url} target="_blank" rel="noopener noreferrer" />
+              <a
+                {...props}
+                href={toSafeExternalUrl(entry.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
             )}
             title="Open in new tab"
             className="text-muted-foreground hover:text-foreground"

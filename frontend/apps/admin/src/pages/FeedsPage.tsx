@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useFeeds, useResetFeedError, useUpdateFeed, useDeleteFeed } from '../hooks/useFeeds'
+import { toSafeExternalUrl } from '@glean/ui/utils'
 import {
   Button,
   buttonVariants,
@@ -290,15 +291,21 @@ export default function FeedsPage() {
                             <p className="text-foreground truncate text-sm font-medium">
                               {feed.title}
                             </p>
-                            <a
-                              href={feed.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-muted-foreground hover:text-primary mt-1 flex items-center gap-1 truncate text-xs"
-                            >
-                              {feed.url}
-                              <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                            </a>
+                            {toSafeExternalUrl(feed.url) ? (
+                              <a
+                                href={toSafeExternalUrl(feed.url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-muted-foreground hover:text-primary mt-1 flex items-center gap-1 truncate text-xs"
+                              >
+                                {feed.url}
+                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                              </a>
+                            ) : (
+                              <p className="text-muted-foreground mt-1 truncate text-xs">
+                                {feed.url}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>

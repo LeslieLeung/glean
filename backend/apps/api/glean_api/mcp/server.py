@@ -11,6 +11,7 @@ from typing import Any
 
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,45 @@ async def mcp_lifespan(_server: FastMCP) -> AsyncIterator[MCPContext]:
     yield MCPContext(session_factory=get_session_context)
 
 
+def _build_mcp_transport_security() -> TransportSecuritySettings:
+    from urllib.parse import urlparse
+
+    allowed_hosts: list[str] = [
+        "localhost",
+        "localhost:*",
+        "127.0.0.1",
+        "127.0.0.1:*",
+        "[::1]",
+        "[::1]:*",
+        "test",
+        "testserver",
+    ]
+    allowed_origins: list[str] = [
+        "http://localhost",
+        "http://localhost:*",
+        "http://127.0.0.1",
+        "http://127.0.0.1:*",
+    ]
+    for candidate_url in [settings.mcp_resource_server_url, *settings.cors_origins]:
+        parsed = urlparse(candidate_url)
+        if parsed.netloc and parsed.netloc not in allowed_hosts:
+            allowed_hosts.append(parsed.netloc)
+        if parsed.scheme and parsed.netloc:
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            if origin not in allowed_origins:
+                allowed_origins.append(origin)
+    for host in settings.mcp_allowed_hosts.split(","):
+        cleaned = host.strip()
+        if cleaned and cleaned not in allowed_hosts:
+            allowed_hosts.append(cleaned)
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    )
+
+
 def create_mcp_server() -> FastMCP:
     """
     Create and configure the MCP server.
@@ -51,10 +91,6 @@ def create_mcp_server() -> FastMCP:
         resource_server_url=AnyHttpUrl(settings.mcp_resource_server_url),
     )
 
-    # Use host="0.0.0.0" to disable automatic DNS rebinding protection
-    # which only allows localhost by default. This is necessary for Docker
-    # deployments where the service is accessed via proxy (nginx).
-    # Security is handled at the nginx/reverse proxy layer.
     mcp = FastMCP(
         name="Glean MCP Server",
         instructions="""
@@ -71,6 +107,7 @@ Available tools:
         lifespan=mcp_lifespan,
         auth=auth_settings,
         token_verifier=APITokenVerifier(),
+        transport_security=_build_mcp_transport_security(),
     )
 
     # Register tools

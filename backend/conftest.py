@@ -48,6 +48,16 @@ class MockArqRedis:
         self._ttl[key] = ttl_seconds
         return True
 
+    async def set(
+        self, key: str, value: Any, ex: int | None = None, nx: bool = False
+    ) -> bool | None:
+        if nx and key in self._store:
+            return None
+        self._store[key] = value
+        if ex is not None:
+            self._ttl[key] = ex
+        return True
+
     async def exists(self, key: str) -> int:
         return 1 if key in self._store else 0
 

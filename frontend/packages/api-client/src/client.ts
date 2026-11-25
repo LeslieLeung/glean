@@ -44,6 +44,7 @@ export class ApiClient {
       baseURL,
       timeout: config.timeout || 30000,
       headers: { 'Content-Type': 'application/json' },
+      withCredentials: true,
     })
 
     // Request interceptor: Attach auth token and handle Electron API URL
@@ -201,7 +202,22 @@ export class ApiClient {
   private isValidUrl(url: string): boolean {
     try {
       const parsedUrl = new URL(url)
-      return ['http:', 'https:'].includes(parsedUrl.protocol)
+      if (parsedUrl.username || parsedUrl.password) {
+        return false
+      }
+      if (parsedUrl.protocol === 'https:') {
+        return true
+      }
+      if (parsedUrl.protocol === 'http:') {
+        const hostname = parsedUrl.hostname.toLowerCase()
+        return (
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname === '::1' ||
+          hostname === '[::1]'
+        )
+      }
+      return false
     } catch {
       return false
     }

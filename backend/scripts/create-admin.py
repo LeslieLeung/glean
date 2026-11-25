@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import asyncio
+import getpass
 import hashlib
 import os
 import sys
@@ -137,13 +138,20 @@ def main():
     parser = argparse.ArgumentParser(description="Create initial admin user")
     parser.add_argument("--username", default="admin", help="Admin username (default: admin)")
     parser.add_argument(
-        "--password", default="Admin123!", help="Admin password (default: Admin123!)"
+        "--password",
+        default=None,
+        help="Admin password (or set ADMIN_PASSWORD env var; prompts interactively if omitted)",
     )
     parser.add_argument(
         "--role",
         default="super_admin",
         choices=["super_admin", "admin"],
         help="Admin role (default: super_admin)",
+    )
+    parser.add_argument(
+        "--allow-weak-password",
+        action="store_true",
+        help="Allow weak or default passwords (development/testing only)",
     )
     parser.add_argument(
         "--force",
@@ -154,8 +162,23 @@ def main():
 
     args = parser.parse_args()
 
+    password = args.password or os.environ.get("ADMIN_PASSWORD")
+    if password is None:
+        if sys.stdin.isatty():
+            password = getpass.getpass("Admin password: ")
+        else:
+            print("❌ Error: Password is required via --password or ADMIN_PASSWORD.")
+            sys.exit(1)
+
+    if not args.allow_weak_password and (password == "Admin123!" or len(password) < 8):
+        print(
+            "❌ Error: Refusing weak or default admin password "
+            "(minimum 8 characters, default 'Admin123!' is prohibited)."
+        )
+        sys.exit(1)
+
     print(f"Creating admin user: {args.username}")
-    success = asyncio.run(create_admin(args.username, args.password, args.role, args.force))
+    success = asyncio.run(create_admin(args.username, password, args.role, args.force))
     sys.exit(0 if success else 1)
 
 

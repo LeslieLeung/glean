@@ -24,6 +24,7 @@ import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
 import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
+import { toSafeExternalUrl } from '../lib/html'
 interface CreateBookmarkDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -439,14 +440,18 @@ export function EditBookmarkDialog({ bookmark, onClose, folders, tags }: EditBoo
                 ) : bookmark.url ? (
                   <span className="flex items-center gap-1.5">
                     <ExternalLink className="h-3.5 w-3.5" />
-                    <a
-                      href={bookmark.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="truncate hover:underline"
-                    >
-                      {bookmark.url}
-                    </a>
+                    {toSafeExternalUrl(bookmark.url) ? (
+                      <a
+                        href={toSafeExternalUrl(bookmark.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate hover:underline"
+                      >
+                        {bookmark.url}
+                      </a>
+                    ) : (
+                      <span className="truncate">{bookmark.url}</span>
+                    )}
                   </span>
                 ) : (
                   t('dialogs.editBookmark.source.noSource')

@@ -40,6 +40,9 @@ from ..feed_refresh import enqueue_feed_refresh, get_feed_refresh_status
 router = APIRouter()
 logger = get_logger(__name__)
 
+MAX_OPML_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MiB
+MAX_OPML_FEEDS = 500
+
 
 @router.get("")
 async def list_subscriptions(
@@ -128,6 +131,8 @@ async def validate_feed_url(
     current_user: Annotated[UserResponse, Depends(get_current_user)],
     feed_service: Annotated[FeedService, Depends(get_feed_service)],
 ) -> ValidateFeedResponse:
+    # End any read-only transaction started by get_current_user before outbound I/O.
+    await feed_service.session.rollback()
     try:
         url, title = await asyncio.wait_for(discover_feed(str(data.url)), timeout=30)
     except (ValueError, TimeoutError) as error:
@@ -347,11 +352,36 @@ async def import_opml(
     folder_service: Annotated[FolderService, Depends(get_folder_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> OPMLImportResponse:
+    # Read in bounded chunks to prevent oversized OPML memory exhaustion.
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > MAX_OPML_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"OPML file exceeds maximum size of {MAX_OPML_UPLOAD_BYTES // (1024 * 1024)} MiB",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
     try:
-        content = await file.read()
-        parsed = parse_opml_with_folders(content.decode("utf-8-sig"))
+        decoded = content.decode("utf-8-sig")
+        parsed = await asyncio.to_thread(parse_opml_with_folders, decoded)
     except (ValueError, UnicodeError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
+
+    if len(parsed.feeds) > MAX_OPML_FEEDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"OPML file contains {len(parsed.feeds)} feeds, exceeding the limit of {MAX_OPML_FEEDS}",
+        )
+
+    # Release the auth transaction before running network feed discovery.
+    await feed_service.session.rollback()
 
     # Validate network content concurrently, without sharing the database session.
     semaphore = asyncio.Semaphore(5)

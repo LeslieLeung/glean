@@ -10,8 +10,8 @@
 #   - ADMIN_PORT: Admin dashboard port (default: 3001)
 #   - POSTGRES_DB/USER/PASSWORD: Database credentials
 #   - SECRET_KEY: JWT signing key
-#   - CREATE_ADMIN: Create admin account on startup (default: true)
-#   - ADMIN_USERNAME/PASSWORD: Admin credentials (default: admin/Admin123!)
+#   - CREATE_ADMIN: Create admin account on startup (default: false)
+#   - ADMIN_USERNAME/PASSWORD: Admin credentials (set both when CREATE_ADMIN=true)
 #   - DEBUG: Enable debug mode (default: false)
 #   - SSRF_ALLOW_PRIVATE / SSRF_ALLOWED_HOSTS: outbound fetch policy
 #   - MILVUS_HOST/PORT: Milvus connection
@@ -56,16 +56,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      SECRET_KEY: ${SECRET_KEY:-}
       CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
       VECTOR_BACKEND: milvus
       # Only backend runs migrations to avoid race conditions
       RUN_MIGRATIONS: "true"
-      # Admin auto-creation (enabled by default, set to false to disable)
-      CREATE_ADMIN: ${CREATE_ADMIN:-true}
+      # Admin auto-creation (disabled by default; supply strong ADMIN_PASSWORD when enabling)
+      CREATE_ADMIN: ${CREATE_ADMIN:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
       # Milvus configuration (for vector embeddings)
       MILVUS_HOST: milvus
@@ -110,7 +110,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      SECRET_KEY: ${SECRET_KEY:-}
       VECTOR_BACKEND: milvus
       # Milvus configuration
       MILVUS_HOST: milvus
@@ -149,7 +149,7 @@ services:
     image: ghcr.io/leslieleung/glean-web:${IMAGE_TAG:-latest}
     container_name: glean-web
     ports:
-      - "${WEB_PORT:-80}:80"
+      - "${WEB_PORT:-80}:8080"
     depends_on:
       - backend
     networks:
@@ -160,7 +160,7 @@ services:
     image: ghcr.io/leslieleung/glean-admin:${IMAGE_TAG:-latest}
     container_name: glean-admin
     ports:
-      - "${ADMIN_PORT:-3001}:80"
+      - "127.0.0.1:${ADMIN_PORT:-3001}:8080"
     depends_on:
       - backend
     networks:
@@ -192,8 +192,8 @@ services:
     image: minio/minio:RELEASE.2023-03-20T20-16-18Z
     container_name: glean-milvus-minio
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - milvus_minio_data:/minio_data
     command: minio server /minio_data
@@ -215,9 +215,6 @@ services:
       MINIO_ADDRESS: milvus-minio:9000
     volumes:
       - milvus_data:/var/lib/milvus
-    ports:
-      - "${MILVUS_PORT:-19530}:19530"
-      - "9091:9091"
     depends_on:
       milvus-etcd:
         condition: service_healthy

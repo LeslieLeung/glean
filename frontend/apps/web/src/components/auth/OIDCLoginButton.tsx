@@ -4,6 +4,7 @@ import { AlertCircle, KeyRound } from 'lucide-react'
 import { authService } from '@glean/api-client'
 import { logger } from '@glean/logger'
 import { useTranslation } from '@glean/i18n'
+import { toSafeExternalUrl } from '../../lib/html'
 import { apiErrorMessage } from '../../utils/apiError'
 
 /**
@@ -39,8 +40,15 @@ export function OIDCLoginButton() {
       setLoading(true)
       setErrorMessage('')
 
-      const { authorization_url } = await authService.getOIDCAuthUrl()
-      window.location.href = authorization_url
+      const { authorization_url, state } = await authService.getOIDCAuthUrl()
+      const safeUrl = toSafeExternalUrl(authorization_url)
+      if (!safeUrl) {
+        throw new Error('Invalid OIDC authorization URL')
+      }
+      if (state) {
+        sessionStorage.setItem('oidc_state', state)
+      }
+      window.location.href = safeUrl
     } catch (error) {
       logger.error('Failed to initiate OIDC login', { error })
       setErrorMessage(apiErrorMessage(error) || t('errors.networkError'))

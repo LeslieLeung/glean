@@ -43,14 +43,14 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      SECRET_KEY: ${SECRET_KEY:-}
       CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
       DEBUG: ${DEBUG:-false}
       VECTOR_BACKEND: pgvector
       RUN_MIGRATIONS: "true"
-      CREATE_ADMIN: ${CREATE_ADMIN:-true}
+      CREATE_ADMIN: ${CREATE_ADMIN:-false}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_ROLE: ${ADMIN_ROLE:-super_admin}
       PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
       PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
@@ -89,7 +89,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      SECRET_KEY: ${SECRET_KEY:-}
       VECTOR_BACKEND: pgvector
       PGVECTOR_DATABASE_URL: ${PGVECTOR_DATABASE_URL:-}
       PGVECTOR_ENTRIES_TABLE: ${PGVECTOR_ENTRIES_TABLE:-entry_embeddings}
@@ -122,7 +122,7 @@ services:
     image: ghcr.io/leslieleung/glean-web:${IMAGE_TAG:-latest}
     container_name: glean-web
     ports:
-      - "${WEB_PORT:-80}:80"
+      - "${WEB_PORT:-80}:8080"
     depends_on:
       - backend
     networks:
@@ -133,7 +133,7 @@ services:
     image: ghcr.io/leslieleung/glean-admin:${IMAGE_TAG:-latest}
     container_name: glean-admin
     ports:
-      - "${ADMIN_PORT:-3001}:80"
+      - "127.0.0.1:${ADMIN_PORT:-3001}:8080"
     depends_on:
       - backend
     networks:
