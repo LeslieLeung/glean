@@ -1,5 +1,5 @@
 import { MOBILE_LAYOUT_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   useInfiniteEntries,
@@ -10,8 +10,10 @@ import {
 import { ArticleReader, ArticleReaderSkeleton } from '../components/ArticleReader'
 import { ReadingDate } from '../components/ReadingDate'
 import { ClassificationBadge } from '../components/ClassificationBadge'
+import { SmartEntryByline, SmartEntryMetadata } from '../components/SmartEntryDetails'
+import { SmartFeedEntry, SmartFeedEntrySkeleton } from '../components/SmartFeedEntry'
 import { useAuthStore } from '../stores/authStore'
-import { useUIStore } from '../stores/uiStore'
+import { useUIStore, type SmartLayout } from '../stores/uiStore'
 import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import {
@@ -26,12 +28,16 @@ import {
   Sparkles,
   RefreshCw,
   ChevronDown,
+  ArrowLeft,
+  LayoutList,
+  List,
 } from 'lucide-react'
 import { formatDistanceToNow, isPast } from 'date-fns'
 import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
-import { indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
+import { findSurvivingReturnAnchor, indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
 import {
   buttonVariants,
+  cn,
   Alert,
   AlertTitle,
   AlertDescription,
@@ -48,11 +54,31 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@glean/ui'
 
 type FilterType = 'all' | 'unread' | 'smart' | 'read-later'
 
 const FILTER_ORDER: FilterType[] = ['all', 'unread', 'smart', 'read-later']
+const KEYBOARD_PREFETCH_THRESHOLD = 3
+
+interface FeedReturnState {
+  openedEntryId: string
+  entryId: string
+  order: string[]
+  scrollTop: number
+  entryOffsets: Record<string, number>
+  containerHeight: number
+  hasMeasuredLayout: boolean
+}
+
+function findEntryButton(container: HTMLElement, entryId: string): HTMLButtonElement | null {
+  for (const button of container.querySelectorAll<HTMLButtonElement>('button[data-entry-id]')) {
+    if (button.dataset.entryId === entryId) return button
+  }
+  return null
+}
 
 function timelineDate(publishedAt: string | null | undefined, createdAt?: string | null): Date {
   // Missing feed dates sort by when the article was fetched.
@@ -67,7 +93,7 @@ function timelineDate(publishedAt: string | null | undefined, createdAt?: string
  */
 export default function ReaderPage() {
   const { t } = useTranslation('reader')
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const selectedFeedId = searchParams.get('feed') || undefined
   const selectedFolderId = searchParams.get('folder') || undefined
   const entryIdFromUrl = searchParams.get('entry') || null
@@ -75,9 +101,10 @@ export default function ReaderPage() {
   const tabParam = searchParams.get('tab') as FilterType | null
   const isSmartView = viewParam === 'smart'
   const { user } = useAuthStore()
-  const { showPreferenceScore } = useUIStore()
+  const { showPreferenceScore, smartLayout, setSmartLayout } = useUIStore()
 
   const isGlobalSmart = isSmartView && !selectedFeedId && !selectedFolderId
+  const isSmartFeed = isGlobalSmart && smartLayout === 'feed'
 
   // Initialize filterType from URL parameter or default to 'unread'
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -88,6 +115,10 @@ export default function ReaderPage() {
   })
   const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null)
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(entryIdFromUrl)
+  const isSmartFeedReading = isSmartFeed && !!selectedEntryId
+  const feedReturnRef = useRef<FeedReturnState | null>(null)
+  const pendingKeyboardNextFromIdRef = useRef<string | null>(null)
+  const pendingKeyboardFetchSeenRef = useRef(false)
 
   // Store the original position data of the selected entry when it was first clicked
   // This ensures the entry stays in its original position even after like/dislike/bookmark actions
@@ -293,7 +324,7 @@ export default function ReaderPage() {
   useEffect(() => {
     const container = entryListRef.current
 
-    if (!loadMoreElement || !container || isLoading) return
+    if (!loadMoreElement || !container || isLoading || isSmartFeedReading) return
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -317,7 +348,14 @@ export default function ReaderPage() {
     }
     // The keyed list replaces this node on tab/feed changes, even when cached
     // query state stays the same. Reconnect whenever the actual target changes.
-  }, [loadMoreElement, hasNextPage, isFetchingNextPage, fetchNextPage, isLoading])
+  }, [
+    loadMoreElement,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    isLoading,
+    isSmartFeedReading,
+  ])
 
   // Reset filter when switching to smart view (default to unread)
   useEffect(() => {
@@ -346,9 +384,12 @@ export default function ReaderPage() {
       // Clear selected entry when switching views
       // This prevents showing an entry from a different feed/folder in the new view
       // Only clear if the change is not due to URL entry parameter
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
       if (!entryIdFromUrl) {
         setSelectedEntryId(null)
         selectedEntryOriginalDataRef.current = null
+        feedReturnRef.current = null
       }
 
       // Determine slide direction based on view change
@@ -374,10 +415,17 @@ export default function ReaderPage() {
 
   // Handle entry selection - automatically mark as read
   const handleSelectEntry = useCallback(
-    async (entry: EntryWithState) => {
+    (entry: EntryWithState) => {
       // On mobile, trigger entry list exit animation while opening reader
-      if (isMobile) {
+      if (isMobile && !isSmartFeed) {
         setIsExitingEntryList(true)
+      }
+      if (isSmartFeedReading && feedReturnRef.current) {
+        feedReturnRef.current = {
+          ...feedReturnRef.current,
+          entryId: entry.id,
+          order: entries.map((item) => item.id),
+        }
       }
       setSelectedEntryId(entry.id)
 
@@ -398,19 +446,134 @@ export default function ReaderPage() {
 
       // Auto-mark as read when selecting an unread entry
       if (!entry.is_read) {
-        await updateMutation.mutateAsync({
+        updateMutation.mutate({
           entryId: entry.id,
           data: { is_read: true },
         })
       }
     },
-    [entries, isMobile, updateMutation, usesSmartSorting]
+    [entries, isMobile, isSmartFeed, isSmartFeedReading, updateMutation, usesSmartSorting]
+  )
+
+  const clearSelectedEntry = (removeEntryParam = false) => {
+    if (removeEntryParam && entryIdFromUrl) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('entry')
+      setSearchParams(next, { replace: true })
+    }
+    pendingKeyboardNextFromIdRef.current = null
+    pendingKeyboardFetchSeenRef.current = false
+    setSelectedEntryId(null)
+    selectedEntryOriginalDataRef.current = null
+  }
+
+  const handleCloseEntry = () => {
+    if (!isSmartFeed && isMobile && selectedEntry) {
+      setIsFullscreen(false)
+      exitingEntryRef.current = selectedEntry
+      setIsExitingArticle(true)
+      setIsEnteringEntryList(true)
+    }
+    clearSelectedEntry(isSmartFeed)
+  }
+
+  const handleSmartLayoutChange = (layout: SmartLayout) => {
+    if (layout === smartLayout) return
+    clearSelectedEntry(true)
+    setIsFullscreen(false)
+    setSmartLayout(layout)
+    if (entryListRef.current) entryListRef.current.scrollTop = 0
+  }
+
+  useLayoutEffect(() => {
+    if (isSmartFeedReading || !feedReturnRef.current) return
+    const saved = feedReturnRef.current
+    feedReturnRef.current = null
+    const container = entryListRef.current
+    if (!isSmartFeed || !container) return
+
+    const currentIds = entries.map((entry) => entry.id)
+    const anchor = findSurvivingReturnAnchor(saved.order, saved.entryId, currentIds)
+    if (!anchor) {
+      container.scrollTop = 0
+      return
+    }
+
+    const anchorButton = findEntryButton(container, anchor.id)
+    if (!anchorButton) {
+      container.scrollTop = 0
+      return
+    }
+
+    if (anchor.relation === 'fallback') {
+      container.scrollTop = 0
+      anchorButton.focus({ preventScroll: true })
+      return
+    }
+
+    const containerRect = container.getBoundingClientRect()
+    const anchorRect = anchorButton.getBoundingClientRect()
+    const currentHasLayout = containerRect.height > 0 && anchorRect.height > 0
+
+    if (saved.hasMeasuredLayout && currentHasLayout) {
+      const rawDesiredTop =
+        anchor.relation === 'after'
+          ? saved.entryOffsets[saved.entryId]
+          : saved.entryOffsets[anchor.id]
+      const navigatedAway = saved.entryId !== saved.openedEntryId
+      const hasVisibleDesiredTop =
+        rawDesiredTop !== undefined &&
+        (!navigatedAway || (rawDesiredTop >= 0 && rawDesiredTop < saved.containerHeight))
+
+      if (hasVisibleDesiredTop) {
+        const desiredTop =
+          anchor.relation === 'self' && !navigatedAway ? rawDesiredTop : Math.max(0, rawDesiredTop)
+        const currentTop = anchorRect.top - containerRect.top
+        container.scrollTop = Math.max(0, container.scrollTop + (currentTop - desiredTop))
+      } else {
+        anchorButton.scrollIntoView?.({ block: 'nearest' })
+      }
+    } else {
+      // Fullscreen changes the available list width and height, which can clamp its scroll.
+      container.scrollTop = saved.scrollTop
+    }
+
+    anchorButton.focus({ preventScroll: true })
+  }, [entries, isSmartFeed, isSmartFeedReading])
+
+  const prefetchNextPageForKeyboard = useCallback(
+    (targetIndex: number) => {
+      if (
+        hasNextPage &&
+        !isFetchingNextPage &&
+        !error &&
+        targetIndex >= entries.length - KEYBOARD_PREFETCH_THRESHOLD
+      ) {
+        void fetchNextPage()
+      }
+    },
+    [entries.length, error, fetchNextPage, hasNextPage, isFetchingNextPage]
+  )
+
+  const selectEntryFromKeyboard = useCallback(
+    (nextEntry: EntryWithState, nextIndex: number, isNext: boolean) => {
+      handleSelectEntry(nextEntry)
+      const entryEl =
+        !isSmartFeed && entryListRef.current?.querySelector(`[data-entry-id="${nextEntry.id}"]`)
+      if (entryEl) {
+        entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+      if (isNext) {
+        prefetchNextPageForKeyboard(nextIndex)
+      }
+    },
+    [handleSelectEntry, isSmartFeed, prefetchNextPageForKeyboard]
   )
 
   // Keyboard navigation: arrow keys and j/k to switch between entries
   const handleKeyboardNavigation = useCallback(
     (e: KeyboardEvent) => {
-      if (!keyboardNavigationEnabled) return
+      if (!keyboardNavigationEnabled || (isSmartFeed && !selectedEntryId)) return
 
       // Ignore when focus is in an input, textarea, contenteditable, or any
       // interactive control that owns its own keyboard navigation (buttons,
@@ -447,24 +610,72 @@ export default function ReaderPage() {
       if (currentIndex === -1) {
         nextIndex = 0
       } else if (isNext) {
-        if (currentIndex >= entries.length - 1) return
+        if (currentIndex >= entries.length - 1) {
+          if (hasNextPage && !error) {
+            pendingKeyboardNextFromIdRef.current = selectedEntryId
+            pendingKeyboardFetchSeenRef.current = isFetchingNextPage
+            if (!isFetchingNextPage) {
+              void fetchNextPage()
+            }
+          }
+          return
+        }
         nextIndex = currentIndex + 1
       } else {
+        pendingKeyboardNextFromIdRef.current = null
+        pendingKeyboardFetchSeenRef.current = false
         if (currentIndex <= 0) return
         nextIndex = currentIndex - 1
       }
 
       const nextEntry = entries[nextIndex]
       if (nextEntry) {
-        handleSelectEntry(nextEntry)
-        const entryEl = entryListRef.current?.querySelector(`[data-entry-id="${nextEntry.id}"]`)
-        if (entryEl) {
-          entryEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-        }
+        pendingKeyboardNextFromIdRef.current = null
+        pendingKeyboardFetchSeenRef.current = false
+        selectEntryFromKeyboard(nextEntry, nextIndex, isNext)
       }
     },
-    [entries, selectedEntryId, keyboardNavigationEnabled, handleSelectEntry]
+    [
+      entries,
+      error,
+      fetchNextPage,
+      hasNextPage,
+      isFetchingNextPage,
+      isSmartFeed,
+      keyboardNavigationEnabled,
+      selectedEntryId,
+      selectEntryFromKeyboard,
+    ]
   )
+
+  useEffect(() => {
+    const pendingFromId = pendingKeyboardNextFromIdRef.current
+    if (!pendingFromId) return
+
+    if (pendingFromId !== selectedEntryId) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+      return
+    }
+
+    const currentIndex = entries.findIndex((entry) => entry.id === pendingFromId)
+    if (currentIndex >= 0 && currentIndex < entries.length - 1) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+      selectEntryFromKeyboard(entries[currentIndex + 1], currentIndex + 1, true)
+      return
+    }
+
+    if (isFetchingNextPage) {
+      pendingKeyboardFetchSeenRef.current = true
+      return
+    }
+
+    if (pendingKeyboardFetchSeenRef.current || !hasNextPage || error) {
+      pendingKeyboardNextFromIdRef.current = null
+      pendingKeyboardFetchSeenRef.current = false
+    }
+  }, [entries, error, hasNextPage, isFetchingNextPage, selectedEntryId, selectEntryFromKeyboard])
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyboardNavigation)
@@ -477,20 +688,31 @@ export default function ReaderPage() {
 
   // On mobile, show list OR reader, not both
   // Keep entry list visible during exit/enter animation
-  const showEntryList = !isMobile || !selectedEntryId || isExitingEntryList || isEnteringEntryList
-  const showReader = !isMobile || !!selectedEntryId
+  const showEntryList =
+    isSmartFeed ||
+    ((isMobile || !isFullscreen) &&
+      (!isMobile || !selectedEntryId || isExitingEntryList || isEnteringEntryList))
+  const showReader = isSmartFeed
+    ? isSmartFeedReading
+    : !isMobile || !!selectedEntryId || isExitingArticle
 
   return (
     <div
-      className="flex h-full max-md:relative max-md:overflow-hidden"
+      className="relative flex h-full max-md:overflow-hidden"
       data-reader-active={selectedEntryId ? '' : undefined}
+      data-smart-feed-reading={isSmartFeedReading ? '' : undefined}
     >
       {/* Entry list */}
-      {(isMobile || !isFullscreen) && showEntryList && (
+      {showEntryList && (
         <>
           <div
-            className={`border-border bg-card/50 relative flex min-w-0 flex-col border-r ${
-              isMobile
+            inert={isSmartFeedReading}
+            aria-hidden={isSmartFeedReading || undefined}
+            className={cn(
+              'relative flex min-w-0 flex-col',
+              isSmartFeed ? 'bg-background flex-1' : 'border-border bg-card/50 border-r',
+              isSmartFeedReading && 'invisible',
+              isMobile && !isSmartFeed
                 ? `absolute inset-0 z-10 w-full ${
                     isExitingEntryList
                       ? 'entry-list-transition-exit'
@@ -499,15 +721,15 @@ export default function ReaderPage() {
                         : ''
                   }`
                 : ''
-            }`}
+            )}
             style={
-              !isMobile
+              !isMobile && !isSmartFeed
                 ? { width: `${entriesWidth}px`, minWidth: '280px', maxWidth: '500px' }
                 : undefined
             }
             onAnimationEnd={(e) => {
               // Only handle the entry list animation end, not nested animations
-              if (isMobile && e.currentTarget === e.target) {
+              if (isMobile && !isSmartFeed && e.currentTarget === e.target) {
                 if (isExitingEntryList) {
                   setIsExitingEntryList(false)
                 }
@@ -518,23 +740,13 @@ export default function ReaderPage() {
             }}
           >
             {/* Filters */}
-            <div className="border-border bg-card border-b px-3 py-2">
+            <div className={cn('border-border bg-card border-b', !isSmartFeed && 'px-3 py-2')}>
               {isGlobalSmart ? (
-                <div className="bg-primary/5 flex min-w-0 items-center gap-2 rounded-lg px-3 py-1">
-                  <Sparkles className="text-primary h-4 w-4 shrink-0" />
-                  <span className="text-primary text-sm font-medium">{t('smart.title')}</span>
-                  <span className="text-muted-foreground text-xs">{t('smart.description')}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto shrink-0"
-                    aria-label={t('smart.refresh')}
-                    title={t('smart.refresh')}
-                    onClick={() => void restart()}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                <SmartHeader
+                  layout={smartLayout}
+                  onLayoutChange={handleSmartLayoutChange}
+                  onRefresh={restart}
+                />
               ) : isMobile ? (
                 <div className="flex items-center gap-2">
                   <FilterDropdownMenu filterType={filterType} onFilterChange={handleFilterChange} />
@@ -580,19 +792,30 @@ export default function ReaderPage() {
             <div ref={entryListRef} className="flex-1 overflow-y-auto">
               <div
                 key={`${selectedFeedId || 'all'}-${selectedFolderId || 'none'}-${filterType}-${viewParam || 'timeline'}`}
-                className={`feed-content-transition ${
+                className={cn(
+                  'feed-content-transition',
+                  isSmartFeed && 'border-border mx-auto min-h-full max-w-2xl sm:border-x',
                   slideDirection === 'right'
                     ? 'animate-slide-from-right'
                     : slideDirection === 'left'
                       ? 'animate-slide-from-left'
                       : ''
-                }`}
+                )}
               >
                 {isLoading && (
-                  <div className="divide-border/40 divide-y px-1 py-0.5">
-                    {Array.from({ length: 5 }).map((_, index) => (
-                      <EntryListItemSkeleton key={index} />
-                    ))}
+                  <div
+                    className={cn(
+                      'divide-y',
+                      isSmartFeed ? 'divide-border' : 'divide-border/40 px-1 py-0.5'
+                    )}
+                  >
+                    {Array.from({ length: 5 }).map((_, index) =>
+                      isSmartFeed ? (
+                        <SmartFeedEntrySkeleton key={index} />
+                      ) : (
+                        <EntryListItemSkeleton key={index} />
+                      )
+                    )}
                   </div>
                 )}
 
@@ -625,23 +848,66 @@ export default function ReaderPage() {
                   </div>
                 )}
 
-                <div className="divide-border/40 divide-y px-1 py-0.5">
-                  {entries.map((entry, index) => (
-                    <EntryListItem
-                      key={entry.id}
-                      entry={entry}
-                      isSelected={selectedEntryId === entry.id}
-                      onClick={() => handleSelectEntry(entry)}
-                      style={{ animationDelay: `${index * 0.03}s` }}
-                      showFeedInfo={!selectedFeedId}
-                      showReadLaterRemaining={
-                        filterType === 'read-later' &&
-                        (user?.settings?.show_read_later_remaining ?? true)
-                      }
-                      showPreferenceScore={showPreferenceScore}
-                      dataEntryId={entry.id}
-                    />
-                  ))}
+                <div
+                  className={cn(
+                    'divide-y',
+                    isSmartFeed ? 'divide-border' : 'divide-border/40 px-1 py-0.5'
+                  )}
+                >
+                  {entries.map((entry, index) =>
+                    isSmartFeed ? (
+                      <SmartFeedEntry
+                        key={entry.id}
+                        entry={entry}
+                        onClick={(event) => {
+                          const container = entryListRef.current
+                          const containerRect = container?.getBoundingClientRect()
+                          const buttonRect = event.currentTarget.getBoundingClientRect()
+                          const hasMeasuredLayout =
+                            !!containerRect && containerRect.height > 0 && buttonRect.height > 0
+                          const entryOffsets: Record<string, number> = {}
+                          if (container && containerRect && hasMeasuredLayout) {
+                            for (const card of container.querySelectorAll<HTMLButtonElement>(
+                              'button[data-entry-id]'
+                            )) {
+                              const id = card.dataset.entryId
+                              if (id) {
+                                entryOffsets[id] =
+                                  card.getBoundingClientRect().top - containerRect.top
+                              }
+                            }
+                          }
+                          feedReturnRef.current = {
+                            openedEntryId: entry.id,
+                            entryId: entry.id,
+                            order: entries.map((item) => item.id),
+                            scrollTop: container?.scrollTop ?? 0,
+                            entryOffsets,
+                            containerHeight: containerRect?.height ?? 0,
+                            hasMeasuredLayout,
+                          }
+                          handleSelectEntry(entry)
+                        }}
+                        score={showPreferenceScore && <EntryPreferenceScore entry={entry} inline />}
+                      />
+                    ) : (
+                      <EntryListItem
+                        key={entry.id}
+                        entry={entry}
+                        isSelected={selectedEntryId === entry.id}
+                        onClick={() => handleSelectEntry(entry)}
+                        style={{ animationDelay: `${index * 0.03}s` }}
+                        showFeedInfo={!selectedFeedId}
+                        showReadLaterRemaining={
+                          filterType === 'read-later' &&
+                          (user?.settings?.show_read_later_remaining ?? true)
+                        }
+                        showPreferenceScore={showPreferenceScore}
+                        smart={isGlobalSmart}
+                        dataEntryId={entry.id}
+                      />
+                    )
+                  )}
                 </div>
 
                 {/* Intersection observer target for infinite scroll */}
@@ -670,7 +936,7 @@ export default function ReaderPage() {
               </div>
             </div>
             {/* Resize handle - desktop only, positioned inside container */}
-            {!isMobile && (
+            {!isMobile && !isSmartFeed && (
               <ResizeHandle
                 onResize={(delta) =>
                   setEntriesWidth((w) => Math.max(280, Math.min(500, w + delta)))
@@ -682,15 +948,17 @@ export default function ReaderPage() {
       )}
 
       {/* Reading pane */}
-      {(showReader || isExitingArticle) && (
+      {showReader && (
         <div
           key={selectedEntryId || exitingEntryRef.current?.id || 'empty'}
           className={`flex min-w-0 flex-1 flex-col ${
-            isMobile
-              ? `absolute inset-0 z-20 ${isExitingArticle ? 'reader-transition-exit' : 'reader-transition'}`
-              : isExitingArticle
-                ? 'reader-transition-exit'
-                : 'reader-transition'
+            isSmartFeed
+              ? 'reader-transition absolute inset-0 z-20'
+              : isMobile
+                ? `absolute inset-0 z-20 ${isExitingArticle ? 'reader-transition-exit' : 'reader-transition'}`
+                : isExitingArticle
+                  ? 'reader-transition-exit'
+                  : 'reader-transition'
           }`}
           onAnimationEnd={(event) => {
             if (isExitingArticle && event.target === event.currentTarget) {
@@ -699,27 +967,29 @@ export default function ReaderPage() {
             }
           }}
         >
+          {isSmartFeed && !selectedEntry && (
+            <div className="border-border bg-card border-b px-4 py-2">
+              <Button variant="ghost" size="sm" onClick={handleCloseEntry}>
+                <ArrowLeft data-icon="inline-start" />
+                {t('smart.backToFeed')}
+              </Button>
+            </div>
+          )}
           {isLoadingEntry && selectedEntryId ? (
             <ArticleReaderSkeleton />
-          ) : selectedEntry || exitingEntryRef.current ? (
+          ) : selectedEntry || (!isSmartFeed && exitingEntryRef.current) ? (
             <ArticleReader
               entry={(selectedEntry || exitingEntryRef.current)!}
-              onClose={() => {
-                if (isMobile && selectedEntry) {
-                  setIsFullscreen(false)
-                  exitingEntryRef.current = selectedEntry
-                  setIsExitingArticle(true)
-                  setIsEnteringEntryList(true)
-                  setSelectedEntryId(null)
-                  selectedEntryOriginalDataRef.current = null
-                } else {
-                  setSelectedEntryId(null)
-                  selectedEntryOriginalDataRef.current = null
-                }
-              }}
+              onClose={handleCloseEntry}
+              backLabel={isSmartFeed ? t('smart.backToFeed') : undefined}
+              showFullscreenButton={isSmartFeed ? false : undefined}
               isFullscreen={isFullscreen}
               onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
             />
+          ) : isSmartFeed ? (
+            <div className="bg-background flex flex-1 items-center justify-center px-4 text-center">
+              <p className="text-muted-foreground">{t('article.noContent')}</p>
+            </div>
           ) : isMobile ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
               <p className="text-muted-foreground">{t('article.noContent')}</p>
@@ -824,6 +1094,54 @@ function formatRemainingTime(readLaterUntil: string | null): string | null {
   return formatDistanceToNow(untilDate, { addSuffix: false })
 }
 
+function EntryPreferenceScore({
+  entry,
+  inline = false,
+}: {
+  entry: EntryWithState
+  inline?: boolean
+}) {
+  const { t } = useTranslation('reader')
+  const score = entry.preference_score
+  if (score == null) return null
+
+  const label = score.toFixed(0)
+  const title = [
+    t('smart.score', { score: label }),
+    entry.recommendation_reason && t(`smart.reasons.${entry.recommendation_reason}`),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  if (inline) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 font-medium tabular-nums"
+        title={title}
+      >
+        <Sparkles className="size-3" aria-hidden="true" />
+        {label}
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className={cn(
+        'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums',
+        score >= 70
+          ? 'bg-green-500/10 text-green-500'
+          : score >= 50
+            ? 'bg-amber-500/10 text-amber-500'
+            : 'bg-muted text-muted-foreground'
+      )}
+      title={title}
+    >
+      {label}
+    </span>
+  )
+}
+
 function EntryListItem({
   entry,
   isSelected,
@@ -832,6 +1150,7 @@ function EntryListItem({
   showFeedInfo = false,
   showReadLaterRemaining = false,
   showPreferenceScore = false,
+  smart = false,
   dataEntryId,
 }: {
   entry: EntryWithState
@@ -841,20 +1160,33 @@ function EntryListItem({
   showFeedInfo?: boolean
   showReadLaterRemaining?: boolean
   showPreferenceScore?: boolean
+  smart?: boolean
   dataEntryId?: string
 }) {
-  const { t } = useTranslation('reader')
-  const scoreTitle =
-    entry.preference_score == null
-      ? undefined
-      : [
-          t('smart.score', { score: entry.preference_score.toFixed(0) }),
-          entry.recommendation_reason && t(`smart.reasons.${entry.recommendation_reason}`),
-        ]
-          .filter(Boolean)
-          .join(' · ')
   const remainingTime = showReadLaterRemaining ? formatRemainingTime(entry.read_later_until) : null
   const summary = stripHtmlTags(stripFeedMetadataHtml(entry.summary || ''))
+  const showReadLater = entry.read_later && !showReadLaterRemaining
+  const status = (entry.is_liked != null || showReadLater || remainingTime) && (
+    <>
+      {entry.is_liked === true && <Heart className="size-3.5 fill-current text-red-500" />}
+      {entry.is_liked === false && (
+        <ThumbsDown className="text-muted-foreground size-3.5 fill-current" />
+      )}
+      {showReadLater && <Clock className="text-primary size-3.5" />}
+      {remainingTime && (
+        <span
+          className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
+            remainingTime === 'Expired'
+              ? 'bg-destructive/10 text-destructive'
+              : 'bg-primary/10 text-primary'
+          }`}
+        >
+          <Timer className="size-2.5" />
+          {remainingTime}
+        </span>
+      )}
+    </>
+  )
   return (
     <div
       onClick={onClick}
@@ -867,21 +1199,33 @@ function EntryListItem({
       style={style}
     >
       <div
-        className={`rounded-lg px-2.5 py-2 transition-all duration-200 ${
-          isSelected ? 'bg-primary/8 ring-primary/20 ring-1' : 'hover:bg-accent/40'
-        }`}
+        className={cn(
+          'rounded-lg px-2.5 py-2 transition-all duration-200',
+          smart && 'py-2.5',
+          isSelected ? 'bg-primary/8' : 'hover:bg-accent/40',
+          isSelected && !smart && 'ring-primary/20 ring-1'
+        )}
       >
         <div className="flex gap-2.5">
           {/* Unread indicator */}
           <div className="mt-1.5 flex w-2.5 shrink-0 justify-center">
             {!entry.is_read && (
-              <div className="bg-primary shadow-primary/40 h-1.5 w-1.5 rounded-full shadow-[0_0_6px_1px]" />
+              <div
+                className={cn(
+                  'bg-primary size-1.5 rounded-full',
+                  !smart && 'shadow-primary/40 shadow-[0_0_6px_1px]'
+                )}
+              />
             )}
           </div>
 
           <div className="min-w-0 flex-1">
             {/* Feed info for aggregated views */}
-            {showFeedInfo && (entry.feed_title || entry.feed_icon_url) && (
+            {smart ? (
+              <div className="mb-1.5">
+                <SmartEntryByline entry={entry} compact />
+              </div>
+            ) : showFeedInfo && (entry.feed_title || entry.feed_icon_url) ? (
               <div className="mb-1 flex items-center gap-1.5">
                 {entry.feed_icon_url ? (
                   <img
@@ -896,7 +1240,7 @@ function EntryListItem({
                   {entry.feed_title || 'Unknown feed'}
                 </span>
               </div>
-            )}
+            ) : null}
 
             <h3
               className={`mb-1 line-clamp-2 text-[15px] leading-snug transition-colors duration-200 ${
@@ -911,70 +1255,106 @@ function EntryListItem({
             {/* Fixed height summary area for consistent card size */}
             <div className="mb-1.5 h-10">
               {summary && (
-                <p className="text-muted-foreground/70 line-clamp-2 text-sm leading-relaxed">
+                <p
+                  className={cn(
+                    'line-clamp-2 text-sm',
+                    smart
+                      ? 'text-muted-foreground leading-5 wrap-anywhere'
+                      : 'text-muted-foreground/70 leading-relaxed'
+                  )}
+                >
                   {summary}
                 </p>
               )}
             </div>
 
-            <div className="text-muted-foreground/80 flex flex-wrap items-center gap-2 text-xs">
-              {entry.author && <span className="max-w-[120px] truncate">{entry.author}</span>}
-              {entry.author && entry.published_at && (
-                <span className="text-muted-foreground/40">·</span>
-              )}
-              {entry.published_at && (
-                <ReadingDate
-                  value={entry.published_at}
-                  absoluteFormat="MMM d"
-                  className="tabular-nums"
-                />
-              )}
+            {smart ? (
+              <SmartEntryMetadata
+                entry={entry}
+                score={showPreferenceScore && <EntryPreferenceScore entry={entry} inline />}
+                status={status}
+              />
+            ) : (
+              <div className="text-muted-foreground/80 flex flex-wrap items-center gap-2 text-xs">
+                {entry.author && <span className="max-w-[120px] truncate">{entry.author}</span>}
+                {entry.author && entry.published_at && (
+                  <span className="text-muted-foreground/40">·</span>
+                )}
+                {entry.published_at && (
+                  <ReadingDate
+                    value={entry.published_at}
+                    absoluteFormat="MMM d"
+                    className="tabular-nums"
+                  />
+                )}
 
-              <div className="ml-auto flex max-w-full min-w-0 items-center gap-1.5">
-                {/* Recommendation score */}
-                {showPreferenceScore &&
-                  entry.preference_score !== null &&
-                  entry.preference_score !== undefined && (
-                    <span
-                      className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
-                        entry.preference_score >= 70
-                          ? 'bg-green-500/10 text-green-500'
-                          : entry.preference_score >= 50
-                            ? 'bg-amber-500/10 text-amber-500'
-                            : 'bg-muted text-muted-foreground'
-                      }`}
-                      title={scoreTitle}
-                    >
-                      {entry.preference_score.toFixed(0)}
-                    </span>
-                  )}
-                {entry.is_liked === true && (
-                  <Heart className="h-3.5 w-3.5 fill-current text-red-500" />
-                )}
-                {entry.is_liked === false && (
-                  <ThumbsDown className="text-muted-foreground h-3.5 w-3.5 fill-current" />
-                )}
-                {entry.read_later && !showReadLaterRemaining && (
-                  <Clock className="text-primary h-3.5 w-3.5" />
-                )}
-                {remainingTime && (
-                  <span
-                    className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
-                      remainingTime === 'Expired'
-                        ? 'bg-destructive/10 text-destructive'
-                        : 'bg-primary/10 text-primary'
-                    }`}
-                  >
-                    <Timer className="h-2.5 w-2.5" />
-                    {remainingTime}
-                  </span>
-                )}
-                <ClassificationBadge result={entry.classification} />
+                <div className="ml-auto flex max-w-full min-w-0 items-center gap-1.5">
+                  {/* Recommendation score */}
+                  {showPreferenceScore && <EntryPreferenceScore entry={entry} />}
+                  {status}
+                  <ClassificationBadge result={entry.classification} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SmartHeader({
+  layout,
+  onLayoutChange,
+  onRefresh,
+}: {
+  layout: SmartLayout
+  onLayoutChange: (layout: SmartLayout) => void
+  onRefresh: () => void
+}) {
+  const { t } = useTranslation('reader')
+
+  return (
+    <div
+      className={cn(
+        '@container flex min-w-0 items-center gap-2',
+        layout === 'feed'
+          ? 'border-border mx-auto max-w-2xl px-4 py-3 sm:border-x sm:px-6'
+          : 'px-2 py-1'
+      )}
+    >
+      <Sparkles className="text-primary size-4 shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-foreground truncate text-sm font-semibold">{t('smart.title')}</span>
+        <span className="text-muted-foreground truncate text-xs">{t('smart.description')}</span>
+      </div>
+      <ToggleGroup
+        aria-label={t('smart.layout')}
+        variant="outline"
+        size="sm"
+        value={[layout]}
+        onValueChange={([value]) => {
+          if (value === 'feed' || value === 'list') onLayoutChange(value)
+        }}
+      >
+        <ToggleGroupItem value="feed" aria-label={t('smart.feedView')} title={t('smart.feedView')}>
+          <LayoutList />
+          <span className="hidden text-xs @[24rem]:inline">{t('smart.feedView')}</span>
+        </ToggleGroupItem>
+        <ToggleGroupItem value="list" aria-label={t('smart.listView')} title={t('smart.listView')}>
+          <List />
+          <span className="hidden text-xs @[24rem]:inline">{t('smart.listView')}</span>
+        </ToggleGroupItem>
+      </ToggleGroup>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={t('smart.refresh')}
+        title={t('smart.refresh')}
+        onClick={() => void onRefresh()}
+      >
+        <RefreshCw />
+      </Button>
     </div>
   )
 }

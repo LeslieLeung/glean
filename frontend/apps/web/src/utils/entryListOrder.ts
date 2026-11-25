@@ -25,3 +25,42 @@ export function indexBeforeSurvivingNeighbor(
   }
   return bounded
 }
+
+export type SurvivingReturnAnchor = {
+  id: string
+  relation: 'self' | 'after' | 'before' | 'fallback'
+} | null
+
+/**
+ * Pick the card to anchor and focus when returning to a feed list after an
+ * unread refetch may have removed the article that was opened.
+ *
+ * Prefers the article itself, then the first surviving entry after it
+ * (which now occupies its slot), then the nearest surviving entry before it,
+ * and finally the first current entry if none of the previous items remain.
+ */
+export function findSurvivingReturnAnchor(
+  savedIds: readonly string[],
+  targetId: string,
+  currentIds: readonly string[]
+): SurvivingReturnAnchor {
+  const currentSet = new Set(currentIds)
+  if (currentSet.has(targetId)) {
+    return { id: targetId, relation: 'self' }
+  }
+
+  const targetPos = savedIds.indexOf(targetId)
+  if (targetPos >= 0) {
+    for (const id of savedIds.slice(targetPos + 1)) {
+      if (currentSet.has(id)) return { id, relation: 'after' }
+    }
+    for (let i = targetPos - 1; i >= 0; i -= 1) {
+      if (currentSet.has(savedIds[i])) return { id: savedIds[i], relation: 'before' }
+    }
+  }
+
+  if (currentIds.length > 0) {
+    return { id: currentIds[0], relation: 'fallback' }
+  }
+  return null
+}
