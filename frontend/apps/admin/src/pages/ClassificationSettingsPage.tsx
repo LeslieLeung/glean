@@ -37,9 +37,9 @@ import {
   type SystemOneProviderId,
 } from '../hooks/useClassificationConfig'
 
-const PROVIDER_IDS: readonly SystemOneProviderId[] = ['jev', 'clef', 'laya', 'custom']
+const BUILTIN_PROVIDER_IDS = ['jev', 'clef', 'laya', 'custom'] as const
 
-const FALLBACK_DESCRIPTORS: Record<SystemOneProviderId, ProviderDescriptor> = {
+const FALLBACK_DESCRIPTORS: Record<string, ProviderDescriptor> = {
   jev: {
     id: 'jev',
     name: 'Jev',
@@ -90,25 +90,51 @@ const FALLBACK_DESCRIPTORS: Record<SystemOneProviderId, ProviderDescriptor> = {
   },
 }
 
-function settingsFrom(config: ClassificationConfigResponse): ClassificationSettings {
-  const providers = Object.fromEntries(
-    PROVIDER_IDS.map((id) => {
-      const profile = config.providers[id] ?? config.defaults.providers[id]
+function providerIdsFrom(config: ClassificationConfigResponse): SystemOneProviderId[] {
+  return Array.from(
+    new Set([
+      ...(config.available_providers.length > 0
+        ? config.available_providers.map((item) => item.id)
+        : BUILTIN_PROVIDER_IDS),
+      config.provider,
+      ...Object.keys(config.providers),
+      ...Object.keys(config.defaults.providers),
+    ])
+  )
+}
+
+function buildProvidersMap(
+  config: ClassificationConfigResponse,
+  source: Partial<Record<SystemOneProviderId, ProviderProfile>>
+): Record<SystemOneProviderId, ProviderProfile> {
+  const descriptorMap = new Map(config.available_providers.map((item) => [item.id, item]))
+  return Object.fromEntries(
+    providerIdsFrom(config).map((id) => {
+      const descriptor = descriptorMap.get(id) ?? FALLBACK_DESCRIPTORS[id]
+      const profile = source[id] ?? config.defaults.providers[id]
       return [
         id,
-        {
-          base_url: profile?.base_url ?? null,
-          model: profile?.model ?? null,
-          account_id: profile?.account_id ?? null,
-        },
+        profile
+          ? {
+              base_url: profile.base_url ?? null,
+              model: profile.model ?? null,
+              account_id: profile.account_id ?? null,
+            }
+          : {
+              base_url: descriptor?.default_base_url ?? null,
+              model: descriptor?.default_model ?? null,
+              account_id: null,
+            },
       ]
     })
-  ) as Record<SystemOneProviderId, ProviderProfile>
+  )
+}
 
+function settingsFrom(config: ClassificationConfigResponse): ClassificationSettings {
   return {
     enabled: config.enabled,
     provider: config.provider,
-    providers,
+    providers: buildProvidersMap(config, config.providers),
     ai_prompt: config.ai_prompt,
     classify_content: config.classify_content,
     content_prompt: config.content_prompt,
@@ -152,8 +178,22 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
   const reclassify = useReclassifyEntries()
   const status = useClassificationStatus(config.enabled)
 
+  const activeProvider = form.provider
+  const availableProviders =
+    config.available_providers.length > 0
+      ? config.available_providers
+      : BUILTIN_PROVIDER_IDS.map((id) => FALLBACK_DESCRIPTORS[id])
+  const providerIds = Array.from(
+    new Set([
+      ...availableProviders.map((item) => item.id),
+      ...Object.keys(form.providers),
+      ...Object.keys(draftKeys),
+      ...Object.keys(clearedKeys),
+    ])
+  )
+
   const providerKeyUpdates: Partial<Record<SystemOneProviderId, string>> = {}
-  for (const pid of PROVIDER_IDS) {
+  for (const pid of providerIds) {
     const draft = draftKeys[pid]
     if (draft) {
       providerKeyUpdates[pid] = draft
@@ -166,15 +206,17 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
   const dirty = JSON.stringify(form) !== saved || hasKeyEdits
   const busy = save.isPending || test.isPending || reclassify.isPending
 
-  const activeProvider = form.provider
-  const availableProviders =
-    config.available_providers.length > 0
-      ? config.available_providers
-      : PROVIDER_IDS.map((id) => FALLBACK_DESCRIPTORS[id])
-  const activeDescriptor =
-    availableProviders.find((item) => item.id === activeProvider) ??
-    FALLBACK_DESCRIPTORS[activeProvider]
-  const activeProfile = form.providers[activeProvider]
+  const activeDescriptor = availableProviders.find((item) => item.id === activeProvider) ??
+    FALLBACK_DESCRIPTORS[activeProvider] ?? {
+      ...FALLBACK_DESCRIPTORS.custom,
+      id: activeProvider,
+      name: activeProvider,
+    }
+  const activeProfile = form.providers[activeProvider] ?? {
+    base_url: activeDescriptor.default_base_url,
+    model: activeDescriptor.default_model,
+    account_id: null,
+  }
   const activeKey = draftKeys[activeProvider] ?? ''
   const activeKeyCleared = clearedKeys[activeProvider] === true
   const activeKeySaved = config.providers[activeProvider]?.api_key_set ?? false
@@ -207,16 +249,21 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
   }
 
   function changeProviderProfile(updates: Partial<ProviderProfile>) {
-    setForm((current) => ({
-      ...current,
-      providers: {
-        ...current.providers,
-        [current.provider]: {
-          ...current.providers[current.provider],
-          ...updates,
+    setForm((current) => {
+      const existing: ProviderProfile | undefined = current.providers[current.provider]
+      return {
+        ...current,
+        providers: {
+          ...current.providers,
+          [current.provider]: {
+            base_url: existing?.base_url ?? null,
+            model: existing?.model ?? null,
+            account_id: existing?.account_id ?? null,
+            ...updates,
+          },
         },
-      },
-    }))
+      }
+    })
     setMessage(null)
   }
 
@@ -325,7 +372,7 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
                 id="classification-provider"
                 className="border-border bg-background text-foreground focus-visible:border-ring focus-visible:ring-ring/24 h-9 w-full rounded-lg border px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
                 value={activeProvider}
-                onChange={(event) => changeProvider(event.target.value as SystemOneProviderId)}
+                onChange={(event) => changeProvider(event.target.value)}
               >
                 {availableProviders.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -333,9 +380,11 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
                   </option>
                 ))}
               </select>
-              <FieldDescription>
-                {t(`classification.providers.${activeProvider}.hint`)}
-              </FieldDescription>
+              {activeProvider in FALLBACK_DESCRIPTORS && (
+                <FieldDescription>
+                  {t(`classification.providers.${activeProvider}.hint`)}
+                </FieldDescription>
+              )}
             </Field>
             <Field>
               <FieldLabel htmlFor="classification-model">{t('classification.model')}</FieldLabel>
@@ -748,7 +797,10 @@ function ClassificationForm({ config }: { config: ClassificationConfigResponse }
           variant="ghost"
           disabled={busy}
           onClick={() => {
-            setForm(config.defaults)
+            setForm({
+              ...config.defaults,
+              providers: buildProvidersMap(config, config.defaults.providers),
+            })
             setDraftKeys({})
             setClearedKeys({})
             setExpandedCategoryIds(new Set())

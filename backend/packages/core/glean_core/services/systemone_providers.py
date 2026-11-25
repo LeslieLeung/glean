@@ -13,6 +13,7 @@ from glean_core.schemas.systemone import (
     ProviderProfile,
     SystemOneResponse,
     normalize_base_url,
+    set_provider_descriptor_source,
 )
 
 
@@ -265,6 +266,7 @@ class SystemOneProviderRegistry:
 
 
 provider_registry = SystemOneProviderRegistry()
+set_provider_descriptor_source(lambda: provider_registry.list_descriptors())
 
 
 def get_provider(provider_id: str) -> SystemOneProvider:

@@ -8,8 +8,14 @@ import pytest
 from arq import Retry
 
 from glean_core.schemas.jev import EntryClassification, JevConfig
-from glean_core.schemas.systemone import ProviderProfile, SystemOneConfig
+from glean_core.schemas.systemone import ProviderDescriptor, ProviderProfile, SystemOneConfig
 from glean_core.services import TypedConfigService
+from glean_core.services.systemone_providers import (
+    ResolvedConnection,
+    SystemOneProvider,
+    provider_registry,
+    register_provider,
+)
 from glean_database.models import Entry, Feed
 from glean_worker.tasks import jev_classification as worker
 
@@ -159,3 +165,44 @@ async def test_unconfigured_clef_does_not_enqueue_or_classify(context):
     assert await worker.classify_entry({}, entry.id) == {"status": "disabled"}
     redis.enqueue_job.assert_not_awaited()
     classify.assert_not_awaited()
+
+
+async def test_registered_plugin_provider_enqueues_classifies_and_reports_error_name(
+    db_session, context, monkeypatch
+):
+    class CustomAcmeProvider(SystemOneProvider):
+        descriptor = ProviderDescriptor(
+            id="acme",
+            name="Acme Decision",
+            default_base_url="https://acme.example",
+            default_model="acme-v1",
+            requires_api_key=False,
+        )
+
+        def inference_url(self, connection: ResolvedConnection) -> str:
+            return f"{connection.base_url}/v1/systemone"
+
+    monkeypatch.setattr(provider_registry, "_providers", dict(provider_registry._providers))
+    register_provider(CustomAcmeProvider())
+
+    entry, service, classify = context
+    await service.set(
+        SystemOneConfig,
+        SystemOneConfig(enabled=True, provider="acme", version="acme-1"),
+    )
+    classify.return_value = EntryClassification(
+        label="ai", score=0.95, model_id="acme-v1", provider="acme"
+    )
+    redis = AsyncMock()
+    assert await worker.enqueue_jev_classifications({"redis": redis}) == {"queued": 1}
+    assert await worker.classify_entry({}, entry.id) == {"status": "done"}
+    await db_session.refresh(entry)
+    assert entry.classification_result["provider"] == "acme"
+    assert entry.classification_result["model_id"] == "acme-v1"
+
+    entry.classification_status = "pending"
+    await db_session.commit()
+    classify.side_effect = httpx.ReadTimeout("timeout")
+    assert await worker.classify_entry({"job_try": 3}, entry.id) == {"status": "failed"}
+    await db_session.refresh(entry)
+    assert entry.classification_error == "Could not connect to Acme Decision"

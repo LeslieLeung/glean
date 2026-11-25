@@ -50,9 +50,8 @@ async def _candidate(
         if field_name in request.model_fields_set:
             active_updates[field_name] = getattr(request, field_name)
     if active_updates:
-        merged_providers[target_provider] = merged_providers[target_provider].model_copy(
-            update=active_updates
-        )
+        existing_active = merged_providers.get(target_provider, ProviderProfile())
+        merged_providers[target_provider] = existing_active.model_copy(update=active_updates)
 
     merged_keys: dict[ProviderId, str] = dict(current.provider_api_keys)
     if request.provider_api_keys is not None:

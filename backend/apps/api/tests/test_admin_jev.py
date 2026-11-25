@@ -5,8 +5,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from glean_core.schemas.jev import JevConfig
-from glean_core.schemas.systemone import ProviderProfile, SystemOneConfig
+from glean_core.schemas.systemone import ProviderDescriptor, ProviderProfile, SystemOneConfig
 from glean_core.services import TypedConfigService
+from glean_core.services.systemone_providers import (
+    ResolvedConnection,
+    SystemOneProvider,
+    provider_registry,
+    register_provider,
+)
 from glean_database.models import Entry, Feed, Subscription, SystemConfig
 
 
@@ -301,3 +307,104 @@ async def test_reclassification_resets_status_and_changes_generation(
     await db_session.refresh(classified_entry)
     assert classified_entry.classification_status == "pending"
     assert (await service.get(SystemOneConfig)).version != "old"
+
+
+async def test_registered_plugin_provider_and_unknown_provider_validation(
+    client, admin_headers, db_session, monkeypatch
+):
+    class CustomAcmeProvider(SystemOneProvider):
+        descriptor = ProviderDescriptor(
+            id="acme",
+            name="Acme Decision",
+            default_base_url="https://acme.example",
+            default_model="acme-v1",
+            suggested_models=["acme-v1"],
+            requires_api_key=True,
+        )
+
+        def inference_url(self, connection: ResolvedConnection) -> str:
+            return f"{connection.base_url}/v1/systemone"
+
+    monkeypatch.setattr(provider_registry, "_providers", dict(provider_registry._providers))
+    register_provider(CustomAcmeProvider())
+
+    base = "/api/admin/classification"
+    config_res = await client.get(f"{base}/config", headers=admin_headers)
+    assert config_res.status_code == 200
+    body = config_res.json()
+    assert any(item["id"] == "acme" for item in body["available_providers"])
+    assert body["providers"]["acme"] == {
+        "base_url": "https://acme.example",
+        "model": "acme-v1",
+        "account_id": None,
+        "api_key_set": False,
+    }
+    assert body["defaults"]["providers"]["acme"] == {
+        "base_url": "https://acme.example",
+        "model": "acme-v1",
+        "account_id": None,
+    }
+
+    with patch(
+        "glean_api.routers.admin_classification.test_connection", new_callable=AsyncMock
+    ) as test:
+        test_res = await client.post(
+            f"{base}/test",
+            json={
+                "provider": "acme",
+                "base_url": "https://draft.acme.example",
+                "model": "acme-v2",
+                "api_key": "acme-draft",
+            },
+            headers=admin_headers,
+        )
+    assert test_res.status_code == 200
+    candidate = test.call_args.args[0]
+    assert candidate.provider == "acme"
+    assert candidate.base_url == "https://draft.acme.example"
+    assert candidate.model == "acme-v2"
+    assert candidate.api_key == "acme-draft"
+
+    save_res = await client.put(
+        f"{base}/config",
+        json={
+            "enabled": True,
+            "provider": "acme",
+            "providers": {"acme": {"base_url": "https://prod.acme.example", "model": "acme-v2"}},
+            "provider_api_keys": {"acme": "acme-secret"},
+        },
+        headers=admin_headers,
+    )
+    assert save_res.status_code == 200
+    saved_json = save_res.json()
+    assert saved_json["provider"] == "acme"
+    assert saved_json["api_key_set"] is True
+    assert saved_json["providers"]["acme"]["api_key_set"] is True
+    assert "acme-secret" not in save_res.text
+
+    reloaded = await TypedConfigService(db_session).get(SystemOneConfig)
+    assert reloaded.provider == "acme"
+    assert reloaded.base_url == "https://prod.acme.example"
+    assert reloaded.model == "acme-v2"
+    assert reloaded.api_key == "acme-secret"
+
+    assert (
+        await client.put(f"{base}/config", json={"provider": "missing"}, headers=admin_headers)
+    ).status_code == 422
+    assert (
+        await client.put(
+            f"{base}/config",
+            json={"providers": {"missing": {"model": "x"}}},
+            headers=admin_headers,
+        )
+    ).status_code == 422
+    assert (
+        await client.put(
+            f"{base}/config",
+            json={"provider_api_keys": {"missing": "secret"}},
+            headers=admin_headers,
+        )
+    ).status_code == 422
+    assert (
+        await client.post(f"{base}/test", json={"provider": "missing"}, headers=admin_headers)
+    ).status_code == 422

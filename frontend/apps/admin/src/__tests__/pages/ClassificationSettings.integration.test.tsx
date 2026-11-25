@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ClassificationSettingsPage from '../../pages/ClassificationSettingsPage'
 import type { ClassificationConfigResponse } from '../../hooks/useClassificationConfig'
 
-const { save, test, reclassify, config } = vi.hoisted(() => {
+const { save, test, reclassify, initial, configState } = vi.hoisted(() => {
   const available_providers: ClassificationConfigResponse['available_providers'] = [
     {
       id: 'jev',
@@ -90,7 +90,8 @@ const { save, test, reclassify, config } = vi.hoisted(() => {
     save: vi.fn(),
     test: vi.fn(),
     reclassify: vi.fn(),
-    config: initial,
+    initial,
+    configState: { current: initial },
   }
 })
 
@@ -99,7 +100,7 @@ vi.mock('@glean/i18n', () => ({
 }))
 
 vi.mock('../../hooks/useClassificationConfig', () => ({
-  useClassificationConfig: () => ({ data: config }),
+  useClassificationConfig: () => ({ data: configState.current }),
   useSaveClassificationConfig: () => ({ mutateAsync: save, isPending: false }),
   useTestClassificationConfig: () => ({ mutateAsync: test, isPending: false }),
   useReclassifyEntries: () => ({ mutateAsync: reclassify, isPending: false }),
@@ -108,15 +109,19 @@ vi.mock('../../hooks/useClassificationConfig', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  configState.current = initial
   save.mockImplementation(async (request) => ({
-    ...config,
+    ...configState.current,
     ...request,
-    providers: {
-      jev: { ...request.providers.jev, api_key_set: true },
-      clef: { ...request.providers.clef, api_key_set: false },
-      laya: { ...request.providers.laya, api_key_set: false },
-      custom: { ...request.providers.custom, api_key_set: false },
-    },
+    providers: Object.fromEntries(
+      Object.entries(request.providers).map(([id, profile]) => [
+        id,
+        {
+          ...(profile as ClassificationConfigResponse['defaults']['providers'][string]),
+          api_key_set: configState.current.providers[id]?.api_key_set ?? false,
+        },
+      ])
+    ),
   }))
   test.mockResolvedValue({})
 })
@@ -227,5 +232,84 @@ describe('Classification admin settings', () => {
     await waitFor(() => expect(save).toHaveBeenCalledOnce())
     expect(save.mock.calls[0][0].provider_api_keys).toEqual({ jev: '' })
     expect(save.mock.calls[0][0].categories).toHaveLength(2)
+  })
+
+  it('selects, tests, and saves a dynamically registered plugin provider', async () => {
+    const acmeDescriptor = {
+      id: 'acme',
+      name: 'Acme Decision',
+      default_base_url: 'https://acme.example',
+      default_model: 'acme-v1',
+      suggested_models: ['acme-v1'],
+      allow_custom_model: true,
+      requires_api_key: true,
+      uses_base_url: true,
+      uses_account_id: false,
+      connection_test_runs_inference: false,
+    }
+    const acmeProfile = {
+      base_url: 'https://acme.example',
+      model: 'acme-v1',
+      account_id: null,
+    }
+    configState.current = {
+      ...initial,
+      available_providers: [...initial.available_providers, acmeDescriptor],
+      providers: {
+        ...initial.providers,
+        acme: { ...acmeProfile, api_key_set: false },
+      },
+      defaults: {
+        ...initial.defaults,
+        providers: {
+          ...initial.defaults.providers,
+          acme: acmeProfile,
+        },
+      },
+    }
+
+    render(<ClassificationSettingsPage />)
+    fireEvent.change(screen.getByLabelText('classification.provider'), {
+      target: { value: 'acme' },
+    })
+    expect(screen.queryByText('classification.providers.acme.hint')).toBeNull()
+
+    fireEvent.change(screen.getByLabelText('classification.server'), {
+      target: { value: 'https://custom.acme.example' },
+    })
+    fireEvent.change(screen.getByLabelText('classification.model'), {
+      target: { value: 'acme-v2' },
+    })
+    fireEvent.change(screen.getByLabelText('classification.apiKey'), {
+      target: { value: 'acme-secret' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'classification.testConnection' }))
+    await waitFor(() => expect(test).toHaveBeenCalledOnce())
+    expect(test.mock.calls[0][0]).toMatchObject({
+      provider: 'acme',
+      providers: {
+        acme: {
+          base_url: 'https://custom.acme.example',
+          model: 'acme-v2',
+          account_id: null,
+        },
+      },
+      provider_api_keys: { acme: 'acme-secret' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'classification.save' }))
+    await waitFor(() => expect(save).toHaveBeenCalledOnce())
+    expect(save.mock.calls[0][0]).toMatchObject({
+      provider: 'acme',
+      providers: {
+        acme: {
+          base_url: 'https://custom.acme.example',
+          model: 'acme-v2',
+          account_id: null,
+        },
+      },
+      provider_api_keys: { acme: 'acme-secret' },
+    })
   })
 })

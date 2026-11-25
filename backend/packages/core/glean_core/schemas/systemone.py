@@ -1,7 +1,7 @@
 """System One provider configuration, descriptors, and validated results."""
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Annotated, Any, ClassVar, Literal, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -14,8 +14,8 @@ from pydantic import (
     model_validator,
 )
 
-ProviderId = Literal["jev", "clef", "laya", "custom"]
-PROVIDER_IDS: tuple[ProviderId, ...] = ("jev", "clef", "laya", "custom")
+ProviderId = str
+PROVIDER_IDS: tuple[str, ...] = ("jev", "clef", "laya", "custom")
 CLOUDFLARE_ACCOUNT_ID_PATTERN = re.compile(r"^[a-fA-F0-9]{32}$")
 _ENDPOINT_SUFFIX_RE = re.compile(r"/v1(?:/(?:systemone|models))?$", re.IGNORECASE)
 
@@ -106,8 +106,10 @@ def _unique_categories(value: list[ContentCategory]) -> list[ContentCategory]:
 
 
 class ProviderDescriptor(BaseModel):
-    id: str
-    name: str
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=120)
     default_base_url: str | None = None
     default_model: str | None = None
     suggested_models: list[str] = Field(default_factory=list)
@@ -169,9 +171,36 @@ BUILTIN_PROVIDER_DESCRIPTORS: tuple[ProviderDescriptor, ...] = (
     ),
 )
 
-PROVIDER_DESCRIPTOR_MAP: dict[ProviderId, ProviderDescriptor] = {
-    cast(ProviderId, descriptor.id): descriptor for descriptor in BUILTIN_PROVIDER_DESCRIPTORS
+PROVIDER_DESCRIPTOR_MAP: dict[str, ProviderDescriptor] = {
+    descriptor.id: descriptor for descriptor in BUILTIN_PROVIDER_DESCRIPTORS
 }
+
+_provider_descriptor_source: Callable[[], Sequence[ProviderDescriptor]] | None = None
+
+
+def set_provider_descriptor_source(
+    source: Callable[[], Sequence[ProviderDescriptor]] | None,
+) -> None:
+    """Bind the live provider descriptor source used by schema validation and defaults."""
+    global _provider_descriptor_source
+    _provider_descriptor_source = source
+
+
+def registered_provider_descriptors() -> dict[str, ProviderDescriptor]:
+    descriptors = (
+        _provider_descriptor_source()
+        if _provider_descriptor_source is not None
+        else BUILTIN_PROVIDER_DESCRIPTORS
+    )
+    return {descriptor.id: descriptor for descriptor in descriptors}
+
+
+def validate_registered_provider_id(value: str) -> str:
+    descriptors = registered_provider_descriptors()
+    if value not in descriptors:
+        allowed = ", ".join(descriptors)
+        raise ValueError(f"Unknown model provider '{value}'. Expected one of: {allowed}")
+    return value
 
 
 class ProviderProfile(BaseModel):
@@ -200,14 +229,21 @@ class ProviderProfileResponse(ProviderProfile):
     api_key_set: bool = False
 
 
-def default_provider_profiles() -> dict[ProviderId, ProviderProfile]:
+def default_provider_profiles(
+    descriptors: Sequence[ProviderDescriptor] | None = None,
+) -> dict[ProviderId, ProviderProfile]:
+    descriptor_map = (
+        {descriptor.id: descriptor for descriptor in descriptors}
+        if descriptors is not None
+        else registered_provider_descriptors()
+    )
     return {
         pid: ProviderProfile(
             base_url=descriptor.default_base_url,
             model=descriptor.default_model,
             account_id=None,
         )
-        for pid, descriptor in PROVIDER_DESCRIPTOR_MAP.items()
+        for pid, descriptor in descriptor_map.items()
     }
 
 
@@ -244,16 +280,20 @@ class SystemOneSettings(BaseModel):
             return value
         data = dict(cast(dict[str, Any], value))
         raw_provider = data.get("provider", "jev")
+        normalized_provider = (
+            raw_provider.strip() if isinstance(raw_provider, str) else raw_provider
+        )
         merged: Any = {pid: prof.model_dump() for pid, prof in default_provider_profiles().items()}
 
         raw_providers = data.get("providers")
         if raw_providers is not None:
             if isinstance(raw_providers, dict):
                 for pid, prof in cast(dict[Any, Any], raw_providers).items():
-                    if pid in merged and isinstance(prof, dict):
-                        merged[pid] = {**merged[pid], **cast(dict[str, Any], prof)}
-                    elif pid in merged and isinstance(prof, ProviderProfile):
-                        merged[pid] = prof.model_dump()
+                    norm_pid = pid.strip() if isinstance(pid, str) else pid
+                    if norm_pid in merged and isinstance(prof, dict):
+                        merged[norm_pid] = {**merged[norm_pid], **cast(dict[str, Any], prof)}
+                    elif norm_pid in merged and isinstance(prof, ProviderProfile):
+                        merged[norm_pid] = prof.model_dump()
                     else:
                         merged[pid] = prof
             else:
@@ -264,14 +304,28 @@ class SystemOneSettings(BaseModel):
                 field_value = data.pop(key)
                 if (
                     isinstance(merged, dict)
-                    and isinstance(raw_provider, str)
-                    and raw_provider in merged
-                    and isinstance(merged[raw_provider], dict)
+                    and isinstance(normalized_provider, str)
+                    and normalized_provider in merged
+                    and isinstance(merged[normalized_provider], dict)
                 ):
-                    merged[raw_provider][key] = field_value
+                    merged[normalized_provider][key] = field_value
 
         data["providers"] = merged
         return data
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        return validate_registered_provider_id(value)
+
+    @field_validator("providers")
+    @classmethod
+    def validate_providers(
+        cls, value: dict[ProviderId, ProviderProfile]
+    ) -> dict[ProviderId, ProviderProfile]:
+        for pid in value:
+            validate_registered_provider_id(pid)
+        return value
 
     @field_validator("categories")
     @classmethod
@@ -280,7 +334,16 @@ class SystemOneSettings(BaseModel):
 
     @property
     def active_profile(self) -> ProviderProfile:
-        return self.providers[self.provider]
+        if self.provider in self.providers:
+            return self.providers[self.provider]
+        descriptor = registered_provider_descriptors().get(self.provider)
+        if descriptor is not None:
+            return ProviderProfile(
+                base_url=descriptor.default_base_url,
+                model=descriptor.default_model,
+                account_id=None,
+            )
+        return ProviderProfile()
 
     @property
     def base_url(self) -> str | None:
@@ -324,30 +387,31 @@ class SystemOneConfig(SystemOneSettings):
             cleaned_keys = {}
             for pid, key in cast(dict[Any, Any], raw_keys).items():
                 if isinstance(key, str):
-                    stripped = key.strip()
-                    if stripped:
-                        cleaned_keys[pid] = stripped
+                    cleaned_keys[pid] = key.strip()
                 else:
                     cleaned_keys[pid] = key
 
         if "api_key" in data:
             legacy_key = data.pop("api_key")
             raw_provider = data.get("provider", "jev")
+            normalized_provider = (
+                raw_provider.strip() if isinstance(raw_provider, str) else raw_provider
+            )
             if (
                 cleaned_keys is not None
-                and isinstance(raw_provider, str)
-                and raw_provider in PROVIDER_DESCRIPTOR_MAP
+                and isinstance(normalized_provider, str)
+                and normalized_provider in registered_provider_descriptors()
             ):
                 if isinstance(legacy_key, str):
                     stripped_key = legacy_key.strip()
                     if stripped_key:
-                        cleaned_keys[raw_provider] = stripped_key
+                        cleaned_keys[normalized_provider] = stripped_key
                     else:
-                        cleaned_keys.pop(raw_provider, None)
+                        cleaned_keys.pop(normalized_provider, None)
                 elif legacy_key is None:
-                    cleaned_keys.pop(raw_provider, None)
+                    cleaned_keys.pop(normalized_provider, None)
                 else:
-                    cleaned_keys[raw_provider] = legacy_key
+                    cleaned_keys[normalized_provider] = legacy_key
 
         data["provider_api_keys"] = cleaned_keys if cleaned_keys is not None else raw_keys
         return data
@@ -357,6 +421,7 @@ class SystemOneConfig(SystemOneSettings):
     def validate_provider_api_keys(cls, value: dict[ProviderId, str]) -> dict[ProviderId, str]:
         cleaned: dict[ProviderId, str] = {}
         for pid, key in value.items():
+            validate_registered_provider_id(pid)
             stripped = key.strip()
             if len(stripped) > 4000:
                 raise ValueError("API key must be at most 4000 characters")
@@ -401,6 +466,24 @@ class SystemOneConfigRequest(BaseModel):
         default_factory=default_categories, min_length=1, max_length=10
     )
 
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return validate_registered_provider_id(value)
+
+    @field_validator("providers")
+    @classmethod
+    def validate_providers(
+        cls, value: dict[ProviderId, ProviderProfile] | None
+    ) -> dict[ProviderId, ProviderProfile] | None:
+        if value is None:
+            return None
+        for pid in value:
+            validate_registered_provider_id(pid)
+        return value
+
     @field_validator("base_url")
     @classmethod
     def validate_base_url(cls, value: str | None) -> str | None:
@@ -424,6 +507,7 @@ class SystemOneConfigRequest(BaseModel):
             return None
         cleaned: dict[ProviderId, str | None] = {}
         for pid, key in value.items():
+            validate_registered_provider_id(pid)
             if key is None:
                 cleaned[pid] = None
             else:
@@ -461,16 +545,24 @@ class SystemOneConfigResponse(BaseModel):
         descriptors: Sequence[ProviderDescriptor] | None = None,
     ) -> "SystemOneConfigResponse":
         active = config.active_profile
+        available = (
+            list(descriptors)
+            if descriptors is not None
+            else list(registered_provider_descriptors().values())
+        )
+        default_profiles = default_provider_profiles(available)
+        provider_ids = list(
+            dict.fromkeys([*(item.id for item in available), *config.providers.keys()])
+        )
         providers: dict[ProviderId, ProviderProfileResponse] = {
             pid: ProviderProfileResponse(
-                **config.providers.get(pid, ProviderProfile()).model_dump(),
+                **config.providers.get(
+                    pid, default_profiles.get(pid, ProviderProfile())
+                ).model_dump(),
                 api_key_set=bool(config.provider_api_keys.get(pid)),
             )
-            for pid in PROVIDER_IDS
+            for pid in provider_ids
         }
-        available = (
-            list(descriptors) if descriptors is not None else list(BUILTIN_PROVIDER_DESCRIPTORS)
-        )
         return cls(
             enabled=config.enabled,
             provider=config.provider,

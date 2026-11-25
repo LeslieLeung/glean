@@ -11,7 +11,10 @@ from glean_core.schemas.systemone import (
     ProviderDescriptor,
     ProviderProfile,
     SystemOneConfig,
+    SystemOneConfigRequest,
+    SystemOneConfigResponse,
     SystemOneNoulAnswer,
+    SystemOneSettings,
     normalize_base_url,
 )
 from glean_core.services import systemone_service
@@ -19,6 +22,8 @@ from glean_core.services.systemone_providers import (
     ResolvedConnection,
     SystemOneProvider,
     SystemOneProviderRegistry,
+    provider_registry,
+    register_provider,
 )
 
 
@@ -332,3 +337,86 @@ async def test_custom_registered_provider_subclass_works_end_to_end():
         await provider.test_connection(client, connection)
 
     assert response.answers.ai_generated.noul == 0.15
+
+
+async def test_registered_provider_works_across_config_response_and_service(
+    monkeypatch, systemone_http
+):
+    class CustomAcmeProvider(SystemOneProvider):
+        descriptor = ProviderDescriptor(
+            id="acme",
+            name="Acme Decision",
+            default_base_url="https://acme.example",
+            default_model="acme-v1",
+            suggested_models=["acme-v1"],
+            requires_api_key=True,
+        )
+
+        def inference_url(self, connection: ResolvedConnection) -> str:
+            return f"{connection.base_url}/v1/systemone"
+
+    monkeypatch.setattr(provider_registry, "_providers", dict(provider_registry._providers))
+    register_provider(CustomAcmeProvider())
+
+    config = SystemOneConfig(enabled=True, provider="acme", api_key="acme-secret")
+    assert config.provider == "acme"
+    assert config.providers["acme"] == ProviderProfile(
+        base_url="https://acme.example", model="acme-v1"
+    )
+    assert config.base_url == "https://acme.example"
+    assert config.model == "acme-v1"
+    assert config.api_key == "acme-secret"
+    assert config.provider_api_keys == {"acme": "acme-secret"}
+
+    reloaded = SystemOneConfig.model_validate(config.model_dump(mode="json"))
+    assert reloaded == config
+
+    response = SystemOneConfigResponse.from_config(config)
+    assert any(item.id == "acme" for item in response.available_providers)
+    assert "acme" in response.providers
+    assert response.providers["acme"].api_key_set is True
+    assert "acme" in response.defaults.providers
+    assert response.defaults.providers["acme"].model == "acme-v1"
+
+    def handler(request):
+        assert request.url == "https://acme.example/v1/systemone"
+        assert request.headers["Authorization"] == "Bearer acme-secret"
+        return httpx.Response(
+            200,
+            json={
+                "answers": {
+                    "ai_generated": {"noul": 0.25},
+                    "content_type": {"choice": "original", "confidence": 0.9},
+                }
+            },
+        )
+
+    systemone_http(handler)
+    result = await systemone_service.classify_text(config, "Hello", "Title", "https://example.com")
+    assert result.provider == "acme"
+    assert result.model_id == "acme-v1"
+    assert result.label == "human"
+    await systemone_service.test_connection(config)
+
+
+def test_unregistered_provider_ids_are_rejected():
+    with pytest.raises(ValidationError):
+        SystemOneSettings(provider="unknown")
+    with pytest.raises(ValidationError):
+        SystemOneSettings(providers={"unknown": ProviderProfile()})
+    with pytest.raises(ValidationError):
+        SystemOneConfig(provider="unknown")
+    with pytest.raises(ValidationError):
+        SystemOneConfig(providers={"unknown": ProviderProfile()})
+    with pytest.raises(ValidationError):
+        SystemOneConfig(provider_api_keys={"unknown": "secret"})
+    with pytest.raises(ValidationError):
+        SystemOneConfig(provider_api_keys={"unknown": ""})
+    with pytest.raises(ValidationError):
+        SystemOneConfigRequest(provider="unknown")
+    with pytest.raises(ValidationError):
+        SystemOneConfigRequest(providers={"unknown": ProviderProfile()})
+    with pytest.raises(ValidationError):
+        SystemOneConfigRequest(provider_api_keys={"unknown": "secret"})
+    with pytest.raises(ValidationError):
+        SystemOneConfigRequest(provider_api_keys={"unknown": ""})

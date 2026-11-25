@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../lib/api'
 
-export type SystemOneProviderId = 'jev' | 'clef' | 'laya' | 'custom'
+export type SystemOneProviderId = string
 
 export interface ContentCategory {
   id: string
