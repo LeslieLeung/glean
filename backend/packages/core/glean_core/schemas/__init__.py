@@ -8,7 +8,7 @@ from .api_token import (
     APITokenListResponse,
     APITokenResponse,
 )
-from .auth import LoginRequest, RefreshTokenRequest, RegisterRequest, TokenResponse
+from .auth import LoginRequest, LogoutRequest, RefreshTokenRequest, RegisterRequest, TokenResponse
 from .bookmark import (
     BookmarkCreate,
     BookmarkFolderRequest,
@@ -67,6 +67,7 @@ __all__ = [
     "APITokenResponse",
     # Auth
     "LoginRequest",
+    "LogoutRequest",
     "RefreshTokenRequest",
     "RegisterRequest",
     "TokenResponse",

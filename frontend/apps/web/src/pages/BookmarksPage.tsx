@@ -12,7 +12,7 @@ import { useTranslation } from '@glean/i18n'
 import { ReadingDate } from '../components/ReadingDate'
 import { ArticleReader } from '../components/ArticleReader'
 import { BookmarkSearchMatches } from '../components/BookmarkSearchMatches'
-import { stripHtmlTags } from '../lib/html'
+import { stripHtmlTags, toSafeExternalUrl } from '../lib/html'
 import type { Bookmark, FolderTreeNode, TagWithCounts, EntryWithState } from '@glean/types'
 import {
   Bookmark as BookmarkIcon,
@@ -852,9 +852,9 @@ function BookmarkCard({
           >
             <Edit3 className="h-4 w-4" />
           </button>
-          {bookmark.url && (
+          {toSafeExternalUrl(bookmark.url) && (
             <a
-              href={bookmark.url}
+              href={toSafeExternalUrl(bookmark.url)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -1133,9 +1133,9 @@ function BookmarkListItem({
         >
           <Edit3 className="h-4 w-4" />
         </button>
-        {bookmark.url && (
+        {toSafeExternalUrl(bookmark.url) && (
           <a
-            href={bookmark.url}
+            href={toSafeExternalUrl(bookmark.url)}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}

@@ -3,6 +3,7 @@ import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import { cn } from '@glean/ui'
 import { Rss } from 'lucide-react'
+import { toSafeImageUrl } from '../lib/html'
 import { ClassificationBadge } from './ClassificationBadge'
 import { ReadingDate } from './ReadingDate'
 
@@ -25,9 +26,9 @@ export function SmartEntryByline({
       )}
     >
       {compact &&
-        (entry.feed_icon_url ? (
+        (toSafeImageUrl(entry.feed_icon_url) ? (
           <img
-            src={entry.feed_icon_url}
+            src={toSafeImageUrl(entry.feed_icon_url)}
             alt=""
             loading="lazy"
             className="size-3.5 shrink-0 rounded-sm object-cover"

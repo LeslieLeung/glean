@@ -4,7 +4,10 @@ Authentication router.
 Provides endpoints for user registration, login, token refresh, and user profile.
 """
 
+import hashlib
+import hmac
 import ipaddress
+from datetime import UTC, datetime
 from typing import Annotated, cast
 
 from arq.connections import ArqRedis
@@ -13,8 +16,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from glean_core import RedisKeys, get_logger
+from glean_core.auth import JWTConfig, verify_token
 from glean_core.schemas import (
     LoginRequest,
+    LogoutRequest,
     RefreshTokenRequest,
     RegisterRequest,
     TokenResponse,
@@ -26,6 +31,7 @@ from glean_core.services import AuthService, TypedConfigService, UserService
 from ..dependencies import (
     get_auth_service,
     get_current_user,
+    get_jwt_config,
     get_redis_pool,
     get_typed_config_service,
     get_user_service,
@@ -35,12 +41,49 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
-def _parse_ip(ip_value: str) -> str | None:
-    """Return normalized IP string when valid, otherwise None."""
+def _normalize_ip(ip_value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse an IP string and unwrap IPv4-mapped IPv6 addresses, or return None."""
     try:
-        return str(ipaddress.ip_address(ip_value.strip()))
+        addr = ipaddress.ip_address(ip_value.strip())
     except ValueError:
         return None
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return addr.ipv4_mapped
+    return addr
+
+
+def _parse_ip(ip_value: str) -> str | None:
+    """Return normalized IP string when valid, otherwise None."""
+    addr = _normalize_ip(ip_value)
+    return str(addr) if addr is not None else None
+
+
+def _parse_ip_network(value: str) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """Parse an IP or CIDR string into a network object, or return None."""
+    try:
+        return ipaddress.ip_network(value.strip(), strict=False)
+    except ValueError:
+        return None
+
+
+def _is_trusted_proxy(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    trusted_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network],
+) -> bool:
+    """Check whether addr belongs to any configured trusted proxy network."""
+    return any(
+        (
+            isinstance(addr, ipaddress.IPv4Address)
+            and isinstance(net, ipaddress.IPv4Network)
+            and addr in net
+        )
+        or (
+            isinstance(addr, ipaddress.IPv6Address)
+            and isinstance(net, ipaddress.IPv6Network)
+            and addr in net
+        )
+        for net in trusted_networks
+    )
 
 
 def _parse_csv_config(value: str) -> list[str]:
@@ -71,35 +114,53 @@ def _get_client_identifier(request: Request) -> str:
     """Get client IP for rate limiting with trusted proxy header handling."""
     from glean_core.config import auth_provider_config
 
-    direct_ip = _parse_ip(request.client.host) if request.client else None
-    if not direct_ip:
+    direct_addr = _normalize_ip(request.client.host) if request.client else None
+    if not direct_addr:
         return "unknown"
 
-    trusted_proxies = {
-        parsed
+    trusted_networks = [
+        net
         for value in _parse_csv_config(auth_provider_config.oidc_trusted_proxy_ips)
-        if (parsed := _parse_ip(value)) is not None
-    }
+        if (net := _parse_ip_network(value)) is not None
+    ]
     client_ip_headers = _parse_csv_config(auth_provider_config.oidc_client_ip_headers)
 
     # Only trust forwarding headers when request originates from a trusted proxy.
-    if direct_ip in trusted_proxies:
+    if _is_trusted_proxy(direct_addr, trusted_networks):
         for header_name in client_ip_headers:
             raw_header_value = request.headers.get(header_name)
             if not raw_header_value:
                 continue
+
+            if header_name.lower() == "x-forwarded-for":
+                parsed_addrs = [
+                    parsed
+                    for part in raw_header_value.split(",")
+                    if (parsed := _normalize_ip(part)) is not None
+                ]
+                if not parsed_addrs:
+                    continue
+                for addr in reversed(parsed_addrs):
+                    if not _is_trusted_proxy(addr, trusted_networks):
+                        return str(addr)
+                return str(parsed_addrs[0])
 
             header_candidate = raw_header_value.split(",")[0].strip()
             parsed_ip = _parse_ip(header_candidate)
             if parsed_ip:
                 return parsed_ip
 
-    return direct_ip
+    return str(direct_addr)
+
+
+def _hash_oidc_state_binding(state_binding: str) -> str:
+    """Return SHA-256 hex digest of an OIDC state binding secret."""
+    return hashlib.sha256(state_binding.encode("utf-8")).hexdigest()
 
 
 async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, str]:
     """
-    Validate state and atomically consume state+nonce+PKCE verifier in Redis.
+    Validate state and atomically consume state+nonce+PKCE verifier+binding in Redis.
 
     Returns:
         Tuple of (nonce, code_verifier).
@@ -107,6 +168,7 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     state_key = RedisKeys.oidc_state(state)
     nonce_key = RedisKeys.oidc_nonce(state)
     code_verifier_key = RedisKeys.oidc_pkce_verifier(state)
+    state_binding_key = RedisKeys.oidc_state_binding(state)
 
     pipe = redis.pipeline(transaction=True)
     pipe.exists(state_key)
@@ -115,7 +177,8 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     pipe.delete(state_key)
     pipe.delete(nonce_key)
     pipe.delete(code_verifier_key)
-    state_valid, nonce, code_verifier, _, _, _ = await pipe.execute()
+    pipe.delete(state_binding_key)
+    state_valid, nonce, code_verifier, _, _, _, _ = await pipe.execute()
 
     if not state_valid:
         raise HTTPException(
@@ -139,18 +202,32 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     return str(nonce), str(code_verifier)
 
 
-async def _enforce_oidc_rate_limit(
-    redis: ArqRedis, request: Request, action: str, limit: int
+_REGISTER_RATE_LIMIT = 5
+_LOGIN_RATE_LIMIT = 10
+_REFRESH_RATE_LIMIT = 30
+_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
+_OIDC_STATE_COOKIE_NAME = "glean_oidc_state"
+_OIDC_STATE_COOKIE_PATH = "/api/auth/oauth/oidc"
+
+
+def _is_https_request(request: Request) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded_proto == "https"
+
+
+async def enforce_rate_limit(
+    redis: ArqRedis,
+    _request: Request,
+    key: str,
+    *,
+    limit: int,
+    window_seconds: int = 60,
 ) -> None:
-    """Apply Redis-backed fixed-window rate limiting for OIDC endpoints."""
-    client_id = _get_client_identifier(request)
-    key = RedisKeys.oidc_rate_limit(action, client_id)
+    """Apply Redis-backed fixed-window rate limiting."""
     current_count = await redis.incr(key)
 
     if current_count == 1:
-        from glean_core.config import auth_provider_config
-
-        await redis.expire(key, auth_provider_config.oidc_rate_limit_window_seconds)
+        await redis.expire(key, window_seconds)
 
     if current_count > limit:
         retry_after = await redis.ttl(key)
@@ -161,11 +238,60 @@ async def _enforce_oidc_rate_limit(
         )
 
 
+async def enforce_auth_rate_limit(
+    redis: ArqRedis,
+    request: Request,
+    action: str,
+    limit: int,
+    window_seconds: int = _AUTH_RATE_LIMIT_WINDOW_SECONDS,
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting using the validated client IP."""
+    client_id = _get_client_identifier(request)
+    await enforce_rate_limit(
+        redis,
+        request,
+        RedisKeys.auth_rate_limit(action, client_id),
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+
+
+async def _enforce_auth_rate_limit(
+    redis: ArqRedis, request: Request, action: str, limit: int
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting for auth endpoints."""
+    await enforce_auth_rate_limit(
+        redis,
+        request,
+        action,
+        limit,
+        window_seconds=_AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+
+async def _enforce_oidc_rate_limit(
+    redis: ArqRedis, request: Request, action: str, limit: int
+) -> None:
+    """Apply Redis-backed fixed-window rate limiting for OIDC endpoints."""
+    from glean_core.config import auth_provider_config
+
+    client_id = _get_client_identifier(request)
+    await enforce_rate_limit(
+        redis,
+        request,
+        RedisKeys.oidc_rate_limit(action, client_id),
+        limit=limit,
+        window_seconds=auth_provider_config.oidc_rate_limit_window_seconds,
+    )
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
+    request: Request,
     data: RegisterRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
     config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, UserResponse | TokenResponse]:
     """
     Register a new user account.
@@ -181,6 +307,14 @@ async def register(
     Raises:
         HTTPException: If email is already registered or registration is disabled.
     """
+    from glean_core.config import auth_provider_config
+
+    await _enforce_auth_rate_limit(redis, request, "register", _REGISTER_RATE_LIMIT)
+    if not auth_provider_config.local_enabled or not auth_provider_config.local_allow_registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local registration is disabled",
+        )
     if not await config_service.is_registration_enabled():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -196,8 +330,10 @@ async def register(
 
 @router.post("/login")
 async def login(
+    request: Request,
     data: LoginRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> dict[str, UserResponse | TokenResponse]:
     """
     Authenticate user and issue tokens.
@@ -212,6 +348,14 @@ async def login(
     Raises:
         HTTPException: If credentials are invalid.
     """
+    from glean_core.config import auth_provider_config
+
+    await _enforce_auth_rate_limit(redis, request, "login", _LOGIN_RATE_LIMIT)
+    if not auth_provider_config.local_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Local password login is disabled",
+        )
     try:
         user, tokens = await auth_service.login(data)
         return {"user": user, "tokens": tokens}
@@ -222,8 +366,11 @@ async def login(
 
 @router.post("/refresh")
 async def refresh_token(
+    request: Request,
     data: RefreshTokenRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
 ) -> TokenResponse:
     """
     Refresh access token using refresh token.
@@ -238,6 +385,24 @@ async def refresh_token(
     Raises:
         HTTPException: If refresh token is invalid or expired.
     """
+    await _enforce_auth_rate_limit(redis, request, "refresh", _REFRESH_RATE_LIMIT)
+
+    token_data = verify_token(data.refresh_token, jwt_config)
+    if not token_data or token_data.type != "refresh" or not token_data.jti:
+        logger.info("Token refresh failed", extra={"error_type": "InvalidToken"})
+        raise _authentication_failed_exception()
+
+    ttl = max(int(token_data.exp - datetime.now(UTC).timestamp()), 1)
+    claimed = await redis.set(
+        RedisKeys.revoked_refresh_token(token_data.jti),
+        "1",
+        ex=ttl,
+        nx=True,
+    )
+    if not claimed:
+        logger.info("Rejected reused or revoked refresh token")
+        raise _authentication_failed_exception()
+
     try:
         tokens = await auth_service.refresh_access_token(data.refresh_token)
         return tokens
@@ -247,15 +412,26 @@ async def refresh_token(
 
 
 @router.post("/logout")
-async def logout() -> dict[str, str]:
+async def logout(
+    redis: Annotated[ArqRedis, Depends(get_redis_pool)],
+    jwt_config: Annotated[JWTConfig, Depends(get_jwt_config)],
+    data: LogoutRequest | None = None,
+) -> dict[str, str]:
     """
-    Logout user (placeholder for token invalidation).
+    Logout user and revoke supplied refresh token.
 
     Returns:
         Success message.
     """
-    # In a production system, you might want to invalidate the refresh token
-    # by storing it in Redis with an expiration
+    if data and data.refresh_token:
+        token_data = verify_token(data.refresh_token, jwt_config)
+        if token_data and token_data.type == "refresh" and token_data.jti:
+            ttl = max(int(token_data.exp - datetime.now(UTC).timestamp()), 1)
+            await redis.set(
+                RedisKeys.revoked_refresh_token(token_data.jti),
+                "1",
+                ex=ttl,
+            )
     return {"message": "Logged out successfully"}
 
 
@@ -366,9 +542,10 @@ async def oidc_authorize(
         # Load OIDC discovery config before generating authorization URL.
         await oidc_provider.prepare()
 
-        # Generate CSRF state, nonce, and PKCE verifier/challenge
+        # Generate CSRF state, nonce, PKCE verifier/challenge, and cross-site state binding secret
         state = token_urlsafe(32)
         nonce = token_urlsafe(32)
+        state_binding = token_urlsafe(32)
         code_verifier, code_challenge = oidc_provider.generate_pkce_pair()
 
         # Store state in Redis with 5-minute TTL for verification in callback
@@ -376,6 +553,13 @@ async def oidc_authorize(
             RedisKeys.oidc_state(state),
             RedisKeys.OIDC_STATE_TTL,
             "1",
+        )
+
+        # Store hashed binding secret for desktop/cross-site clients without SameSite=Lax cookies
+        await redis.setex(
+            RedisKeys.oidc_state_binding(state),
+            RedisKeys.OIDC_STATE_BINDING_TTL,
+            _hash_oidc_state_binding(state_binding),
         )
 
         # Store nonce in Redis for verification during token validation
@@ -404,14 +588,25 @@ async def oidc_authorize(
                 detail="Failed to generate authorization URL",
             )
 
-        # Return response with no-cache headers to prevent browser caching
-        return JSONResponse(
+        # Return response with no-cache headers and cookie-bound + token-bound OIDC state
+        response = JSONResponse(
             content={
                 "authorization_url": auth_url,
                 "state": state,
+                "state_binding": state_binding,
             },
             headers=_oidc_no_cache_headers(),
         )
+        response.set_cookie(
+            key=_OIDC_STATE_COOKIE_NAME,
+            value=state,
+            max_age=RedisKeys.OIDC_STATE_TTL,
+            httponly=True,
+            samesite="lax",
+            secure=_is_https_request(request),
+            path=_OIDC_STATE_COOKIE_PATH,
+        )
+        return response
     except HTTPException:
         raise
     except Exception:
@@ -427,6 +622,7 @@ class OIDCCallbackRequest(BaseModel):
 
     code: str
     state: str
+    state_binding: str | None = None
 
 
 @router.post("/oauth/oidc/callback")
@@ -434,6 +630,7 @@ async def oidc_callback(
     request: Request,
     data: OIDCCallbackRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
     redis: Annotated[ArqRedis, Depends(get_redis_pool)],
 ) -> JSONResponse:
     """
@@ -462,6 +659,29 @@ async def oidc_callback(
         redis, request, "callback", auth_provider_config.oidc_callback_rate_limit
     )
 
+    cookie_state = request.cookies.get(_OIDC_STATE_COOKIE_NAME)
+    cookie_valid = bool(cookie_state and hmac.compare_digest(cookie_state, data.state))
+
+    if data.state_binding is not None:
+        binding_valid = False
+        if data.state_binding:
+            stored_binding = await redis.get(RedisKeys.oidc_state_binding(data.state))
+            if isinstance(stored_binding, bytes):
+                stored_binding = stored_binding.decode("utf-8")
+            if isinstance(stored_binding, str) and stored_binding:
+                binding_valid = hmac.compare_digest(
+                    stored_binding, _hash_oidc_state_binding(data.state_binding)
+                )
+        is_bound = binding_valid
+    else:
+        is_bound = cookie_valid
+
+    if not is_bound:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or missing OIDC state binding",
+        )
+
     nonce, code_verifier = await _consume_oidc_auth_context(redis, data.state)
 
     # Get provider config
@@ -482,14 +702,21 @@ async def oidc_callback(
 
     try:
         # Authenticate with OIDC provider
-        user, tokens = await auth_service.login_with_provider("oidc", credentials)
-        return JSONResponse(
+        allow_registration = await config_service.is_registration_enabled()
+        user, tokens = await auth_service.login_with_provider(
+            "oidc",
+            credentials,
+            allow_registration=allow_registration,
+        )
+        response = JSONResponse(
             content={
                 "user": user.model_dump(mode="json"),
                 "tokens": tokens.model_dump(mode="json"),
             },
             headers=_oidc_no_cache_headers(),
         )
+        response.delete_cookie(_OIDC_STATE_COOKIE_NAME, path=_OIDC_STATE_COOKIE_PATH)
+        return response
     except ValueError as e:
         logger.warning(
             "[OIDC] callback authentication failed",

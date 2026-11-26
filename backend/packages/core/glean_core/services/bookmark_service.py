@@ -45,6 +45,12 @@ from glean_rss import strip_html_tags
 
 logger = get_logger(__name__)
 
+_ALLOWED_BOOKMARK_SORTS = {
+    "created_at": Bookmark.created_at,
+    "updated_at": Bookmark.updated_at,
+    "title": Bookmark.title,
+}
+
 
 class BookmarkService:
     """Bookmark management service."""
@@ -161,11 +167,11 @@ class BookmarkService:
         count_result = await self.session.execute(count_query)
         total = count_result.scalar_one()
 
-        # Sorting
+        # Sorting (allowlisted columns only)
         if sort == "relevance" and scores:
             order_column = reduce(add, scores[1:], scores[0]).desc()
         else:
-            order_column = getattr(Bookmark, sort, Bookmark.created_at)
+            order_column = _ALLOWED_BOOKMARK_SORTS.get(sort, Bookmark.created_at)
             order_column = order_column.desc() if order == "desc" else order_column.asc()
 
         # Pagination
@@ -210,6 +216,7 @@ class BookmarkService:
             tags = [
                 BookmarkTagSimple(id=bt.tag.id, name=bt.tag.name, color=bt.tag.color)
                 for bt in bookmark.bookmark_tags
+                if bt.tag and bt.tag.user_id == user_id
             ]
             items.append(
                 BookmarkResponse(
@@ -279,6 +286,7 @@ class BookmarkService:
         tags = [
             BookmarkTagSimple(id=bt.tag.id, name=bt.tag.name, color=bt.tag.color)
             for bt in bookmark.bookmark_tags
+            if bt.tag and bt.tag.user_id == user_id
         ]
 
         return BookmarkResponse(

@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core.auth import JWTConfig, verify_token
+from glean_core.auth import JWTConfig, verify_admin_token, verify_token
 from glean_core.schemas import UserResponse
 from glean_core.schemas.admin import AdminUserResponse
 from glean_core.services import (
@@ -278,20 +278,17 @@ async def get_current_admin(
     Raises:
         HTTPException: If token is invalid, not admin token, or admin not found.
     """
-    from jose import JWTError, jwt
-
     token = credentials.credentials
 
     # Decode admin token directly instead of using verify_token
     # (which expects "access" or "refresh" type, not "admin")
-    try:
-        payload = jwt.decode(token, jwt_config.secret_key, algorithms=[jwt_config.algorithm])
-    except JWTError:
+    payload = verify_admin_token(token, jwt_config)
+    if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
-        ) from None
+        )
 
     # Check if token is admin type
     if payload.get("type") != "admin":
@@ -333,3 +330,15 @@ async def get_current_admin(
         created_at=admin.created_at,
         updated_at=admin.updated_at,
     )
+
+
+async def require_super_admin(
+    current_admin: Annotated[AdminUserResponse, Depends(get_current_admin)],
+) -> AdminUserResponse:
+    """Require that the authenticated admin holds the super_admin role."""
+    if current_admin.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required",
+        )
+    return current_admin

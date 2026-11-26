@@ -101,13 +101,22 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   const isValidUrl = (url: string): boolean => {
     try {
       const parsed = new URL(url)
-      // Only allow http and https protocols
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
+      if (parsed.username || parsed.password) {
         return false
       }
-      // Allow URLs with or without path components
-      // Some deployments may host the API at a subpath (e.g., http://example.com/glean)
-      return true
+      if (parsed.protocol === 'https:') {
+        return true
+      }
+      if (parsed.protocol === 'http:') {
+        const hostname = parsed.hostname.toLowerCase()
+        return (
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname === '::1' ||
+          hostname === '[::1]'
+        )
+      }
+      return false
     } catch {
       return false
     }
@@ -123,7 +132,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   }
 
   const testConnection = async () => {
-    const url = apiUrl.trim()
+    const url = apiUrl.trim().replace(/\/+$/, '')
     if (!url) {
       setConnectionStatus({ status: 'error', message: t('config.urlRequired') })
       return
@@ -142,7 +151,36 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
     }
 
     try {
-      const response = await fetch(`${url}/api/health`, {
+      if (window.electronAPI?.testApiConnection) {
+        const result = await window.electronAPI.testApiConnection(url)
+        if (result.ok) {
+          setConnectionStatus({
+            status: 'success',
+            message: t('config.connectionSuccess'),
+            version: result.version,
+          })
+          return
+        }
+        if (result.errorCode === 'invalid_url') {
+          setConnectionStatus({ status: 'error', message: t('config.invalidUrl') })
+          return
+        }
+        if (result.errorCode === 'invalid_response') {
+          setConnectionStatus({ status: 'error', message: t('config.invalidResponse') })
+          return
+        }
+        if (result.errorCode === 'http_error') {
+          setConnectionStatus({
+            status: 'error',
+            message: t('config.serverError', { status: result.status }),
+          })
+          return
+        }
+        setConnectionStatus({ status: 'error', message: t('config.connectionFailed') })
+        return
+      }
+
+      const response = await fetch(`${url.replace(/\/+$/, '')}/api/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(5000),
       })
@@ -186,7 +224,7 @@ export function ApiConfigDialog({ children }: ApiConfigDialogProps) {
   const handleSave = async () => {
     if (!window.electronAPI?.isElectron) return
 
-    const url = apiUrl.trim()
+    const url = apiUrl.trim().replace(/\/+$/, '')
     if (!url) {
       setConnectionStatus({ status: 'error', message: t('config.urlRequired') })
       return

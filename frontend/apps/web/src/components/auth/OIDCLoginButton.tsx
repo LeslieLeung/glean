@@ -4,6 +4,8 @@ import { AlertCircle, KeyRound } from 'lucide-react'
 import { authService } from '@glean/api-client'
 import { logger } from '@glean/logger'
 import { useTranslation } from '@glean/i18n'
+import { toSafeExternalUrl } from '../../lib/html'
+import { useAuthStore } from '../../stores/authStore'
 import { apiErrorMessage } from '../../utils/apiError'
 
 /**
@@ -14,6 +16,7 @@ import { apiErrorMessage } from '../../utils/apiError'
  */
 export function OIDCLoginButton() {
   const { t } = useTranslation('auth')
+  const { setUser } = useAuthStore()
   const [enabled, setEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -39,9 +42,53 @@ export function OIDCLoginButton() {
       setLoading(true)
       setErrorMessage('')
 
-      const { authorization_url } = await authService.getOIDCAuthUrl()
-      window.location.href = authorization_url
+      const { authorization_url, state, state_binding } = await authService.getOIDCAuthUrl()
+      const safeUrl = toSafeExternalUrl(authorization_url)
+      if (!safeUrl) {
+        throw new Error('Invalid OIDC authorization URL')
+      }
+      if (state) {
+        sessionStorage.setItem('oidc_state', state)
+      }
+
+      if (window.electronAPI?.authenticateOIDC) {
+        const callbackResult = await window.electronAPI.authenticateOIDC(safeUrl)
+        const expectedState = sessionStorage.getItem('oidc_state')
+        sessionStorage.removeItem('oidc_state')
+        sessionStorage.removeItem('oidc_state_binding')
+
+        if (callbackResult.cancelled) {
+          setLoading(false)
+          return
+        }
+        if (callbackResult.error) {
+          throw new Error(callbackResult.errorDescription || callbackResult.error)
+        }
+        if (!callbackResult.code || !callbackResult.state) {
+          throw new Error('Missing authorization code or state')
+        }
+        if (!expectedState || expectedState !== callbackResult.state) {
+          throw new Error('Invalid or missing OIDC session state')
+        }
+
+        const { user, tokens } = await authService.handleOIDCCallback(
+          callbackResult.code,
+          callbackResult.state,
+          state_binding
+        )
+        await authService.saveTokens(tokens)
+        setUser(user)
+        setLoading(false)
+        return
+      }
+
+      if (state_binding) {
+        sessionStorage.setItem('oidc_state_binding', state_binding)
+      }
+      window.location.href = safeUrl
     } catch (error) {
+      sessionStorage.removeItem('oidc_state')
+      sessionStorage.removeItem('oidc_state_binding')
       logger.error('Failed to initiate OIDC login', { error })
       setErrorMessage(apiErrorMessage(error) || t('errors.networkError'))
       setLoading(false)

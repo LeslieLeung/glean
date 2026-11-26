@@ -4,6 +4,42 @@ import axios from 'axios'
 import { logger } from '@glean/logger'
 import { hashPassword } from '@glean/api-client'
 
+export const ADMIN_AUTH_STORAGE_KEY = 'glean-admin-auth'
+
+interface PersistedAdminAuthPayload {
+  state?: {
+    token?: string | null
+    refreshToken?: string | null
+  }
+}
+
+function readPersistedAdminAuthState(): {
+  token: string | null
+  refreshToken: string | null
+} {
+  if (typeof localStorage === 'undefined') {
+    return { token: null, refreshToken: null }
+  }
+  const storedAuth = localStorage.getItem(ADMIN_AUTH_STORAGE_KEY)
+  if (!storedAuth) {
+    return { token: null, refreshToken: null }
+  }
+  try {
+    const parsed = JSON.parse(storedAuth) as PersistedAdminAuthPayload
+    return {
+      token: parsed?.state?.token ?? null,
+      refreshToken: parsed?.state?.refreshToken ?? null,
+    }
+  } catch (error) {
+    logger.error('Failed to parse stored auth:', error)
+    return { token: null, refreshToken: null }
+  }
+}
+
+function readPersistedAdminRefreshToken(): string | null {
+  return readPersistedAdminAuthState().refreshToken
+}
+
 interface AdminUser {
   id: string
   username: string
@@ -26,7 +62,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       refreshToken: null,
       admin: null,
@@ -58,6 +94,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const currentRefreshToken = readPersistedAdminRefreshToken() ?? get().refreshToken
+        if (currentRefreshToken) {
+          void axios
+            .post('/api/admin/auth/logout', { refresh_token: currentRefreshToken })
+            .catch(() => {})
+        }
+
         set({
           token: null,
           refreshToken: null,
@@ -81,7 +124,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'glean-admin-auth',
+      name: ADMIN_AUTH_STORAGE_KEY,
       partialize: (state) => ({
         token: state.token,
         refreshToken: state.refreshToken,
@@ -93,14 +136,23 @@ export const useAuthStore = create<AuthState>()(
 )
 
 // Initialize axios with stored token
-const storedAuth = localStorage.getItem('glean-admin-auth')
-if (storedAuth) {
-  try {
-    const { state } = JSON.parse(storedAuth)
-    if (state?.token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${state.token}`
+const initialPersistedAuth = readPersistedAdminAuthState()
+if (initialPersistedAuth.token) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${initialPersistedAuth.token}`
+}
+
+// Synchronize Zustand state when another tab rotates admin tokens in localStorage
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (event: StorageEvent) => {
+    if (event.key !== ADMIN_AUTH_STORAGE_KEY || !event.newValue) {
+      return
     }
-  } catch (error) {
-    logger.error('Failed to parse stored auth:', error)
-  }
+    void useAuthStore.persist.rehydrate()
+    const { token } = readPersistedAdminAuthState()
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    } else {
+      delete axios.defaults.headers.common['Authorization']
+    }
+  })
 }

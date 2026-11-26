@@ -220,11 +220,13 @@ class FeedService:
 
         # Apply search filter if provided
         if search:
-            search_term = f"%{search.lower()}%"
+            from glean_core import escape_like_pattern
+
+            search_term = f"%{escape_like_pattern(search.lower())}%"
             base_stmt = base_stmt.where(
-                (func.lower(Subscription.custom_title).like(search_term))
-                | (func.lower(Feed.title).like(search_term))
-                | (func.lower(Feed.url).like(search_term))
+                (func.lower(Subscription.custom_title).like(search_term, escape="\\"))
+                | (func.lower(Feed.title).like(search_term, escape="\\"))
+                | (func.lower(Feed.url).like(search_term, escape="\\"))
             )
 
         # Get total count

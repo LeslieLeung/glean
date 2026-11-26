@@ -16,7 +16,7 @@ services:
       POSTGRES_USER: glean
       POSTGRES_PASSWORD: devpassword
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
@@ -33,7 +33,7 @@ services:
     command: redis-server --appendonly yes
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_dev_data:/data
     healthcheck:
@@ -93,8 +93,8 @@ services:
     volumes:
       - milvus_data:/var/lib/milvus
     ports:
-      - "19530:19530"
-      - "9091:9091"
+      - "127.0.0.1:19530:19530"
+      - "127.0.0.1:9091:9091"
     depends_on:
       milvus-etcd:
         condition: service_healthy

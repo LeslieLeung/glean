@@ -60,14 +60,21 @@ _BLOCKED_IPV4_NETWORKS: tuple[ipaddress.IPv4Network, ...] = tuple(
 _BLOCKED_IPV6_NETWORKS: tuple[ipaddress.IPv6Network, ...] = tuple(
     ipaddress.IPv6Network(n)
     for n in (
+        "::/128",  # RFC 4291 - unspecified
         "::1/128",  # RFC 4291 - loopback
         "fc00::/7",  # RFC 4193 - unique local addresses (ULA)
         "fe80::/10",  # RFC 4291 - link-local
         "ff00::/8",  # RFC 4291 - multicast
         "::ffff:0:0/96",  # RFC 4291 - IPv4-mapped IPv6 addresses
+        "::ffff:0:0:0/96",  # RFC 2765 - SIIT IPv4-translated addresses
         "::0.0.0.0/96",  # RFC 4291 - IPv4-compatible IPv6 (deprecated)
         "64:ff9b::/96",  # RFC 6052 - NAT64 well-known prefix
         "64:ff9b:1::/48",  # RFC 8215 - NAT64 discovery prefix
+        "100::/64",  # RFC 6666 - discard-only prefix
+        "2001::/32",  # RFC 4380 - Teredo tunneling
+        "2001:2::/48",  # RFC 5180 - benchmarking
+        "2001:db8::/32",  # RFC 3849 - documentation
+        "2002::/16",  # RFC 3056 - 6to4
     )
 )
 
@@ -113,9 +120,12 @@ _LOOPBACK_IPV4 = ipaddress.IPv4Network("127.0.0.0/8")
 _THIS_NETWORK_IPV4 = ipaddress.IPv4Network("0.0.0.0/8")
 _LOOPBACK_IPV6 = ipaddress.IPv6Address("::1")
 
-# NAT64 well-known prefixes
+# NAT64 & SIIT prefixes
 _NAT64_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_DISCOVERY_PREFIX = ipaddress.IPv6Network("64:ff9b:1::/48")
+_SIIT_TRANSLATED_PREFIX = ipaddress.IPv6Network("::ffff:0:0:0/96")
+
+DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MiB
 
 # Keys that AsyncHTTPTransport accepts (forwarded from factory kwargs).
 _TRANSPORT_KWARGS: frozenset[str] = frozenset(
@@ -138,6 +148,14 @@ class SSRFBlockedError(httpx.ConnectError):
     so that callers already handling httpx errors fail closed without special
     casing, while still allowing explicit ``except SSRFBlockedError`` handling.
     """
+
+
+class ResponseTooLargeError(httpx.RequestError):
+    """Raised when a fetched HTTP response exceeds the configured byte limit."""
+
+
+class InvalidContentTypeError(httpx.RequestError):
+    """Raised when a fetched HTTP response does not match allowed MIME types."""
 
 
 # ---------------------------------------------------------------------------
@@ -165,18 +183,41 @@ class SSRFPolicy:
 
 def _extract_embedded_ipv4(
     addr: ipaddress.IPv6Address,
-) -> ipaddress.IPv4Address | None:
-    """Extract an embedded IPv4 from IPv4-mapped or NAT64 IPv6 addresses."""
-    # Check ipv4_mapped first (covers ::ffff:x.x.x.x)
+) -> list[ipaddress.IPv4Address]:
+    """Extract embedded IPv4 addresses from IPv4-mapped, 6to4, Teredo, SIIT, or NAT64 IPv6."""
+    embedded: list[ipaddress.IPv4Address] = []
     if addr.ipv4_mapped is not None:
-        return addr.ipv4_mapped
+        embedded.append(addr.ipv4_mapped)
+    if addr.sixtofour is not None:
+        embedded.append(addr.sixtofour)
+    if addr.teredo is not None:
+        embedded.extend(addr.teredo)
 
-    # Check NAT64 prefixes - embedded IPv4 is in the last 4 bytes
-    if addr in _NAT64_PREFIX or addr in _NAT64_DISCOVERY_PREFIX:
+    if addr in _NAT64_PREFIX or addr in _NAT64_DISCOVERY_PREFIX or addr in _SIIT_TRANSLATED_PREFIX:
         raw = addr.packed
-        return ipaddress.IPv4Address(raw[-4:])
+        embedded.append(ipaddress.IPv4Address(raw[-4:]))
 
-    return None
+    return embedded
+
+
+def _is_non_canonical_numeric_ipv4_host(hostname: str) -> bool:
+    """Reject octal, hex, decimal-integer, or shorthand numeric IPv4 host literals."""
+    host = hostname.rstrip(".")
+    if not host:
+        return False
+    # Single integer or hex integer (e.g. 2130706433 or 0x7f000001)
+    if host.isdigit() or host.lower().startswith("0x"):
+        return True
+    parts = host.split(".")
+    if len(parts) <= 4 and all(
+        part.isdigit() or part.lower().startswith("0x") for part in parts if part
+    ):
+        # Not already parsed as canonical IPv4 by ipaddress.ip_address -> shorthand or octal/hex.
+        if len(parts) != 4:
+            return True
+        if any(len(part) > 1 and part.startswith("0") for part in parts):
+            return True
+    return False
 
 
 def _ip_in_blocked_networks(
@@ -197,19 +238,23 @@ def _ip_in_blocked_networks(
             for net6 in _BLOCKED_IPV6_NETWORKS:
                 if addr in net6:
                     return "private IP range"
+            if not addr.is_global:
+                return "private IP range"
         for extra in policy.additional_blocked_cidrs:
             if isinstance(extra, ipaddress.IPv6Network) and addr in extra:
                 return "blocked CIDR"
 
     # Loopback check - independent of block_private_ips so that
-    # block_localhost=True still catches 127.x.x.x / ::1 even when
+    # block_localhost=True still catches 127.x.x.x / ::1 / unspecified even when
     # private IPs are allowed.
     if policy.block_localhost:
         if isinstance(addr, ipaddress.IPv4Address) and (
-            addr in _LOOPBACK_IPV4 or addr in _THIS_NETWORK_IPV4
+            addr in _LOOPBACK_IPV4 or addr in _THIS_NETWORK_IPV4 or addr.is_unspecified
         ):
             return "localhost address"
-        if isinstance(addr, ipaddress.IPv6Address) and addr == _LOOPBACK_IPV6:
+        if isinstance(addr, ipaddress.IPv6Address) and (
+            addr == _LOOPBACK_IPV6 or addr.is_unspecified
+        ):
             return "localhost address"
 
     # Cloud metadata check - IP set *and* network ranges (e.g. 169.254.0.0/16).
@@ -241,14 +286,15 @@ def validate_resolved_ip(ip_str: str, policy: SSRFPolicy) -> None:
     except ValueError as exc:
         raise SSRFBlockedError("invalid IP address") from exc
 
-    if isinstance(addr, ipaddress.IPv6Address):
-        inner = _extract_embedded_ipv4(addr)
-        if inner is not None:
-            addr = inner
-
     reason = _ip_in_blocked_networks(addr, policy)
     if reason is not None:
         raise SSRFBlockedError(reason)
+
+    if isinstance(addr, ipaddress.IPv6Address):
+        for inner in _extract_embedded_ipv4(addr):
+            inner_reason = _ip_in_blocked_networks(inner, policy)
+            if inner_reason is not None:
+                raise SSRFBlockedError(inner_reason)
 
 
 def validate_hostname(hostname: str, policy: SSRFPolicy) -> None:
@@ -257,7 +303,7 @@ def validate_hostname(hostname: str, policy: SSRFPolicy) -> None:
     Raises:
         SSRFBlockedError: If the hostname is blocked.
     """
-    lower = hostname.lower()
+    lower = hostname.rstrip(".").lower()
 
     if policy.block_localhost and lower in _LOCALHOST_NAMES:
         raise SSRFBlockedError("localhost address")
@@ -288,7 +334,8 @@ def validate_url_sync(url: str, policy: SSRFPolicy) -> None:
     if not hostname:
         raise SSRFBlockedError("missing hostname")
 
-    if hostname.lower() in {h.lower() for h in policy.allowed_hosts}:
+    normalized_host = hostname.rstrip(".").lower()
+    if normalized_host in {h.rstrip(".").lower() for h in policy.allowed_hosts}:
         return
 
     # If the hostname is a literal IP, validate it directly.
@@ -299,6 +346,9 @@ def validate_url_sync(url: str, policy: SSRFPolicy) -> None:
     else:
         validate_resolved_ip(hostname, policy)
         return
+
+    if _is_non_canonical_numeric_ipv4_host(hostname):
+        raise SSRFBlockedError("non-canonical numeric IP hostname not allowed")
 
     validate_hostname(hostname, policy)
 
@@ -345,7 +395,9 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
         await request.aread()
 
         # Allowed-hosts bypass - skip DNS/IP validation entirely.
-        if hostname.lower() in {h.lower() for h in self._policy.allowed_hosts}:
+        if hostname.rstrip(".").lower() in {
+            h.rstrip(".").lower() for h in self._policy.allowed_hosts
+        }:
             return await self._inner.handle_async_request(request)
 
         # 4. DNS resolution.
@@ -384,7 +436,10 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
 
         extensions = dict(request.extensions)
         if scheme == "https":
-            extensions["sni_hostname"] = hostname.encode("ascii")
+            try:
+                extensions["sni_hostname"] = hostname.encode("idna")
+            except UnicodeError as exc:
+                raise SSRFBlockedError("invalid internationalized hostname") from exc
 
         pinned_request = httpx.Request(
             method=request.method,
@@ -477,3 +532,55 @@ def safe_async_client(
         transport=transport,
         **client_kwargs,  # type: ignore[arg-type]
     )
+
+
+async def safe_fetch_bytes(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_bytes: int = DEFAULT_MAX_RESPONSE_BYTES,
+    allowed_content_types: tuple[str, ...] | None = None,
+    return_on_304: bool = False,
+) -> tuple[bytes, httpx.Response]:
+    """Stream an HTTP GET response and enforce Content-Type and byte size limits.
+
+    Protects against unbounded response buffering and gzip decompression bombs
+    by tracking decompressed bytes incrementally via ``response.aiter_bytes()``.
+    """
+    async with client.stream("GET", url) as response:
+        if return_on_304 and response.status_code == 304:
+            return b"", response
+
+        response.raise_for_status()
+
+        if allowed_content_types is not None:
+            content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if not any(allowed in content_type for allowed in allowed_content_types):
+                raise InvalidContentTypeError(
+                    f"Unsupported content-type '{content_type or 'unknown'}'",
+                    request=response.request,
+                )
+
+        content_length_raw = response.headers.get("content-length")
+        if content_length_raw is not None:
+            try:
+                if int(content_length_raw) > max_bytes:
+                    raise ResponseTooLargeError(
+                        f"Response Content-Length exceeds {max_bytes} bytes",
+                        request=response.request,
+                    )
+            except ValueError:
+                pass
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        async for chunk in response.aiter_bytes():
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                raise ResponseTooLargeError(
+                    f"Response body exceeds {max_bytes} bytes limit",
+                    request=response.request,
+                )
+            chunks.append(chunk)
+
+        return b"".join(chunks), response

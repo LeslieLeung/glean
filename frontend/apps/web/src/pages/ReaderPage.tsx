@@ -37,7 +37,7 @@ import {
   Info,
 } from 'lucide-react'
 import { formatDistanceToNow, isPast } from 'date-fns'
-import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
+import { stripFeedMetadataHtml, stripHtmlTags, toSafeImageUrl } from '../lib/html'
 import { findSurvivingReturnAnchor, indexBeforeSurvivingNeighbor } from '../utils/entryListOrder'
 import {
   buttonVariants,
@@ -1262,9 +1262,9 @@ function EntryListItem({
               </div>
             ) : showFeedInfo && (entry.feed_title || entry.feed_icon_url) ? (
               <div className="mb-1 flex items-center gap-1.5">
-                {entry.feed_icon_url ? (
+                {toSafeImageUrl(entry.feed_icon_url) ? (
                   <img
-                    src={entry.feed_icon_url}
+                    src={toSafeImageUrl(entry.feed_icon_url)}
                     alt=""
                     className="h-3.5 w-3.5 shrink-0 rounded-sm object-cover"
                   />

@@ -54,7 +54,8 @@ async def test_health_is_unavailable_when_enabled_vector_backend_cannot_recover(
             await health_check(request)
 
     assert exc_info.value.status_code == 503
-    assert "connection refused" in str(exc_info.value.detail)
+    assert exc_info.value.detail == "Vector backend unavailable"
+    assert "connection refused" not in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ before enabling vectorization.
 
 from glean_core import get_logger
 from glean_core.schemas.config import EmbeddingConfig, ValidationResult
+from glean_vector.clients.providers.ssrf import EmbeddingSSRFError
 from glean_vector.config import (
     pgvector_config,
     resolve_pgvector_database_url,
@@ -14,6 +15,16 @@ from glean_vector.config import (
 )
 
 logger = get_logger(__name__)
+
+
+def _safe_provider_error(exc: Exception) -> str:
+    """Return a concise error message without exposing raw upstream HTTP bodies."""
+    if isinstance(exc, EmbeddingSSRFError):
+        return "Embedding endpoint blocked by security policy"
+    if isinstance(exc, ValueError):
+        compact = " ".join(str(exc).splitlines()).strip()
+        return compact[:200] if compact else "Invalid embedding configuration"
+    return f"Embedding provider request failed ({type(exc).__name__})"
 
 
 def _quote_ident(name: str) -> str:
@@ -83,10 +94,11 @@ class EmbeddingValidationService:
 
         except Exception as e:
             logger.error(f"Failed to infer dimension: {e}")
+            safe_msg = _safe_provider_error(e)
             return ValidationResult(
                 success=False,
-                message=f"Failed to infer dimension: {str(e)}",
-                details={"provider": provider, "model": model, "error": str(e)},
+                message=f"Failed to infer dimension: {safe_msg}",
+                details={"provider": provider, "model": model, "error": safe_msg},
             )
 
     async def validate_provider(self, config: EmbeddingConfig) -> ValidationResult:
@@ -158,19 +170,23 @@ class EmbeddingValidationService:
             logger.error(f"Provider import error: {e}")
             return ValidationResult(
                 success=False,
-                message=f"Provider not available: {config.provider}. {str(e)}",
-                details={"provider": config.provider, "error": str(e)},
+                message=f"Provider not available: {config.provider}",
+                details={
+                    "provider": config.provider,
+                    "error": f"Provider dependency unavailable ({type(e).__name__})",
+                },
             )
 
         except Exception as e:
             logger.error(f"Provider validation failed: {e}")
+            safe_msg = _safe_provider_error(e)
             return ValidationResult(
                 success=False,
-                message=f"Provider connection failed: {str(e)}",
+                message=f"Provider connection failed: {safe_msg}",
                 details={
                     "provider": config.provider,
                     "model": config.model,
-                    "error": str(e),
+                    "error": safe_msg,
                     "error_type": type(e).__name__,
                 },
             )

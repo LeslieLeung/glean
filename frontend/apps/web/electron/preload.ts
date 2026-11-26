@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设置后端 API URL
   setApiUrl: (url: string) => ipcRenderer.invoke('set-api-url', url),
 
+  // 测试后端 API 连接
+  testApiConnection: (url: string) => ipcRenderer.invoke('test-api-connection', url),
+
   // 获取平台信息
   getPlatform: () => ipcRenderer.invoke('get-platform'),
 
@@ -31,6 +34,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAccessToken: (token: string | null) => ipcRenderer.invoke('set-access-token', token),
   setRefreshToken: (token: string | null) => ipcRenderer.invoke('set-refresh-token', token),
   clearTokens: () => ipcRenderer.invoke('clear-tokens'),
+  authenticateOIDC: (authorizationUrl: string) =>
+    ipcRenderer.invoke('authenticate-oidc', authorizationUrl),
 
   // Auto-update methods
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -77,9 +82,25 @@ export interface UpdateStatus {
   currentVersion: string
 }
 
+export interface OidcCallbackResult {
+  code?: string
+  state?: string
+  error?: string
+  errorDescription?: string
+  cancelled?: boolean
+}
+
+export interface ApiConnectionTestResult {
+  ok: boolean
+  status?: number
+  version?: string
+  errorCode?: 'invalid_url' | 'invalid_response' | 'http_error' | 'network_error'
+}
+
 export interface ElectronAPI {
   getApiUrl: () => Promise<string>
   setApiUrl: (url: string) => Promise<boolean>
+  testApiConnection: (url: string) => Promise<ApiConnectionTestResult>
   getPlatform: () => Promise<{
     platform: string
     arch: string
@@ -91,6 +112,7 @@ export interface ElectronAPI {
   setAccessToken: (token: string | null) => Promise<boolean>
   setRefreshToken: (token: string | null) => Promise<boolean>
   clearTokens: () => Promise<boolean>
+  authenticateOIDC: (authorizationUrl: string) => Promise<OidcCallbackResult>
 
   // Auto-update methods
   checkForUpdates: () => Promise<{

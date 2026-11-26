@@ -17,8 +17,8 @@ from glean_core.auth import (
     JWTConfig,
     create_access_token,
     create_refresh_token,
-    hash_password,
-    verify_password,
+    hash_password_async,
+    verify_password_async,
     verify_token,
 )
 from glean_core.auth.providers import AuthProviderFactory, AuthResult
@@ -77,7 +77,7 @@ class AuthService:
         user = User(
             email=request.email,
             name=request.name,
-            password_hash=hash_password(request.password),
+            password_hash=await hash_password_async(request.password),
             primary_auth_provider="local",
             provider_user_id=request.email,
             is_active=True,
@@ -135,7 +135,7 @@ class AuthService:
             raise ValueError("Invalid email or password")
 
         # Verify password
-        if not verify_password(request.password, user.password_hash):
+        if not await verify_password_async(request.password, user.password_hash):
             raise ValueError("Invalid email or password")
 
         if not user.is_active:
@@ -218,7 +218,11 @@ class AuthService:
         return UserResponse.model_validate(user)
 
     async def login_with_provider(
-        self, provider_id: str, credentials: dict[str, Any]
+        self,
+        provider_id: str,
+        credentials: dict[str, Any],
+        *,
+        allow_registration: bool = True,
     ) -> tuple[UserResponse, TokenResponse]:
         """
         Authenticate with OAuth/OIDC provider.
@@ -226,12 +230,13 @@ class AuthService:
         Args:
             provider_id: Provider identifier (e.g., 'oidc', 'google').
             credentials: Provider-specific credentials (e.g., authorization code).
+            allow_registration: Whether net-new user creation is allowed.
 
         Returns:
             Tuple of (user response, token response).
 
         Raises:
-            ValueError: If provider not configured or authentication fails.
+            ValueError: If provider not configured, user disabled, or auth fails.
         """
         # Get provider configuration
         provider_config = self.provider_configs.get(provider_id)
@@ -243,7 +248,9 @@ class AuthService:
         auth_result = await provider.authenticate(credentials)
 
         # Find or create user
-        user = await self._find_or_create_oauth_user(provider_id, auth_result)
+        user = await self._find_or_create_oauth_user(
+            provider_id, auth_result, allow_registration=allow_registration
+        )
 
         if not user.is_active:
             raise ValueError("Account is disabled")
@@ -265,13 +272,20 @@ class AuthService:
 
         return user_response, token_response
 
-    async def _find_or_create_oauth_user(self, provider_id: str, auth_result: AuthResult) -> User:
+    async def _find_or_create_oauth_user(
+        self,
+        provider_id: str,
+        auth_result: AuthResult,
+        *,
+        allow_registration: bool = True,
+    ) -> User:
         """
         Find existing user or create new one from OAuth authentication.
 
         Args:
             provider_id: Provider identifier.
             auth_result: Authentication result from provider.
+            allow_registration: Whether net-new accounts may be created.
 
         Returns:
             User instance.
@@ -289,20 +303,34 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         if user:
+            if not user.is_active:
+                raise ValueError("Account is disabled")
             await self._apply_provider_profile_updates(user, auth_result)
             return user
 
-        # If email is provided, try to find existing user by email
-        if auth_result.get("email"):
-            stmt = select(User).where(User.email == auth_result["email"])
+        # Email-based linking requires BOTH the IdP email claim and the local account
+        # to be verified; otherwise unverified IdP claims or unverified pre-registered
+        # local accounts could take over an account.
+        provider_email = auth_result.get("email")
+        provider_email_verified = auth_result["metadata"].get("email_verified") is True
+        if provider_email:
+            stmt = select(User).where(User.email == provider_email)
             result = await self.session.execute(stmt)
             user = result.scalar_one_or_none()
 
             if user:
-                # Link this OAuth provider to existing user
-                # The provider mapping will be created in _update_auth_provider
+                if not user.is_active:
+                    raise ValueError("Account is disabled")
+                if not provider_email_verified or not user.is_verified:
+                    raise ValueError(
+                        "Account with this email already exists and cannot be automatically linked"
+                    )
+                # Link this OAuth provider to verified existing user
                 await self._apply_provider_profile_updates(user, auth_result)
                 return user
+
+        if not allow_registration:
+            raise ValueError("Registration is currently disabled by the administrator")
 
         # Create new user from OAuth data
         user = User(
@@ -315,7 +343,7 @@ class AuthService:
             primary_auth_provider=provider_id,
             provider_user_id=auth_result["provider_user_id"],
             is_active=True,
-            is_verified=auth_result["metadata"].get("email_verified", False),
+            is_verified=provider_email_verified,
         )
 
         self.session.add(user)
@@ -351,8 +379,8 @@ class AuthService:
             return user
 
         email = auth_result.get("email")
-        if email:
-            email_stmt = select(User).where(User.email == email)
+        if email and auth_result["metadata"].get("email_verified") is True:
+            email_stmt = select(User).where(User.email == email, User.is_verified.is_(True))
             email_result = await self.session.execute(email_stmt)
             user = email_result.scalar_one_or_none()
             if user:

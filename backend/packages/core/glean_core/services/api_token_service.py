@@ -4,19 +4,30 @@ API Token service.
 Handles API token CRUD operations and verification for MCP authentication.
 """
 
+import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from glean_core.auth.password import hash_password, verify_password
+from glean_core.auth.password import verify_password_async
 from glean_core.schemas.api_token import (
     APITokenCreateResponse,
     APITokenListResponse,
     APITokenResponse,
 )
 from glean_database.models import APIToken, User
+
+MAX_ACTIVE_TOKENS_PER_USER = 20
+_SHA256_PREFIX = "sha256$"
+
+
+def _hash_api_token(plain_token: str) -> str:
+    """Hash a high-entropy API token with SHA-256."""
+    digest = hashlib.sha256(plain_token.encode("utf-8")).hexdigest()
+    return f"{_SHA256_PREFIX}{digest}"
 
 
 class APITokenService:
@@ -48,9 +59,20 @@ class APITokenService:
         Returns:
             Created token response with plain token (only shown once).
         """
+        count_stmt = (
+            select(func.count())
+            .select_from(APIToken)
+            .where(APIToken.user_id == user_id, APIToken.is_revoked.is_(False))
+        )
+        active_count = (await self.session.execute(count_stmt)).scalar() or 0
+        if active_count >= MAX_ACTIVE_TOKENS_PER_USER:
+            raise ValueError(
+                f"Maximum number of active API tokens ({MAX_ACTIVE_TOKENS_PER_USER}) reached"
+            )
+
         # Generate token: glean_<32 random characters>
         plain_token = f"glean_{secrets.token_urlsafe(32)}"
-        token_hash = hash_password(plain_token)
+        token_hash = _hash_api_token(plain_token)
         token_prefix = plain_token[:16]  # "glean_xxxxxxxxxx" (16 chars for ~60 bits entropy)
 
         # Calculate expiration
@@ -116,12 +138,14 @@ class APITokenService:
         # Verify hash for each matching token
         # Use constant-time comparison to prevent timing attacks
         matched_token = None
+        expected_sha256 = _hash_api_token(plain_token)
         for token in tokens:
-            # Check password and expiration - only set if valid and not expired
-            # Continue checking all tokens to maintain constant time
-            if verify_password(plain_token, token.token_hash) and not (
-                token.expires_at and token.expires_at < datetime.now(UTC)
-            ):
+            if token.token_hash.startswith(_SHA256_PREFIX):
+                is_valid = hmac.compare_digest(expected_sha256, token.token_hash)
+            else:
+                is_valid = await verify_password_async(plain_token, token.token_hash)
+
+            if is_valid and not (token.expires_at and token.expires_at < datetime.now(UTC)):
                 matched_token = token
 
         return matched_token

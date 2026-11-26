@@ -220,7 +220,7 @@ class OIDCProvider(AuthProvider):
             tokens.get("access_token"),
         )
 
-        logger.info("[OIDC] received user info from IdP", extra={"user_info": user_info})
+        logger.info("[OIDC] received user info from IdP", extra={"sub": user_info.get("sub")})
 
         return {
             "user_info": user_info,
@@ -232,8 +232,7 @@ class OIDCProvider(AuthProvider):
             "phone": user_info.get("phone_number") or None,  # OIDC phone number field
             "avatar_url": user_info.get("picture") or None,
             "metadata": {
-                "tokens": tokens,
-                "email_verified": user_info.get("email_verified", False),
+                "email_verified": bool(user_info.get("email_verified", False)),
             },
         }
 

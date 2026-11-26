@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.schemas import UserResponse
 from glean_core.schemas.config import (
     EmbeddingConfig,
     EmbeddingRebuildProgress,
@@ -25,6 +26,7 @@ from glean_vector.config import (
     vector_backend_config,
 )
 
+from ..dependencies import get_current_user
 from ..vector_lifecycle import ensure_app_vector_client
 
 router = APIRouter()
@@ -40,6 +42,7 @@ async def get_config_service(
 @router.get("/vectorization-status", response_model=VectorizationStatusResponse)
 async def get_vectorization_status(
     request: Request,
+    _current_user: Annotated[UserResponse, Depends(get_current_user)],
     config_service: Annotated[TypedConfigService, Depends(get_config_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> VectorizationStatusResponse:

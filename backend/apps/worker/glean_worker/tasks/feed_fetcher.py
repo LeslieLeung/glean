@@ -4,6 +4,7 @@ Feed fetcher tasks.
 Background tasks for fetching and parsing RSS feeds.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -24,6 +25,9 @@ from glean_vector.config import is_active_embedding_model, is_active_vector_back
 from ._vector_client import ensure_vector_client
 
 logger = get_logger(__name__)
+
+MAX_ENTRIES_PER_FETCH = 100
+MAX_FULLTEXT_PER_FETCH = 10
 
 
 def _is_duplicate_feed_guid_error(error: IntegrityError) -> bool:
@@ -163,17 +167,27 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
             feed.last_fetched_at = fetched_at
             feed.last_success_at = fetched_at
 
-            # Update cache headers
-            if cache_headers and "etag" in cache_headers:
-                feed.etag = cache_headers["etag"]
-            if cache_headers and "last-modified" in cache_headers:
-                feed.last_modified = cache_headers["last-modified"]
-
             # Check vectorization once for the entire batch
             should_embed = await _should_embed_entries(ctx, session)
 
-            # Process entries
+            # Prefetch existing entries so oldest-first feeds skip already imported items
+            # without exhausting MAX_ENTRIES_PER_FETCH before reaching newly appended entries.
+            parsed_guids = list(dict.fromkeys(entry.guid for entry in parsed_feed.entries))
+            existing_by_guid: dict[str, Entry] = {}
+            guid_chunk_size = 500
+            for offset in range(0, len(parsed_guids), guid_chunk_size):
+                chunk = parsed_guids[offset : offset + guid_chunk_size]
+                existing_stmt = select(Entry).where(Entry.feed_id == feed.id, Entry.guid.in_(chunk))
+                existing_result = await session.execute(existing_stmt)
+                for existing_row in existing_result.scalars():
+                    if existing_row.guid is not None:
+                        existing_by_guid[existing_row.guid] = existing_row
+
+            # Process entries (bound newly inserted entries per fetch to prevent starvation on oversized feeds)
             new_entries = 0
+            fulltext_fetches = 0
+            seen_new_guids: set[str] = set()
+            truncated_new_entries = False
             latest_entry_time = feed.last_entry_at
             # A previously stored future date would otherwise stay ahead of every later fetch.
             if latest_entry_time is not None and publication_time_was_replaced(
@@ -184,12 +198,7 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 feed.last_entry_at = None
 
             for parsed_entry in parsed_feed.entries:
-                # Check if entry already exists
-                stmt = select(Entry).where(
-                    Entry.feed_id == feed.id, Entry.guid == parsed_entry.guid
-                )
-                result = await session.execute(stmt)
-                existing_entry = result.scalar_one_or_none()
+                existing_entry = existing_by_guid.get(parsed_entry.guid)
 
                 if existing_entry:
                     # Keep the original fetch time. Using "now" would pin an old
@@ -212,6 +221,13 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                         latest_entry_time = published_at
                     continue
 
+                if parsed_entry.guid in seen_new_guids:
+                    continue
+
+                if new_entries >= MAX_ENTRIES_PER_FETCH:
+                    truncated_new_entries = True
+                    break
+
                 published_at = effective_published_at(parsed_entry.published_at, fetched_at)
                 if publication_time_was_replaced(parsed_entry.published_at, published_at):
                     logger.debug(
@@ -227,7 +243,12 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
 
                 # Determine content: fetch full text if feed only provides summary
                 entry_content = parsed_entry.content
-                if not parsed_entry.has_full_content and parsed_entry.url:
+                if (
+                    not parsed_entry.has_full_content
+                    and parsed_entry.url
+                    and fulltext_fetches < MAX_FULLTEXT_PER_FETCH
+                ):
+                    fulltext_fetches += 1
                     logger.info(
                         "Entry has no full content, fetching from URL",
                         extra={"feed_id": feed_id, "url": parsed_entry.url},
@@ -286,13 +307,33 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                                 "url": parsed_entry.url,
                             },
                         )
+                        seen_new_guids.add(parsed_entry.guid)
                         continue
                     raise
+                seen_new_guids.add(parsed_entry.guid)
                 new_entries += 1
 
                 # M3: Collect entry ID for embedding (enqueued after commit)
                 if should_embed:
                     pending_embedding_ids.append(entry.id)
+
+            # Persist cache validators only when the entire feed batch finished without truncating new entries.
+            if truncated_new_entries:
+                feed.etag = None
+                feed.last_modified = None
+                logger.info(
+                    "Deferred feed cache validators after hitting per-fetch new-entry cap",
+                    extra={
+                        "feed_id": feed_id,
+                        "new_entries": new_entries,
+                        "max_entries_per_fetch": MAX_ENTRIES_PER_FETCH,
+                    },
+                )
+            elif cache_headers:
+                if "etag" in cache_headers:
+                    feed.etag = cache_headers["etag"]
+                if "last-modified" in cache_headers:
+                    feed.last_modified = cache_headers["last-modified"]
 
             # Update last_entry_at and schedule next fetch
             if latest_entry_time:
@@ -317,6 +358,26 @@ async def fetch_feed_task(ctx: dict[str, Any], feed_id: str) -> dict[str, str | 
                 "total_entries": len(parsed_feed.entries),
             }
 
+        except asyncio.CancelledError:
+            logger.warning(
+                "Feed fetch cancelled (timeout or shutdown), recording error backoff",
+                extra={"feed_id": feed_id},
+            )
+            pending_embedding_ids.clear()
+            await session.rollback()
+            stmt = select(Feed).where(Feed.id == feed_id)
+            result = await session.execute(stmt)
+            cancelled_feed = result.scalar_one_or_none()
+            if cancelled_feed:
+                cancelled_feed.error_count += 1
+                cancelled_feed.fetch_error_message = "Feed fetch cancelled or timed out"
+                cancelled_feed.last_fetched_at = datetime.now(UTC)
+                if cancelled_feed.error_count >= 10:
+                    cancelled_feed.status = FeedStatus.ERROR
+                retry_minutes = min(60, 15 * (2 ** min(cancelled_feed.error_count - 1, 5)))
+                cancelled_feed.next_fetch_at = datetime.now(UTC) + timedelta(minutes=retry_minutes)
+                await session.commit()
+            raise
         except Exception as e:
             logger.exception(
                 "Failed to fetch feed",

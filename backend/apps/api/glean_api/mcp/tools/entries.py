@@ -11,30 +11,17 @@ from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
 from sqlalchemy import desc, func, select
 
-from glean_core import get_logger
+from glean_core import escape_like_pattern, get_logger
 from glean_core.published_at import effective_published_at
 from glean_core.services.entry_dedup import url_user_entry_id
 from glean_database.models import Entry, Feed, Subscription, UserEntry
 from glean_database.session import get_session_context
+from glean_rss import sanitize_html
 
 from ..auth import extract_user_id_from_scopes
 from ..server import MCPContext
 
 logger = get_logger(__name__)
-
-
-def escape_like_pattern(pattern: str) -> str:
-    """
-    Escape special LIKE wildcards in a search pattern.
-
-    Args:
-        pattern: The search pattern to escape.
-
-    Returns:
-        Escaped pattern safe for use in LIKE queries.
-    """
-    # Escape % and _ characters to prevent LIKE injection
-    return pattern.replace("%", r"\%").replace("_", r"\_")
 
 
 def _published_at_iso(entry: Entry) -> str:
@@ -202,12 +189,13 @@ async def get_entry(
             "id": str(entry.id),
             "title": str(entry.title),
             "url": str(entry.url),
-            "content": entry.content,
-            "summary": entry.summary,
+            "content": sanitize_html(entry.content) if entry.content else None,
+            "summary": sanitize_html(entry.summary) if entry.summary else None,
             "author": entry.author,
             "published_at": _published_at_iso(entry),
             "feed_title": feed_title,
             "is_read": bool(user_entry.is_read) if user_entry else False,
+            "content_trust": "untrusted_external_rss",
         }
 
 

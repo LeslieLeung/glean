@@ -4,14 +4,26 @@ RSS/Atom feed parser.
 Parses RSS and Atom feeds using feedparser.
 """
 
+import asyncio
 import html
+import io
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any, cast
 from urllib.parse import urlparse
 
 import feedparser
 from feedparser import FeedParserDict
+
+from .sanitizer import sanitize_html, sanitize_url
+
+_UNSAFE_HTML_PATTERN = re.compile(
+    r"<\s*(?:script|style|iframe|object|embed|svg|math|form|input|button|textarea|select|noscript|template|meta|link|base|applet|frame|frameset|audio|video|img|a)\b"
+    r"|\bon[a-z]+\s*="
+    r"|(?:javascript|vbscript|data)\s*:",
+    re.IGNORECASE,
+)
 
 
 def _get_favicon_url(site_url: str | None) -> str | None:
@@ -60,12 +72,13 @@ class ParsedFeed:
         feed_info: dict[str, Any] = dict(data.get("feed", {}))  # type: ignore[arg-type]
         self.title = html.unescape(str(feed_info.get("title", "")))
         self.description = html.unescape(str(feed_info.get("description", "")))
-        self.site_url = str(feed_info.get("link", ""))
+        self.site_url = sanitize_url(str(feed_info.get("link", ""))) or ""
         self.language = feed_info.get("language")
 
         # Try to get icon from feed, fallback to favicon
-        icon = feed_info.get("icon") or feed_info.get("logo")
-        self.icon_url = str(icon) if icon else _get_favicon_url(self.site_url)
+        raw_icon = feed_info.get("icon") or feed_info.get("logo")
+        safe_icon = sanitize_url(str(raw_icon)) if raw_icon else None
+        self.icon_url = safe_icon if safe_icon else _get_favicon_url(self.site_url)
 
         # Get entries with proper type handling
         entries_data: list[dict[str, Any]] = list(data.get("entries", []))  # type: ignore[arg-type]
@@ -83,21 +96,35 @@ class ParsedEntry:
             data: Entry data from feedparser.
         """
         self.guid = data.get("id") or data.get("link", "")
-        self.url = data.get("link", "")
+        self.url = sanitize_url(str(data.get("link", ""))) or ""
         # Decode HTML entities in title
         raw_title = data.get("title", "")
         self.title = html.unescape(raw_title) if raw_title else ""
         self.author = data.get("author")
-        self.summary = data.get("summary")
+
+        raw_summary = data.get("summary")
+        if isinstance(raw_summary, str):
+            if data.get("_plain_text_summary") and not _UNSAFE_HTML_PATTERN.search(raw_summary):
+                self.summary = raw_summary
+            else:
+                self.summary = sanitize_html(raw_summary)
+        else:
+            self.summary = None
 
         # Get content (prefer content over summary)
         # Track whether the feed provides actual content or just summary/description
         content_list = data.get("content", [])
         if content_list:
-            self.content = content_list[0].get("value")
+            raw_content = content_list[0].get("value")
+            if isinstance(raw_content, str):
+                self.content = (
+                    raw_content if data.get("_plain_text_content") else sanitize_html(raw_content)
+                )
+            else:
+                self.content = None
             self.has_full_content = True  # Feed provides content field
         else:
-            self.content = data.get("summary")
+            self.content = self.summary
             self.has_full_content = (
                 False  # Only has summary/description, may need full-text extraction
             )
@@ -188,6 +215,7 @@ def _parse_json_feed(content: str) -> ParsedFeed | None:
                 "title": _text(item.get("title")),
                 "author": _json_author(item),
                 "summary": _text(item.get("summary")) or _text(item.get("content_text")),
+                "_plain_text_summary": True,
             }
             html_content = _text(item.get("content_html"))
             text_content = _text(item.get("content_text"))
@@ -195,6 +223,7 @@ def _parse_json_feed(content: str) -> ParsedFeed | None:
                 entry["content"] = [{"value": html_content}]
             elif text_content:
                 entry["content"] = [{"value": _plain_text_as_html(text_content)}]
+                entry["_plain_text_content"] = True
             published = _parsed_time(item.get("date_published")) or _parsed_time(
                 item.get("date_modified")
             )
@@ -227,11 +256,13 @@ async def parse_feed(content: str, url: str) -> ParsedFeed:
     Raises:
         ValueError: If feed parsing fails.
     """
-    json_feed = _parse_json_feed(content)
+    json_feed = await asyncio.to_thread(_parse_json_feed, content)
     if json_feed is not None:
         return json_feed
 
-    data: FeedParserDict = feedparser.parse(content)  # type: ignore[reportUnknownMemberType]
+    # Wrap in BytesIO so feedparser never interprets a string body as a URL or local file path.
+    feed_stream = io.BytesIO(content.encode("utf-8"))
+    data: FeedParserDict = await asyncio.to_thread(feedparser.parse, feed_stream)  # type: ignore[reportUnknownMemberType]
 
     if not data.get("version"):  # type: ignore[reportUnknownMemberType]
         raise ValueError("The URL does not contain an RSS or Atom feed")

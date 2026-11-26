@@ -61,6 +61,26 @@ class Settings(BaseSettings):
     # MCP Server settings
     mcp_issuer_url: str = "http://localhost:8000"
     mcp_resource_server_url: str = "http://localhost:8000/mcp"
+    mcp_allowed_hosts: str = ""
+
+
+_INSECURE_SECRET_KEYS: frozenset[str] = frozenset(
+    {
+        "change-me-in-production",
+        "change-me-in-production-use-a-long-random-string",
+    }
+)
+
+
+def validate_runtime_security_settings(cfg: Settings) -> None:
+    """Reject known placeholder or low-entropy SECRET_KEY when debug=False."""
+    if cfg.debug:
+        return
+    if cfg.secret_key in _INSECURE_SECRET_KEYS or len(cfg.secret_key) < 32:
+        raise RuntimeError(
+            "SECRET_KEY must be changed from default placeholders and be at least 32 characters "
+            "when DEBUG is false."
+        )
 
 
 @lru_cache

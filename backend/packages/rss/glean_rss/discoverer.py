@@ -4,6 +4,7 @@ RSS feed discovery.
 Discovers RSS/Atom feeds from websites.
 """
 
+import asyncio
 import re
 from collections.abc import Iterable
 from urllib.parse import urljoin, urlparse
@@ -12,7 +13,9 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 
 from .parser import parse_feed
-from .safe_http import safe_async_client
+from .safe_http import safe_async_client, safe_fetch_bytes
+
+_MAX_FEED_BYTES = 5 * 1024 * 1024  # 5 MiB per feed / discovery page
 
 # MIME types accepted by RSSHub-Radar's getPageRSS. Charset parameters are
 # stripped before comparison. Generic XML is handled separately: Radar skips
@@ -79,24 +82,28 @@ async def discover_feed(url: str, timeout: int = 30) -> tuple[str, str]:
         timeout=timeout, follow_redirects=True, headers={"User-Agent": "Glean/1.0"}
     ) as client:
         try:
-            response = await client.get(url)
-            response.raise_for_status()
+            body_bytes, response = await safe_fetch_bytes(
+                client,
+                url,
+                max_bytes=_MAX_FEED_BYTES,
+            )
         except (httpx.HTTPError, httpx.InvalidURL) as e:
             raise ValueError(f"Failed to fetch URL: {e}") from e
 
+        body_text = body_bytes.decode(response.encoding or "utf-8", errors="replace")
         # Validate content, even when a server uses an incorrect MIME type.
         final_url = str(response.url)
         try:
-            feed = await parse_feed(response.text, final_url)
+            feed = await parse_feed(body_text, final_url)
             return final_url, feed.title
         except ValueError:
             pass
 
         content_type = response.headers.get("content-type", "").lower()
-        if not _should_scan_html(content_type, response.text):
+        if not _should_scan_html(content_type, body_text):
             raise ValueError("No RSS feed found at this URL")
 
-        soup = BeautifulSoup(response.content, "lxml")
+        soup = await asyncio.to_thread(BeautifulSoup, body_bytes, "lxml")
         for candidate in _candidate_feed_urls(soup, final_url):
             found = await _fetch_feed(client, candidate)
             if found is not None:
@@ -130,13 +137,16 @@ async def fetch_feed(
 
     async with safe_async_client(timeout=30, follow_redirects=True, headers=headers) as client:
         try:
-            response = await client.get(url)
+            body_bytes, response = await safe_fetch_bytes(
+                client,
+                url,
+                max_bytes=_MAX_FEED_BYTES,
+                return_on_304=True,
+            )
 
             if response.status_code == 304:
                 # Not modified
                 return None
-
-            response.raise_for_status()
 
             # Extract caching headers
             cache_headers: dict[str, str] = {}
@@ -145,7 +155,8 @@ async def fetch_feed(
             if "last-modified" in response.headers:
                 cache_headers["last-modified"] = response.headers["last-modified"]
 
-            return response.text, cache_headers
+            body_text = body_bytes.decode(response.encoding or "utf-8", errors="replace")
+            return body_text, cache_headers
 
         except (httpx.HTTPError, httpx.InvalidURL) as e:
             raise ValueError(f"Failed to fetch feed: {e}") from e
@@ -154,9 +165,13 @@ async def fetch_feed(
 async def _fetch_feed(client: httpx.AsyncClient, url: str) -> tuple[str, str] | None:
     """Fetch and parse one candidate. Returns None when it is not a feed."""
     try:
-        response = await client.get(url)
-        response.raise_for_status()
-        feed = await parse_feed(response.text, str(response.url))
+        body_bytes, response = await safe_fetch_bytes(
+            client,
+            url,
+            max_bytes=_MAX_FEED_BYTES,
+        )
+        body_text = body_bytes.decode(response.encoding or "utf-8", errors="replace")
+        feed = await parse_feed(body_text, str(response.url))
     except (httpx.HTTPError, ValueError):
         return None
     return str(response.url), feed.title

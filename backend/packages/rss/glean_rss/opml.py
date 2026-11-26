@@ -1,10 +1,15 @@
 """OPML import/export preserving complete folder paths, including empty folders."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from lxml import etree  # type: ignore[attr-defined]
+
 FolderPath = tuple[str, ...]
+
+_FORBIDDEN_XML_DECL_RE = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 
 class OPMLFeed:
@@ -36,9 +41,19 @@ def parse_opml(content: str) -> list[OPMLFeed]:
 
 
 def parse_opml_with_folders(content: str) -> OPMLParseResult:
+    if _FORBIDDEN_XML_DECL_RE.search(content):
+        raise ValueError("Invalid OPML format: DTD and ENTITY declarations are not allowed")
+
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        dtd_validation=False,
+        huge_tree=False,
+    )
     try:
-        root = ET.fromstring(content)
-    except ET.ParseError as error:
+        root = etree.fromstring(content.encode("utf-8"), parser=parser)
+    except etree.XMLSyntaxError as error:
         raise ValueError(f"Invalid OPML format: {error}") from error
     body = root.find("body")
     if root.tag != "opml" or body is None:
@@ -47,11 +62,12 @@ def parse_opml_with_folders(content: str) -> OPMLParseResult:
     feeds: list[OPMLFeed] = []
     folder_paths: list[FolderPath] = []
 
-    def process_outline(outline: ET.Element, parent: FolderPath = ()) -> None:
-        xml_url = outline.get("xmlUrl")
-        title = outline.get("title") or outline.get("text", "")
+    def process_outline(outline: Any, parent: FolderPath = ()) -> None:
+        xml_url: str | None = outline.get("xmlUrl")
+        title = str(outline.get("title") or outline.get("text") or "")
+        html_url: str | None = outline.get("htmlUrl")
         if xml_url:
-            feeds.append(OPMLFeed(title, xml_url, outline.get("htmlUrl"), folder_path=parent))
+            feeds.append(OPMLFeed(title, xml_url, html_url, folder_path=parent))
             return
         if len(title) > 100:
             raise ValueError("Folder names must contain at most 100 characters")

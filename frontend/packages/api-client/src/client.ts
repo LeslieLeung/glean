@@ -4,7 +4,20 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 import { tokenStorage } from './tokenStorage'
+import {
+  coordinateTokenRefresh,
+  extractBearerToken,
+  hasUpdatedAccessToken,
+  shouldClearTokensAfterRefreshFailure,
+} from './refreshCoordinator'
 import { logger } from '@glean/logger'
+
+interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _retry?: boolean
+  _skipAuthRefresh?: boolean
+}
+
+const USER_AUTH_REFRESH_LOCK = 'glean-user-auth'
 
 /**
  * API client for communicating with the Glean backend.
@@ -20,11 +33,7 @@ import { logger } from '@glean/logger'
  */
 export class ApiClient {
   private client: AxiosInstance
-  private isRefreshing = false
-  private failedQueue: Array<{
-    resolve: (token: string) => void
-    reject: (error: unknown) => void
-  }> = []
+  private refreshPromise: Promise<string> | null = null
   private cachedApiUrl: string | null = null
   private isElectron: boolean
 
@@ -44,6 +53,7 @@ export class ApiClient {
       baseURL,
       timeout: config.timeout || 30000,
       headers: { 'Content-Type': 'application/json' },
+      withCredentials: true,
     })
 
     // Request interceptor: Attach auth token and handle Electron API URL
@@ -88,7 +98,7 @@ export class ApiClient {
         return response
       },
       async (error) => {
-        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+        const originalRequest = error.config as RetryableRequestConfig
 
         // Log error (but not for 304 Not Modified, which is a normal caching response)
         const status = error.response?.status
@@ -96,8 +106,13 @@ export class ApiClient {
           logger.error(`API Error: ${status || 'Network Error'} ${originalRequest?.url}`, error)
         }
 
+        // Let internal refresh calls surface directly to coordinateTokenRefresh without eagerly wiping shared tokens.
+        if (originalRequest?._skipAuthRefresh) {
+          return Promise.reject(error)
+        }
+
         // If error is not 401 or request already retried, reject
-        if (error.response?.status !== 401 || originalRequest._retry) {
+        if (error.response?.status !== 401 || !originalRequest || originalRequest._retry) {
           return Promise.reject(error)
         }
 
@@ -114,60 +129,45 @@ export class ApiClient {
           return Promise.reject(error)
         }
 
+        const failedAccessToken = extractBearerToken(originalRequest.headers)
+        const [accessToken, refreshToken] = await Promise.all([
+          tokenStorage.getAccessToken(),
+          tokenStorage.getRefreshToken(),
+        ])
+
+        // If another tab or concurrent call already rotated the access token, retry immediately.
+        if (accessToken && failedAccessToken && accessToken !== failedAccessToken) {
+          originalRequest._retry = true
+          originalRequest.headers = originalRequest.headers || {}
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`
+          return this.client(originalRequest)
+        }
+
         // Check if we have a refresh token
-        const refreshToken = await tokenStorage.getRefreshToken()
         if (!refreshToken) {
           logger.warn('No refresh token available, redirecting to login')
           await this.clearTokensAndRedirect()
           return Promise.reject(error)
         }
 
-        // If already refreshing, queue this request
-        if (this.isRefreshing) {
-          return new Promise((resolve, reject) => {
-            this.failedQueue.push({ resolve, reject })
-          })
-            .then((token) => {
-              originalRequest.headers.Authorization = `Bearer ${token}`
-              return this.client(originalRequest)
-            })
-            .catch((err) => Promise.reject(err))
+        originalRequest._retry = true
+
+        if (!this.refreshPromise) {
+          this.refreshPromise = this.refreshAccessToken(failedAccessToken, refreshToken).finally(
+            () => {
+              this.refreshPromise = null
+            }
+          )
         }
 
-        originalRequest._retry = true
-        this.isRefreshing = true
-
         try {
-          // Attempt to refresh the token
-          logger.info('Attempting to refresh authentication token')
-          const response = await this.client.post<{ access_token: string; refresh_token: string }>(
-            '/auth/refresh',
-            { refresh_token: refreshToken }
-          )
-
-          const { access_token, refresh_token: newRefreshToken } = response.data
-
-          // Save new tokens
-          await tokenStorage.setAccessToken(access_token)
-          await tokenStorage.setRefreshToken(newRefreshToken)
-
-          // Update authorization header
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
-
-          // Process queued requests
-          this.processQueue(null, access_token)
-
-          // Retry the original request
+          const newAccessToken = await this.refreshPromise
+          originalRequest.headers = originalRequest.headers || {}
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
           logger.info('Token refreshed successfully, retrying request')
           return this.client(originalRequest)
         } catch (refreshError) {
-          // Refresh failed, clear tokens and redirect to login
-          logger.error('Token refresh failed', refreshError)
-          this.processQueue(refreshError, null)
-          await this.clearTokensAndRedirect()
           return Promise.reject(refreshError)
-        } finally {
-          this.isRefreshing = false
         }
       }
     )
@@ -201,7 +201,22 @@ export class ApiClient {
   private isValidUrl(url: string): boolean {
     try {
       const parsedUrl = new URL(url)
-      return ['http:', 'https:'].includes(parsedUrl.protocol)
+      if (parsedUrl.username || parsedUrl.password) {
+        return false
+      }
+      if (parsedUrl.protocol === 'https:') {
+        return true
+      }
+      if (parsedUrl.protocol === 'http:') {
+        const hostname = parsedUrl.hostname.toLowerCase()
+        return (
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname === '::1' ||
+          hostname === '[::1]'
+        )
+      }
+      return false
     } catch {
       return false
     }
@@ -237,17 +252,72 @@ export class ApiClient {
   }
 
   /**
-   * Process queued requests after token refresh attempt.
+   * Refresh the access token using cross-tab lock coordination and storage reconciliation.
    */
-  private processQueue(error: unknown, token: string | null): void {
-    this.failedQueue.forEach((promise) => {
-      if (error) {
-        promise.reject(error)
-      } else if (token) {
-        promise.resolve(token)
+  private async refreshAccessToken(
+    failedAccessToken: string | null,
+    attemptedRefreshToken: string
+  ): Promise<string> {
+    try {
+      return await coordinateTokenRefresh({
+        lockName: USER_AUTH_REFRESH_LOCK,
+        failedAccessToken,
+        readTokens: async () => {
+          const [accessToken, refreshToken] = await Promise.all([
+            tokenStorage.getAccessToken(),
+            tokenStorage.getRefreshToken(),
+          ])
+          return { accessToken, refreshToken }
+        },
+        writeTokens: async ({ accessToken, refreshToken }) => {
+          await tokenStorage.setAccessToken(accessToken)
+          await tokenStorage.setRefreshToken(refreshToken)
+        },
+        performRefresh: async (refreshToken) => {
+          logger.info('Attempting to refresh authentication token')
+          const response = await this.client.post<{ access_token: string; refresh_token: string }>(
+            '/auth/refresh',
+            { refresh_token: refreshToken },
+            { _skipAuthRefresh: true } as AxiosRequestConfig
+          )
+          const { access_token, refresh_token: newRefreshToken } = response.data
+          return {
+            accessToken: access_token,
+            refreshToken: newRefreshToken,
+          }
+        },
+      })
+    } catch (refreshError) {
+      const [currentAccessToken, currentRefreshToken] = await Promise.all([
+        tokenStorage.getAccessToken(),
+        tokenStorage.getRefreshToken(),
+      ])
+      const currentTokens = {
+        accessToken: currentAccessToken,
+        refreshToken: currentRefreshToken,
       }
-    })
-    this.failedQueue = []
+      if (
+        hasUpdatedAccessToken(currentTokens, failedAccessToken, attemptedRefreshToken) &&
+        currentAccessToken
+      ) {
+        return currentAccessToken
+      }
+
+      if (
+        shouldClearTokensAfterRefreshFailure(
+          currentTokens,
+          failedAccessToken,
+          attemptedRefreshToken,
+          refreshError
+        )
+      ) {
+        logger.error('Token refresh failed', refreshError)
+        await this.clearTokensAndRedirect()
+      } else {
+        logger.warn('Token refresh aborted without clearing shared session', refreshError)
+      }
+      throw refreshError
+    }
   }
 
   /**

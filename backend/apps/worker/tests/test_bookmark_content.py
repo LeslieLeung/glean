@@ -43,8 +43,12 @@ async def test_fetch_status_and_edits_in_flight(db_session, monkeypatch, result)
         )
 
     @asynccontextmanager
+    async def stream(_method, url):
+        yield await get(url)
+
+    @asynccontextmanager
     async def http_client(**kwargs):
-        yield type("Client", (), {"get": staticmethod(get)})()
+        yield type("Client", (), {"get": staticmethod(get), "stream": staticmethod(stream)})()
 
     monkeypatch.setattr(bookmark_metadata, "get_session_context", session_context)
     monkeypatch.setattr(bookmark_metadata, "safe_async_client", http_client)
