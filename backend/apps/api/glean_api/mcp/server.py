@@ -57,37 +57,70 @@ def _build_mcp_transport_security() -> TransportSecuritySettings:
         "http://127.0.0.1",
         "http://127.0.0.1:*",
     ]
+
+    def _add_host(value: str) -> None:
+        if value and value not in allowed_hosts:
+            allowed_hosts.append(value)
+
+    def _add_origin(value: str) -> None:
+        if value and value not in allowed_origins:
+            allowed_origins.append(value)
+
+    def _format_bare_host(hostname: str) -> str:
+        return f"[{hostname}]" if ":" in hostname else hostname
+
+    def _add_from_url(url: str) -> None:
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            return
+        netloc = parsed.netloc.rsplit("@", 1)[-1].lower()
+        if netloc:
+            _add_host(netloc)
+        # Include the bare hostname so reverse proxies stripping non-default ports
+        # (e.g. nginx forwarding Host $host) still match the configured host.
+        if parsed.hostname:
+            _add_host(_format_bare_host(parsed.hostname))
+        if parsed.scheme and netloc:
+            _add_origin(f"{parsed.scheme.lower()}://{netloc}")
+
     for candidate_url in [
         settings.mcp_issuer_url,
         settings.mcp_resource_server_url,
         *settings.cors_origins,
     ]:
-        parsed = urlparse(candidate_url)
-        if parsed.netloc and parsed.netloc not in allowed_hosts:
-            allowed_hosts.append(parsed.netloc)
-        if parsed.scheme and parsed.netloc:
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            if origin not in allowed_origins:
-                allowed_origins.append(origin)
+        _add_from_url(candidate_url)
+
     for host in settings.mcp_allowed_hosts.split(","):
         cleaned = host.strip()
         if not cleaned:
             continue
         if "://" in cleaned:
-            parsed = urlparse(cleaned)
-            if parsed.netloc and parsed.netloc not in allowed_hosts:
-                allowed_hosts.append(parsed.netloc)
-            if parsed.scheme and parsed.netloc:
-                origin = f"{parsed.scheme}://{parsed.netloc}"
-                if origin not in allowed_origins:
-                    allowed_origins.append(origin)
+            _add_from_url(cleaned)
+            continue
+
+        try:
+            parsed = urlparse(f"http://{cleaned}")
+        except ValueError:
+            continue
+        authority = parsed.netloc.rsplit("@", 1)[-1].lower()
+        bare_host = _format_bare_host(parsed.hostname) if parsed.hostname else ""
+        if not authority:
+            continue
+
+        _add_host(authority)
+        if bare_host:
+            _add_host(bare_host)
+
+        has_port = bool(bare_host and authority != bare_host)
+        if has_port:
+            _add_origin(f"https://{authority}")
+            _add_origin(f"http://{authority}")
         else:
-            if cleaned not in allowed_hosts:
-                allowed_hosts.append(cleaned)
+            _add_host(f"{authority}:*")
             for scheme in ("https", "http"):
-                origin = f"{scheme}://{cleaned}"
-                if origin not in allowed_origins:
-                    allowed_origins.append(origin)
+                _add_origin(f"{scheme}://{authority}")
+                _add_origin(f"{scheme}://{authority}:*")
 
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,

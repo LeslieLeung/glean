@@ -477,6 +477,17 @@ class TestSystemMcpAndOpmlHardening:
                 },
                 {
                     "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com:8080",
+                    "Origin": "https://glean.example.com:8080",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "192.168.1.10",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
                     "Host": "192.168.1.10:8080",
                     "Origin": "http://192.168.1.10:8080",
                     "Content-Type": "application/json",
@@ -490,6 +501,17 @@ class TestSystemMcpAndOpmlHardening:
             ):
                 allowed = await mcp_client.post("/mcp", headers=headers, json=payload)
                 assert allowed.status_code not in (401, 403, 421)
+
+            blocked_wrong_port = await mcp_client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "192.168.1.10:9999",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            assert blocked_wrong_port.status_code == 421
 
             blocked_host = await mcp_client.post(
                 "/mcp",
@@ -508,6 +530,88 @@ class TestSystemMcpAndOpmlHardening:
                     "Authorization": "Bearer test-mcp-token",
                     "Host": "glean.example.com",
                     "Origin": "https://evil.attacker",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            assert blocked_origin.status_code == 403
+
+    async def test_mcp_transport_security_handles_non_default_port_and_nginx_bare_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from httpx import ASGITransport
+        from mcp.server.auth.provider import AccessToken
+
+        from glean_api.mcp.auth import APITokenVerifier
+        from glean_api.mcp.server import create_mcp_server
+
+        async def _fake_verify_token(_self: APITokenVerifier, token: str) -> AccessToken:
+            return AccessToken(
+                token=token,
+                client_id="glean-mcp",
+                scopes=["user:test-user"],
+            )
+
+        monkeypatch.setattr(APITokenVerifier, "verify_token", _fake_verify_token)
+        monkeypatch.setattr(settings, "mcp_issuer_url", "http://glean.example.com:8080")
+        monkeypatch.setattr(
+            settings, "mcp_resource_server_url", "http://glean.example.com:8080/mcp"
+        )
+        monkeypatch.setattr(settings, "mcp_allowed_hosts", "")
+        monkeypatch.setattr(settings, "cors_origins", ["http://localhost:3000"])
+
+        mcp_server = create_mcp_server()
+        mcp_http_app = mcp_server.streamable_http_app()
+
+        async with (
+            mcp_server.session_manager.run(),
+            AsyncClient(
+                transport=ASGITransport(app=mcp_http_app),
+                base_url="http://glean.example.com:8080",
+            ) as mcp_client,
+        ):
+            payload = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+
+            for headers in (
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com:8080",
+                    "Origin": "http://glean.example.com:8080",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com",
+                    "Origin": "http://glean.example.com:8080",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com",
+                    "Content-Type": "application/json",
+                },
+            ):
+                allowed = await mcp_client.post("/mcp", headers=headers, json=payload)
+                assert allowed.status_code not in (401, 403, 421)
+
+            for bad_host in ("glean.example.com:9999", "evil.attacker:8080"):
+                blocked_host = await mcp_client.post(
+                    "/mcp",
+                    headers={
+                        "Authorization": "Bearer test-mcp-token",
+                        "Host": bad_host,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                assert blocked_host.status_code == 421
+
+            blocked_origin = await mcp_client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com:8080",
+                    "Origin": "http://glean.example.com:9999",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -582,3 +686,12 @@ class TestProductionComposeSecurityEnv:
         assert chown_idx < drop_idx < migrate_idx < cmd_idx
         for flag in ("--reuid", "--regid", "--init-groups", "--no-new-privs"):
             assert flag in entrypoint
+
+    def test_web_nginx_mcp_proxy_preserves_host_port(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        nginx_conf = (repo_root / "frontend" / "apps" / "web" / "nginx.conf").read_text(
+            encoding="utf-8"
+        )
+        mcp_block = nginx_conf.split("location /mcp {", 1)[1].split("}", 1)[0]
+        assert "proxy_set_header Host $http_host;" in mcp_block
+        assert "proxy_set_header X-Forwarded-Host $http_host;" in mcp_block
