@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -430,6 +431,89 @@ class TestSystemMcpAndOpmlHardening:
             )
             assert allowed.status_code not in (401, 403, 421)
 
+    async def test_mcp_transport_security_allows_configured_remote_hosts_and_origins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from httpx import ASGITransport
+        from mcp.server.auth.provider import AccessToken
+
+        from glean_api.mcp.auth import APITokenVerifier
+        from glean_api.mcp.server import create_mcp_server
+
+        async def _fake_verify_token(_self: APITokenVerifier, token: str) -> AccessToken:
+            return AccessToken(
+                token=token,
+                client_id="glean-mcp",
+                scopes=["user:test-user"],
+            )
+
+        monkeypatch.setattr(APITokenVerifier, "verify_token", _fake_verify_token)
+        monkeypatch.setattr(settings, "mcp_allowed_hosts", "glean.example.com,192.168.1.10:8080")
+        monkeypatch.setattr(settings, "mcp_resource_server_url", "https://mcp.example.com/mcp")
+
+        mcp_server = create_mcp_server()
+        mcp_http_app = mcp_server.streamable_http_app()
+
+        async with (
+            mcp_server.session_manager.run(),
+            AsyncClient(
+                transport=ASGITransport(app=mcp_http_app),
+                base_url="https://glean.example.com",
+            ) as mcp_client,
+        ):
+            payload = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+
+            for headers in (
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com",
+                    "Origin": "https://glean.example.com",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "192.168.1.10:8080",
+                    "Origin": "http://192.168.1.10:8080",
+                    "Content-Type": "application/json",
+                },
+                {
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "mcp.example.com",
+                    "Origin": "https://mcp.example.com",
+                    "Content-Type": "application/json",
+                },
+            ):
+                allowed = await mcp_client.post("/mcp", headers=headers, json=payload)
+                assert allowed.status_code not in (401, 403, 421)
+
+            blocked_host = await mcp_client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "evil.attacker",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            assert blocked_host.status_code == 421
+
+            blocked_origin = await mcp_client.post(
+                "/mcp",
+                headers={
+                    "Authorization": "Bearer test-mcp-token",
+                    "Host": "glean.example.com",
+                    "Origin": "https://evil.attacker",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            assert blocked_origin.status_code == 403
+
     async def test_logging_middleware_strips_query_string(self, client: AsyncClient) -> None:
         from glean_core.logging_config import logger as core_logger
 
@@ -451,3 +535,28 @@ class TestSystemMcpAndOpmlHardening:
             and "secret-query-value" not in str(item)
             for item in records
         )
+
+
+class TestProductionComposeSecurityEnv:
+    """Tests ensuring production Compose files pass security and MCP env vars."""
+
+    def test_production_compose_wires_mcp_and_security_env_vars(self) -> None:
+        from typing import Any, cast
+
+        import yaml  # type: ignore[import-untyped]
+
+        repo_root = Path(__file__).resolve().parents[4]
+        required_backend_vars = {
+            "MCP_ALLOWED_HOSTS",
+            "MCP_RESOURCE_SERVER_URL",
+            "MCP_ISSUER_URL",
+            "CORS_ORIGINS",
+            "LOG_DIAGNOSE",
+            "GLEAN_EMBEDDING_ALLOW_PRIVATE",
+        }
+        for compose_name in ("docker-compose.yml", "docker-compose.pgvector.yml"):
+            raw = yaml.safe_load((repo_root / compose_name).read_text(encoding="utf-8"))
+            parsed = cast(dict[str, Any], raw)
+            backend_env = cast(dict[str, Any], parsed["services"]["backend"]["environment"])
+            missing = required_backend_vars - backend_env.keys()
+            assert not missing, f"{compose_name} missing backend env vars: {missing}"

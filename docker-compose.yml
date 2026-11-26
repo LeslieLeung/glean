@@ -57,7 +57,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-glean}:${POSTGRES_PASSWORD:-glean}@postgres:5432/${POSTGRES_DB:-glean}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-}
-      CORS_ORIGINS: '["http://localhost", "http://localhost:3000", "http://localhost:3001"]'
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost", "http://localhost:3000", "http://localhost:3001"]}'
       DEBUG: ${DEBUG:-false}
       VECTOR_BACKEND: milvus
       # Only backend runs migrations to avoid race conditions
@@ -87,6 +87,13 @@ services:
       # Trusted reverse proxies for per-client auth rate limiting (bundled web/admin nginx)
       AUTH_OIDC_TRUSTED_PROXY_IPS: ${AUTH_OIDC_TRUSTED_PROXY_IPS:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1,::1,fc00::/7}
       AUTH_OIDC_CLIENT_IP_HEADERS: ${AUTH_OIDC_CLIENT_IP_HEADERS:-x-real-ip}
+      # MCP Server configuration (public URLs & DNS rebinding host allowlist)
+      MCP_ISSUER_URL: ${MCP_ISSUER_URL:-http://localhost:8000}
+      MCP_RESOURCE_SERVER_URL: ${MCP_RESOURCE_SERVER_URL:-http://localhost:8000/mcp}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+      # Logging & embedding SSRF security controls
+      LOG_DIAGNOSE: ${LOG_DIAGNOSE:-false}
+      GLEAN_EMBEDDING_ALLOW_PRIVATE: ${GLEAN_EMBEDDING_ALLOW_PRIVATE:-false}
     volumes:
       - glean_logs:/app/logs
     depends_on:
@@ -132,6 +139,8 @@ services:
       # Outbound fetch policy (feed fetching)
       SSRF_ALLOW_PRIVATE: ${SSRF_ALLOW_PRIVATE:-false}
       SSRF_ALLOWED_HOSTS: ${SSRF_ALLOWED_HOSTS:-}
+      LOG_DIAGNOSE: ${LOG_DIAGNOSE:-false}
+      GLEAN_EMBEDDING_ALLOW_PRIVATE: ${GLEAN_EMBEDDING_ALLOW_PRIVATE:-false}
     volumes:
       - glean_logs:/app/logs
     depends_on:
