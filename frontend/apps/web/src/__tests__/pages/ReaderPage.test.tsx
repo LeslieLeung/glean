@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { entryService } from '@glean/api-client'
@@ -12,6 +12,7 @@ import { createMockEntry } from '../helpers/mockData'
 vi.mock('@glean/api-client', () => ({
   entryService: {
     getEntries: vi.fn(),
+    getContentCategories: vi.fn(),
     getEntry: vi.fn(),
     updateEntryState: vi.fn(),
     markAllRead: vi.fn(),
@@ -95,6 +96,7 @@ describe('ReaderPage pagination', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(entryService.getContentCategories).mockResolvedValue([])
     useUIStore.setState({ smartLayout: 'feed', showPreferenceScore: false })
     MockIntersectionObserver.instances = []
     vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
@@ -136,6 +138,83 @@ describe('ReaderPage pagination', () => {
     queryClient.clear()
     vi.unstubAllGlobals()
   })
+
+  it('explains how to enable content filtering and rechecks availability on refresh', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?view=smart']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const trigger = await screen.findByRole('button', { name: 'smart.contentCategories' })
+    expect(screen.queryByText('smart.enableContentClassification')).toBeNull()
+    fireEvent.click(trigger)
+    const menu = await screen.findByRole('menu', { name: 'smart.contentCategories' })
+    expect(within(menu).getByText('smart.enableContentClassification')).toBeDefined()
+    expect(within(menu).queryAllByRole('menuitemcheckbox')).toHaveLength(0)
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+
+    vi.mocked(entryService.getContentCategories).mockResolvedValue([{ id: 'news', label: 'News' }])
+    fireEvent.click(screen.getByRole('button', { name: 'smart.refresh' }))
+
+    fireEvent.click(trigger)
+    expect(
+      await screen.findByRole('menuitemcheckbox', { name: 'News', checked: true })
+    ).toBeDefined()
+    expect(screen.queryByText('smart.enableContentClassification')).toBeNull()
+  })
+
+  it.each(['feed', 'list'] as const)(
+    'filters the Smart %s layout by any selected content category',
+    async (smartLayout) => {
+      useUIStore.setState({ smartLayout })
+      vi.mocked(entryService.getContentCategories).mockResolvedValue([
+        { id: 'original', label: 'Original' },
+        { id: 'news', label: 'News' },
+        { id: 'ad', label: 'Advertisement' },
+      ])
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={['/reader?view=smart']}>
+            <ReaderPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      fireEvent.click(await screen.findByRole('button', { name: 'smart.contentCategories' }))
+      const all = await screen.findByRole('menuitemcheckbox', { name: 'smart.allCategories' })
+      const ad = screen.getByRole('menuitemcheckbox', { name: 'Advertisement' })
+      expect(all.getAttribute('aria-checked')).toBe('true')
+      expect(ad.getAttribute('aria-checked')).toBe('true')
+      expect(entryService.getEntries).toHaveBeenCalledWith(
+        expect.objectContaining({ global_smart: true, page: 1 })
+      )
+      expect(vi.mocked(entryService.getEntries).mock.lastCall?.[0]).not.toHaveProperty(
+        'content_category_ids'
+      )
+
+      fireEvent.click(all)
+      await waitFor(() =>
+        expect(entryService.getEntries).toHaveBeenLastCalledWith(
+          expect.objectContaining({ content_category_ids: '', page: 1 })
+        )
+      )
+      fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'News' }))
+      fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Original' }))
+      await waitFor(() =>
+        expect(entryService.getEntries).toHaveBeenLastCalledWith(
+          expect.objectContaining({ content_category_ids: 'original,news', page: 1 })
+        )
+      )
+      expect(ad.getAttribute('aria-checked')).toBe('false')
+      fireEvent.click(all)
+      expect(ad.getAttribute('aria-checked')).toBe('true')
+    }
+  )
 
   it('keeps loading subsequent pages after switching between cached tabs', async () => {
     render(

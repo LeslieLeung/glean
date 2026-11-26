@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from arq.connections import ArqRedis
-from sqlalchemy import Select, and_, case, desc, func, or_, select
+from sqlalchemy import Select, and_, case, desc, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from glean_core import get_logger
@@ -107,6 +107,7 @@ class EntryService:
         use_cursor: bool = False,
         cursor: str | None = None,
         get_embeddings: Callable[[], Awaitable[EmbeddingReader | None]] | None = None,
+        content_category_ids: list[str] | None = None,
     ) -> EntryListResponse:
         """
         Get entries for a user with filtering and pagination.
@@ -129,6 +130,7 @@ class EntryService:
             use_cursor: Request stable Smart pagination.
             cursor: Resume a Smart snapshot.
             get_embeddings: Load optional article embeddings for current scoring.
+            content_category_ids: Restrict global Smart to these System One content categories.
 
         Returns:
             Paginated entry list response.
@@ -222,12 +224,30 @@ class EntryService:
         if read_later is not None:
             stmt = stmt.where(UserEntry.read_later == read_later)
 
+        smart_categories = None
+        if (
+            global_smart
+            and classification_config.enabled
+            and classification_config.classify_content
+            and content_category_ids is not None
+        ):
+            smart_categories = sorted(set(content_category_ids))
+            content_label = Entry.classification_result["content"]["label"].as_string()
+            stmt = stmt.where(content_label.in_(smart_categories) if smart_categories else false())
+
         recommendations: dict[str, tuple[float, RecommendationReason]]
         if view == "smart":
             ranked: list[RankedEntry] = []
             snapshot = None
             scope = smart_scope(
-                user_id, feed_id, folder_id, is_read, is_liked, read_later, global_smart
+                user_id,
+                feed_id,
+                folder_id,
+                is_read,
+                is_liked,
+                read_later,
+                global_smart,
+                smart_categories,
             )
             if cursor is not None:
                 if self.redis_pool is None:

@@ -1,6 +1,11 @@
 import type { EntryWithState, EntryListResponse, UpdateEntryStateRequest } from '@glean/types'
 import { ApiClient } from '../client'
 
+export interface ContentCategoryOption {
+  id: string
+  label: string
+}
+
 /**
  * Entries API service.
  *
@@ -27,8 +32,13 @@ export class EntryService {
     global_smart?: boolean
     use_cursor?: boolean
     cursor?: string
+    content_category_ids?: string
   }): Promise<EntryListResponse> {
     return this.client.get<EntryListResponse>('/entries', { params })
+  }
+
+  async getContentCategories(): Promise<ContentCategoryOption[]> {
+    return this.client.get<ContentCategoryOption[]>('/entries/content-categories')
   }
 
   /**
