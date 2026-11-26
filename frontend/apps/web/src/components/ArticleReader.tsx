@@ -1,13 +1,8 @@
 import { MOBILE_LAYOUT_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
-import { useBookmarkStore } from '../stores/bookmarkStore'
-import { useFolderStore } from '../stores/folderStore'
-import { useTagStore } from '../stores/tagStore'
-import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 import { useContentRenderer } from '../hooks/useContentRenderer'
-import { useUpdateEntryState, entryKeys } from '../hooks/useEntries'
-import { bookmarkService } from '@glean/api-client'
+import { useUpdateEntryState } from '../hooks/useEntries'
+import { useToggleEntryBookmark } from '../hooks/useToggleEntryBookmark'
 import { useTranslation } from '@glean/i18n'
 import type { EntryWithState } from '@glean/types'
 import {
@@ -146,13 +141,13 @@ export function ArticleReader({
   onBookmarkChange,
 }: ArticleReaderProps) {
   const { t } = useTranslation('reader')
-  const queryClient = useQueryClient()
 
   const handleOpenMenu = () => {
     // Dispatch custom event to open mobile sidebar in Layout
     window.dispatchEvent(new CustomEvent('openMobileSidebar'))
   }
-  const updateMutation = useUpdateEntryState()
+  const updateMutation = useUpdateEntryState(entry.id)
+  const bookmarkMutation = useToggleEntryBookmark(entry, onBookmarkChange)
   const source = entry.content || entry.summary
   const articleHtml = useMemo(() => {
     if (!source) return ''
@@ -161,7 +156,6 @@ export function ArticleReader({
   }, [source])
   const contentRef = useContentRenderer(articleHtml || undefined)
   const articleMarkup = useMemo(() => ({ __html: articleHtml }), [articleHtml])
-  const [isBookmarking, setIsBookmarking] = useState(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const isMobile = useMediaQuery(MOBILE_LAYOUT_QUERY)
   const barsVisible = useScrollHide(scrollContainerRef)
@@ -196,42 +190,9 @@ export function ArticleReader({
     })
   }
 
-  const [bookmarkError, setBookmarkError] = useState(false)
-  const handleToggleBookmark = async () => {
-    setBookmarkError(false)
-    setIsBookmarking(true)
-    try {
-      if (entry.is_bookmarked && entry.bookmark_id) {
-        // Remove bookmark
-        await bookmarkService.deleteBookmark(entry.bookmark_id)
-        showBookmarkNotice('removed', entry.bookmark_id)
-      } else {
-        // Create bookmark
-        const saved = await bookmarkService.createBookmark({
-          entry_id: entry.id,
-        })
-        showBookmarkNotice(saved.already_exists ? 'duplicate' : 'saved', saved.id)
-      }
-      onBookmarkChange?.()
-      await Promise.all([
-        useBookmarkStore.getState().fetchBookmarks(),
-        useFolderStore.getState().fetchFolders('bookmark'),
-        useTagStore.getState().fetchTags(),
-      ])
-      // Invalidate queries to refetch with updated is_bookmarked status
-      await queryClient.invalidateQueries({ queryKey: entryKeys.lists() })
-      await queryClient.invalidateQueries({ queryKey: entryKeys.detail(entry.id) })
-    } catch (err) {
-      setBookmarkError(true)
-      console.error('Failed to toggle bookmark:', err)
-    } finally {
-      setIsBookmarking(false)
-    }
-  }
-
   return (
     <div className="bg-background relative flex min-w-0 flex-1 flex-col overflow-hidden">
-      {bookmarkError && (
+      {bookmarkMutation.isError && (
         <p role="alert" className="text-destructive p-2">
           {t('bookmarks:library.failed')}
         </p>
@@ -375,11 +336,11 @@ export function ArticleReader({
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleToggleBookmark}
-              disabled={isBookmarking}
+              onClick={() => bookmarkMutation.mutate()}
+              disabled={bookmarkMutation.isPending}
               className={`action-btn ${bookmarkAnimation} ${entry.is_bookmarked ? 'text-primary' : 'text-muted-foreground'}`}
             >
-              {isBookmarking ? (
+              {bookmarkMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Archive className="h-4 w-4" />
@@ -499,13 +460,13 @@ export function ArticleReader({
             )}
 
             <button
-              onClick={handleToggleBookmark}
-              disabled={isBookmarking}
+              onClick={() => bookmarkMutation.mutate()}
+              disabled={bookmarkMutation.isPending}
               className={`action-btn action-btn-mobile ${bookmarkAnimation} transition-colors ${
                 entry.is_bookmarked ? 'text-primary' : 'text-muted-foreground'
               } disabled:opacity-50`}
             >
-              {isBookmarking ? (
+              {bookmarkMutation.isPending ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
                 <Archive className="h-5 w-5" />

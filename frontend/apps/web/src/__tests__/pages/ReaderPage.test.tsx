@@ -2,14 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { entryService } from '@glean/api-client'
+import { bookmarkService, entryService } from '@glean/api-client'
 import { entryKeys } from '@/hooks/useEntries'
 import { MOBILE_LAYOUT_QUERY } from '@/hooks/useMediaQuery'
 import ReaderPage from '@/pages/ReaderPage'
 import { useUIStore } from '@/stores/uiStore'
-import { createMockEntry } from '../helpers/mockData'
+import { useBookmarkStore } from '@/stores/bookmarkStore'
+import { useFolderStore } from '@/stores/folderStore'
+import { useTagStore } from '@/stores/tagStore'
+import { createMockBookmark, createMockEntry } from '../helpers/mockData'
 
 vi.mock('@glean/api-client', () => ({
+  bookmarkService: {
+    createBookmark: vi.fn(),
+    deleteBookmark: vi.fn(),
+  },
   entryService: {
     getEntries: vi.fn(),
     getContentCategories: vi.fn(),
@@ -137,6 +144,7 @@ describe('ReaderPage pagination', () => {
     cleanup()
     queryClient.clear()
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('explains how to enable content filtering and rechecks availability on refresh', async () => {
@@ -338,6 +346,118 @@ describe('ReaderPage pagination', () => {
     expect(scrollContainer.scrollTop).toBe(240)
   })
 
+  it('updates Smart feed cards in place without opening the reader', async () => {
+    const entry = createMockEntry({ title: 'Smart article', url: 'https://example.com/article' })
+    const sameUrl = createMockEntry({ id: 'same-url', feed_id: 'another-feed', url: entry.url })
+    const other = createMockEntry({ id: 'second', title: 'Another article' })
+    const saved = createMockBookmark({ entry_id: entry.id })
+    const alternateList = entryKeys.list({ feed_id: sameUrl.feed_id })
+    queryClient.setQueryData(entryKeys.detail(sameUrl.id), sameUrl)
+    queryClient.setQueryData(entryKeys.detail(other.id), other)
+    queryClient.setQueryData(alternateList, {
+      pages: [{ items: [other, sameUrl] }],
+      pageParams: [1],
+    })
+    vi.mocked(entryService.getEntries).mockResolvedValueOnce({
+      items: [entry, other],
+      page: 1,
+      per_page: 20,
+      total: 2,
+      total_pages: 1,
+      next_cursor: null,
+    })
+    vi.mocked(entryService.updateEntryState).mockImplementation(async (_, state) => ({
+      ...entry,
+      ...state,
+    }))
+    vi.mocked(bookmarkService.createBookmark).mockResolvedValue(saved)
+    vi.mocked(bookmarkService.deleteBookmark).mockResolvedValue(undefined)
+    vi.spyOn(useBookmarkStore.getState(), 'fetchBookmarks').mockResolvedValue(undefined)
+    vi.spyOn(useFolderStore.getState(), 'fetchFolders').mockResolvedValue(undefined)
+    vi.spyOn(useTagStore.getState(), 'fetchTags').mockResolvedValue(undefined)
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/reader?view=smart']}>
+          <ReaderPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const cardButton = await screen.findByRole('button', { name: entry.title })
+    const card = within(cardButton.closest('article')!)
+    const action = (name: string) => card.getByRole('button', { name: `actions.${name}` })
+    const original = card.getByRole('link', { name: 'actions.openOriginal' })
+    expect(original.getAttribute('href')).toBe(entry.url)
+    expect(original.getAttribute('target')).toBe('_blank')
+    original.addEventListener('click', (event) => event.preventDefault(), { once: true })
+    fireEvent.click(original)
+
+    const expectSharedState = (state: Partial<typeof sameUrl>) => {
+      expect(queryClient.getQueryData(entryKeys.detail(sameUrl.id))).toMatchObject(state)
+      expect(queryClient.getQueryData(alternateList)).toMatchObject({
+        pages: [{ items: [other, { id: sameUrl.id, ...state }] }],
+      })
+      expect(queryClient.getQueryData(entryKeys.detail(other.id))).toEqual(other)
+    }
+
+    fireEvent.click(action('markRead'))
+    await card.findByRole('button', { name: 'actions.markUnread' })
+    expectSharedState({ is_read: true })
+    fireEvent.click(action('markUnread'))
+    await card.findByRole('button', { name: 'actions.markRead' })
+    expectSharedState({ is_read: false })
+
+    fireEvent.click(action('like'))
+    await waitFor(() => {
+      expect(action('like').getAttribute('aria-pressed')).toBe('true')
+      expect(action('like').hasAttribute('disabled')).toBe(false)
+    })
+    expectSharedState({ is_liked: true })
+    fireEvent.click(action('dislike'))
+    await waitFor(() => {
+      expect(action('dislike').getAttribute('aria-pressed')).toBe('true')
+      expect(action('dislike').hasAttribute('disabled')).toBe(false)
+    })
+    expectSharedState({ is_liked: false })
+    fireEvent.click(action('dislike'))
+    await waitFor(() => {
+      expect(action('dislike').getAttribute('aria-pressed')).toBe('false')
+      expect(action('dislike').hasAttribute('disabled')).toBe(false)
+    })
+    expectSharedState({ is_liked: null })
+
+    fireEvent.click(action('readLater'))
+    await card.findByRole('button', { name: 'actions.savedForLater' })
+    expectSharedState({ read_later: true })
+    fireEvent.click(action('savedForLater'))
+    await card.findByRole('button', { name: 'actions.readLater' })
+    expectSharedState({ read_later: false })
+
+    fireEvent.click(action('archive'))
+    await card.findByRole('button', { name: 'actions.archived' })
+    expectSharedState({ is_bookmarked: true, bookmark_id: saved.id })
+    await waitFor(() => expect(action('archived').hasAttribute('disabled')).toBe(false))
+    fireEvent.click(action('archived'))
+    await card.findByRole('button', { name: 'actions.archive' })
+    expectSharedState({ is_bookmarked: false, bookmark_id: null })
+
+    expect(vi.mocked(entryService.updateEntryState).mock.calls).toEqual([
+      [entry.id, { is_read: true }],
+      [entry.id, { is_read: false }],
+      [entry.id, { is_liked: true }],
+      [entry.id, { is_liked: false }],
+      [entry.id, { is_liked: null }],
+      [entry.id, { read_later: true }],
+      [entry.id, { read_later: false }],
+    ])
+    expect(bookmarkService.createBookmark).toHaveBeenCalledWith({ entry_id: entry.id })
+    expect(bookmarkService.deleteBookmark).toHaveBeenCalledWith(saved.id)
+    expect(entryService.getEntries).toHaveBeenCalledTimes(1)
+    expect(entryService.getEntry).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-smart-feed-reading]')).toBeNull()
+  })
+
   it('switches between Smart feed and the original list using the same entries', async () => {
     useUIStore.getState().setShowPreferenceScore(true)
     const entry = createMockEntry({
@@ -382,6 +502,7 @@ describe('ReaderPage pagination', () => {
     expect(screen.getByText(entry.title)).toBeDefined()
     expect(screen.queryByRole('button', { name: entry.title })).toBeNull()
     expect(screen.getByText('empty.selectArticle')).toBeDefined()
+    expect(screen.queryByRole('link', { name: 'actions.openOriginal' })).toBeNull()
     expect(JSON.parse(localStorage.getItem('glean-ui')!).state.smartLayout).toBe('list')
     expectSharedDetails()
 
