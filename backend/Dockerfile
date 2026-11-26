@@ -42,7 +42,9 @@ RUN chmod +x scripts/*.sh 2>/dev/null || true \
 RUN uv sync --locked --all-packages --no-dev --no-cache \
     && chown -R appuser:appuser /app
 
-USER appuser
+# entrypoint.sh runs briefly as root to migrate pre-existing mounted log
+# volume (glean_logs) ownership from earlier root-based deployments, then
+# immediately drops privileges to appuser via setpriv.
 
 # Expose API port
 EXPOSE 8000

@@ -560,3 +560,25 @@ class TestProductionComposeSecurityEnv:
             backend_env = cast(dict[str, Any], parsed["services"]["backend"]["environment"])
             missing = required_backend_vars - backend_env.keys()
             assert not missing, f"{compose_name} missing backend env vars: {missing}"
+
+    def test_backend_entrypoint_migrates_log_volume_before_dropping_root(self) -> None:
+        repo_root = Path(__file__).resolve().parents[4]
+        dockerfile = (repo_root / "backend" / "Dockerfile").read_text(encoding="utf-8")
+        entrypoint = (repo_root / "backend" / "scripts" / "entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+
+        assert "appuser" in dockerfile
+        assert "mkdir -p /app/logs" in dockerfile
+        assert 'ENTRYPOINT ["/app/scripts/entrypoint.sh"]' in dockerfile
+        assert "USER appuser" not in dockerfile
+
+        drop_idx = entrypoint.index("exec setpriv")
+        chown_idx = entrypoint.index("chown -Rh appuser:appuser /app/logs")
+        migrate_idx = entrypoint.index("alembic upgrade head")
+        cmd_idx = entrypoint.index('exec "$@"')
+
+        assert '[ "$(id -u)" -eq 0 ]' in entrypoint
+        assert chown_idx < drop_idx < migrate_idx < cmd_idx
+        for flag in ("--reuid", "--regid", "--init-groups", "--no-new-privs"):
+            assert flag in entrypoint

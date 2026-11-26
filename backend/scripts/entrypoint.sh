@@ -1,6 +1,50 @@
 #!/bin/bash
 set -e
 
+# Migrate ownership of persistent log directories from earlier root-based
+# deployments, then immediately drop privileges to appuser before running
+# DB checks, migrations, admin creation, or the main service process.
+if [ "$(id -u)" -eq 0 ]; then
+    mkdir -p /app/logs
+    if [ -n "${LOG_FILE:-}" ]; then
+        log_dir="$(dirname "$LOG_FILE")"
+        case "$log_dir" in
+            /app/logs|/app/logs/*)
+                case "$log_dir" in
+                    */..|*/../*) ;;
+                    *) mkdir -p "$log_dir" ;;
+                esac
+                ;;
+            /*)
+                case "$log_dir" in
+                    */..|*/../*|/app|/app/*|/tmp|/var|/var/log|/etc|/usr|/bin|/sbin|/lib|/lib64|/home|/root|/proc|/sys|/dev|/run|/opt)
+                        ;;
+                    *)
+                        mkdir -p "$log_dir"
+                        if ! chown -Rh appuser:appuser "$log_dir"; then
+                            echo "WARNING: Could not update ownership of $log_dir" >&2
+                        fi
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+
+    if ! chown -Rh appuser:appuser /app/logs; then
+        echo "WARNING: Could not update ownership of /app/logs" >&2
+    fi
+
+    app_home="$(getent passwd appuser | cut -d: -f6)"
+    export HOME="${app_home:-/home/appuser}"
+    export USER="appuser"
+    exec setpriv \
+        --reuid="$(id -u appuser)" \
+        --regid="$(id -g appuser)" \
+        --init-groups \
+        --no-new-privs \
+        -- "$0" "$@"
+fi
+
 # Wait for database to be ready
 echo "Waiting for PostgreSQL to be ready..."
 max_attempts=30

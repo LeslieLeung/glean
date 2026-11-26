@@ -73,57 +73,64 @@ def setup_logging(
     # File handler
     if log_file:
         log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Regular log file
-        if log_format is not None:
-            logger.add(
-                log_file,
-                format=log_format,
-                level=log_level,
-                rotation=rotation,
-                retention=retention,
-                compression=compression,
-                serialize=serialize,
-                backtrace=True,
-                diagnose=diagnose,
-            )
-        else:
-            logger.add(
-                log_file,
-                level=log_level,
-                rotation=rotation,
-                retention=retention,
-                compression=compression,
-                serialize=True,
-                backtrace=True,
-                diagnose=diagnose,
-            )
+            # Regular log file
+            if log_format is not None:
+                logger.add(
+                    log_file,
+                    format=log_format,
+                    level=log_level,
+                    rotation=rotation,
+                    retention=retention,
+                    compression=compression,
+                    serialize=serialize,
+                    backtrace=True,
+                    diagnose=diagnose,
+                )
+            else:
+                logger.add(
+                    log_file,
+                    level=log_level,
+                    rotation=rotation,
+                    retention=retention,
+                    compression=compression,
+                    serialize=True,
+                    backtrace=True,
+                    diagnose=diagnose,
+                )
 
-        # Error log separate file
-        error_log_file = log_path.parent / f"{log_path.stem}_error{log_path.suffix}"
-        if log_format is not None:
-            logger.add(
-                str(error_log_file),
-                format=log_format,
-                level="ERROR",
-                rotation=rotation,
-                retention=retention,
-                compression=compression,
-                serialize=serialize,
-                backtrace=True,
-                diagnose=diagnose,
-            )
-        else:
-            logger.add(
-                str(error_log_file),
-                level="ERROR",
-                rotation=rotation,
-                retention=retention,
-                compression=compression,
-                serialize=True,
-                backtrace=True,
-                diagnose=diagnose,
+            # Error log separate file
+            error_log_file = log_path.parent / f"{log_path.stem}_error{log_path.suffix}"
+            if log_format is not None:
+                logger.add(
+                    str(error_log_file),
+                    format=log_format,
+                    level="ERROR",
+                    rotation=rotation,
+                    retention=retention,
+                    compression=compression,
+                    serialize=serialize,
+                    backtrace=True,
+                    diagnose=diagnose,
+                )
+            else:
+                logger.add(
+                    str(error_log_file),
+                    level="ERROR",
+                    rotation=rotation,
+                    retention=retention,
+                    compression=compression,
+                    serialize=True,
+                    backtrace=True,
+                    diagnose=diagnose,
+                )
+        except OSError as exc:
+            logger.warning(
+                "File logging disabled for {}: {} (continuing with console logging)",
+                log_file,
+                exc,
             )
 
 
