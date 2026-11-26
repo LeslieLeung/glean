@@ -51,6 +51,10 @@
     "unknownFeed": "未知订阅",
     "score": "推荐分：{{score}}",
     "refresh": "刷新智能列表",
+    "contentCategories": "按内容标签筛选",
+    "enableContentClassification": "启用 System One 模型的内容分类后，即可按内容标签筛选。",
+    "allCategories": "全选",
+    "noMatchingCategories": "可选择其他内容标签来查看更多文章。",
     "empty": "可在时间线查看更早的文章。",
     "expired": "此智能列表已过期，刷新后继续。",
     "reasons": {

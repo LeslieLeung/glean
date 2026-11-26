@@ -16,11 +16,19 @@ from glean_core.schemas import (
     UpdateEntryStateRequest,
     UserResponse,
 )
+from glean_core.schemas.entry import ContentCategoryOption
+from glean_core.schemas.systemone import SystemOneConfig
 from glean_core.services import EntryService
 from glean_core.services.entry_rank_snapshot import SmartCursorExpiredError
 from glean_core.services.entry_ranker import EmbeddingReader
+from glean_core.services.typed_config_service import TypedConfigService
 
-from ..dependencies import get_current_user, get_entry_service, get_ranking_vector_client
+from ..dependencies import (
+    get_current_user,
+    get_entry_service,
+    get_ranking_vector_client,
+    get_typed_config_service,
+)
 
 router = APIRouter()
 
@@ -42,6 +50,11 @@ async def list_entries(
     global_smart: bool = False,
     use_cursor: bool = False,
     cursor: str | None = Query(None, max_length=64),
+    content_category_ids: str | None = Query(
+        None,
+        pattern=r"^(?:[a-zA-Z0-9_-]{1,64}(?:,[a-zA-Z0-9_-]{1,64}){0,9})?$",
+        description="Comma-separated content category IDs for global Smart. Empty selects none.",
+    ),
 ) -> EntryListResponse:
     """List entries in publication or recommendation order."""
 
@@ -64,12 +77,30 @@ async def list_entries(
             use_cursor=use_cursor,
             cursor=cursor,
             get_embeddings=get_embeddings,
+            content_category_ids=(content_category_ids.split(",") if content_category_ids else [])
+            if content_category_ids is not None
+            else None,
         )
     except SmartCursorExpiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="Smart list expired. Refresh the list to continue.",
         ) from exc
+
+
+@router.get("/content-categories")
+async def list_content_categories(
+    _current_user: Annotated[UserResponse, Depends(get_current_user)],
+    config_service: Annotated[TypedConfigService, Depends(get_typed_config_service)],
+) -> list[ContentCategoryOption]:
+    """List the configured System One content categories for Smart."""
+    config = await config_service.get(SystemOneConfig)
+    if not config.enabled or not config.classify_content:
+        return []
+    return [
+        ContentCategoryOption(id=category.id, label=category.label)
+        for category in config.categories
+    ]
 
 
 @router.get("/{entry_id}")

@@ -6,7 +6,7 @@ export { ApiClient, apiClient } from './client'
 export { hashPassword } from './crypto'
 export { AuthService } from './services/auth'
 export { FeedService } from './services/feeds'
-export { EntryService } from './services/entries'
+export { EntryService, type ContentCategoryOption } from './services/entries'
 // M2 services
 export { FolderService } from './services/folders'
 export { TagService } from './services/tags'

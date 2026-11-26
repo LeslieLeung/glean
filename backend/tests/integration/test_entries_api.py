@@ -6,6 +6,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from glean_core.schemas.systemone import ContentCategory, SystemOneConfig
+from glean_core.services import TypedConfigService
+
 
 @pytest.fixture
 async def test_entries(db_session: AsyncSession, test_subscription, test_feed):
@@ -132,6 +135,61 @@ class TestListEntries:
         response = await client.get("/api/entries")
 
         assert response.status_code == 401
+
+
+async def test_smart_content_category_filter(client, auth_headers, db_session, test_entries):
+    categories = [
+        ContentCategory(id="custom", label="Custom", description="Classify as custom"),
+        ContentCategory(id="news", label="News"),
+    ]
+    config_service = TypedConfigService(db_session)
+    options_path = "/api/entries/content-categories"
+    assert (await client.get(options_path)).status_code == 401
+    assert (await client.get(options_path, headers=auth_headers)).json() == []
+    await config_service.set(
+        SystemOneConfig, SystemOneConfig(enabled=True, provider="clef", categories=categories)
+    )
+    options = await client.get(options_path, headers=auth_headers)
+    assert options.json() == [{"id": option.id, "label": option.label} for option in categories]
+
+    for entry, provider, category in zip(
+        test_entries[:2], ("jev", "clef"), categories, strict=True
+    ):
+        entry.classification_result = {
+            "provider": provider,
+            "model_id": f"{provider}-test",
+            "label": "human",
+            "score": 0.9,
+            "content": {"label": category.id, "name": category.label, "confidence": 0.9},
+        }
+    test_entries[2].classification_result = {"model_id": "jev-test", "label": "ai", "score": 0.9}
+    await db_session.commit()
+
+    async def list_entries(**params):
+        return await client.get("/api/entries", headers=auth_headers, params=params)
+
+    smart = {"view": "smart", "global_smart": True, "use_cursor": True, "per_page": 1}
+    first = (await list_entries(**smart, content_category_ids="custom,news")).json()
+    assert first["total"] == 2
+    assert first["next_cursor"]
+    second = await list_entries(
+        **smart, content_category_ids="news,custom", cursor=first["next_cursor"]
+    )
+    assert second.status_code == 200
+    assert second.json()["next_cursor"] is None
+    assert {first["items"][0]["id"], second.json()["items"][0]["id"]} == {
+        str(entry.id) for entry in test_entries[:2]
+    }
+    assert (
+        await list_entries(**smart, content_category_ids="custom", cursor=first["next_cursor"])
+    ).status_code == 410
+    assert (await list_entries(**smart, content_category_ids="")).json()["total"] == 0
+    assert (await list_entries(**smart, content_category_ids="ai,human")).json()["total"] == 0
+    assert (await list_entries(**smart)).json()["total"] == 3
+    assert (await list_entries(content_category_ids="custom")).json()["total"] == 3
+
+    await config_service.update(SystemOneConfig, classify_content=False)
+    assert (await client.get(options_path, headers=auth_headers)).json() == []
 
 
 class TestGetEntry:

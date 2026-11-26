@@ -71,6 +71,13 @@ class EntryListResponse(BaseModel):
     next_cursor: str | None = None
 
 
+class ContentCategoryOption(BaseModel):
+    """Content category available to readers as a filter."""
+
+    id: str
+    label: str
+
+
 class UpdateEntryStateRequest(BaseModel):
     """Update entry state request."""
 

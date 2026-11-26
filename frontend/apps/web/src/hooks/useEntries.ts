@@ -10,7 +10,8 @@ export const entryKeys = {
   all: ['entries'] as const,
   lists: () => [...entryKeys.all, 'list'] as const,
   list: (filters: EntryFilters) => [...entryKeys.lists(), filters] as const,
-  detail: (id: string) => [...entryKeys.all, 'detail', id] as const,
+  details: () => [...entryKeys.all, 'detail'] as const,
+  detail: (id: string) => [...entryKeys.details(), id] as const,
 }
 
 /**
@@ -27,6 +28,16 @@ export interface EntryFilters {
   view?: 'timeline' | 'smart'
   include_score?: boolean
   global_smart?: boolean
+  content_category_ids?: string
+}
+
+export function useContentCategories(enabled: boolean) {
+  return useQuery({
+    queryKey: [...entryKeys.all, 'content-categories'],
+    queryFn: () => entryService.getContentCategories(),
+    enabled,
+    staleTime: 0,
+  })
 }
 
 /**
@@ -91,53 +102,69 @@ export function useEntry(entryId: string) {
   })
 }
 
-/**
- * Hook to update entry state.
- *
- * Uses optimistic cache updates to prevent the entry list from refreshing
- * and causing the currently selected entry to disappear from the list.
- * Only invalidates subscription counts for accurate unread counts.
- */
-export function useUpdateEntryState() {
+type EntryPage = { items: EntryWithState[] }
+
+/** Patch cached entries in place to preserve the current Smart ranking and scroll position. */
+export function updateCachedEntries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  matches: (entry: EntryWithState) => boolean,
+  update: (entry: EntryWithState) => EntryWithState
+) {
+  queryClient.setQueriesData<EntryWithState>({ queryKey: entryKeys.details() }, (entry) =>
+    entry && matches(entry) ? update(entry) : undefined
+  )
+
+  const updatePage = <T extends EntryPage>(page: T): T =>
+    page.items.some(matches)
+      ? { ...page, items: page.items.map((entry) => (matches(entry) ? update(entry) : entry)) }
+      : page
+  queryClient.setQueriesData<EntryPage | { pages: EntryPage[] }>(
+    { queryKey: entryKeys.lists() },
+    (cached) => {
+      if (!cached) return undefined
+      if ('pages' in cached) {
+        const pages = cached.pages.map(updatePage)
+        return pages.some((page, index) => page !== cached.pages[index])
+          ? { ...cached, pages }
+          : undefined
+      }
+      const page = updatePage(cached)
+      return page !== cached ? page : undefined
+    }
+  )
+}
+
+/** Update the changed fields without replacing other actions' cached state. */
+export function useUpdateEntryState(scopeEntryId?: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
+    scope: scopeEntryId ? { id: `entry-state:${scopeEntryId}` } : undefined,
     mutationFn: ({ entryId, data }: { entryId: string; data: UpdateEntryStateRequest }) =>
       entryService.updateEntryState(entryId, data),
-    onSuccess: (updatedEntry, variables) => {
-      // Update the specific entry detail in cache
-      queryClient.setQueryData(entryKeys.detail(variables.entryId), updatedEntry)
+    onSuccess: (updated, { entryId, data }) => {
+      updateCachedEntries(
+        queryClient,
+        (entry) => entry.id === entryId || (!!updated.url && entry.url === updated.url),
+        (entry) => ({
+          ...entry,
+          ...(data.is_read !== undefined && { is_read: updated.is_read, read_at: updated.read_at }),
+          ...(data.is_liked !== undefined && { is_liked: updated.is_liked }),
+          ...(data.read_later !== undefined && {
+            read_later: updated.read_later,
+            read_later_until: updated.read_later_until,
+          }),
+          // Ranking belongs to the individual entry; single-entry responses usually omit it.
+          ...(entry.id === entryId && {
+            preference_score: updated.preference_score ?? entry.preference_score,
+            recommendation_reason: updated.recommendation_reason ?? entry.recommendation_reason,
+          }),
+        })
+      )
+      if (!queryClient.getQueryData(entryKeys.detail(entryId))) {
+        queryClient.setQueryData(entryKeys.detail(entryId), updated)
+      }
 
-      // Update the entry in all cached lists directly (optimistic update)
-      // This prevents the list from refreshing and the entry from disappearing
-      queryClient.setQueriesData<{
-        pages: { items: EntryWithState[] }[]
-        pageParams: number[]
-      }>({ queryKey: entryKeys.lists() }, (oldData) => {
-        if (!oldData) return oldData
-        return {
-          ...oldData,
-          pages: oldData.pages.map((page) => ({
-            ...page,
-            items: page.items.map((item) => {
-              if (item.id !== variables.entryId) return item
-              return {
-                ...item,
-                ...updatedEntry,
-                // State updates come from the single-entry API, which does not
-                // compute a smart-view score and returns null. Keep the score
-                // already shown on the list card.
-                preference_score: updatedEntry.preference_score ?? item.preference_score,
-                recommendation_reason:
-                  updatedEntry.recommendation_reason ?? item.recommendation_reason,
-              }
-            }),
-          })),
-        }
-      })
-
-      // Invalidate subscription queries to update unread counts
-      // This is needed for accurate sidebar counts
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
   })
