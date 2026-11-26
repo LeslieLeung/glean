@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (pinned version)
-COPY --from=ghcr.io/astral-sh/uv:0.7.12 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.10 /uv /uvx /bin/
 
 # Create unprivileged runtime user
 RUN groupadd --system appuser && useradd --system --gid appuser --create-home appuser
