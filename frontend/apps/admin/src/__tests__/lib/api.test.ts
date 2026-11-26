@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CrossTabLockTimeoutError } from '@glean/api-client'
 import api from '../../lib/api'
 import { ADMIN_AUTH_STORAGE_KEY, useAuthStore } from '../../stores/authStore'
 
@@ -236,5 +237,46 @@ describe('admin api cross-tab refresh coordination', () => {
     expect(postSpy).toHaveBeenCalledWith('/api/admin/auth/logout', {
       refresh_token: 'admin-refresh-3',
     })
+  })
+
+  it('does not call admin refresh or clear storage when cross-tab refresh lock times out', async () => {
+    vi.useFakeTimers()
+    const originalLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks')
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    })
+
+    try {
+      seedAdminAuth('admin-access-1', 'admin-refresh-1')
+      localStorage.setItem(
+        'glean_auth_refresh_lock:glean-admin-auth',
+        JSON.stringify({ owner: 'other-admin-tab', expiresAt: Date.now() + 60_000 })
+      )
+
+      api.defaults.adapter = async (config) => {
+        throw make401Error(config)
+      }
+      const postSpy = vi.spyOn(axios, 'post')
+
+      const caughtPromise = api.get('/stats').catch((err: unknown) => err)
+      await vi.advanceTimersByTimeAsync(36_000)
+      const caught = await caughtPromise
+
+      expect(caught).toBeInstanceOf(CrossTabLockTimeoutError)
+      expect(postSpy).not.toHaveBeenCalled()
+      expect(readStoredAdminAuth()).toEqual({
+        token: 'admin-access-1',
+        refreshToken: 'admin-refresh-1',
+      })
+    } finally {
+      vi.useRealTimers()
+      if (originalLocksDescriptor) {
+        Object.defineProperty(navigator, 'locks', originalLocksDescriptor)
+      } else {
+        Reflect.deleteProperty(navigator, 'locks')
+      }
+    }
   })
 })

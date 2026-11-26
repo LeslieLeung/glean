@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import axios from 'axios'
 import { ApiClient } from '../client'
+import { CrossTabLockTimeoutError } from '../refreshCoordinator'
 
 const { mockAxiosInstance } = vi.hoisted(() => {
   const interceptors = {
@@ -506,6 +507,65 @@ describe('ApiClient', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await expect((errorHandler as any)(error)).rejects.toEqual(refreshErr)
       expect(tokenStorage.clearTokens).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not call refresh or clear tokens when cross-tab refresh lock times out', async () => {
+      vi.useFakeTimers()
+      const originalLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks')
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      })
+
+      try {
+        const { tokenStorage } = await import('../tokenStorage')
+        const sharedStore = { accessToken: 'access-1', refreshToken: 'refresh-1' }
+        vi.mocked(tokenStorage.getAccessToken).mockImplementation(
+          async () => sharedStore.accessToken
+        )
+        vi.mocked(tokenStorage.getRefreshToken).mockImplementation(
+          async () => sharedStore.refreshToken
+        )
+
+        localStorage.setItem(
+          'glean_auth_refresh_lock:glean-user-auth',
+          JSON.stringify({ owner: 'other-tab', expiresAt: Date.now() + 60_000 })
+        )
+
+        new ApiClient()
+        const instance = getAxiosInstance()
+        const errorHandler = vi.mocked(instance.interceptors.response.use).mock.calls[0][1]
+
+        const error = {
+          response: { status: 401 },
+          config: {
+            url: '/entries',
+            _retry: false,
+            headers: { Authorization: 'Bearer access-1' },
+          },
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const caughtPromise = ((errorHandler as any)(error) as Promise<unknown>).catch(
+          (err: unknown) => err
+        )
+
+        await vi.advanceTimersByTimeAsync(36_000)
+        const caught = await caughtPromise
+
+        expect(caught).toBeInstanceOf(CrossTabLockTimeoutError)
+        expect(instance.post).not.toHaveBeenCalled()
+        expect(tokenStorage.clearTokens).not.toHaveBeenCalled()
+        expect(sharedStore).toEqual({ accessToken: 'access-1', refreshToken: 'refresh-1' })
+      } finally {
+        vi.useRealTimers()
+        if (originalLocksDescriptor) {
+          Object.defineProperty(navigator, 'locks', originalLocksDescriptor)
+        } else {
+          Reflect.deleteProperty(navigator, 'locks')
+        }
+      }
     })
   })
 })

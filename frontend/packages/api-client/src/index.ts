@@ -23,6 +23,7 @@ export {
   hasUpdatedAccessToken,
   shouldClearTokensAfterRefreshFailure,
   withCrossTabLock,
+  CrossTabLockTimeoutError,
   NoRefreshTokenError,
   type CoordinateRefreshOptions,
   type CrossTabLockOptions,

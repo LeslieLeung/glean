@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CrossTabLockTimeoutError,
   coordinateTokenRefresh,
   shouldClearTokensAfterRefreshFailure,
   withCrossTabLock,
@@ -201,5 +202,165 @@ describe('refreshCoordinator', () => {
         'refresh-1'
       )
     ).toBe(true)
+  })
+
+  it('renews the localStorage lease during a slow refresh so another tab does not duplicate rotation', async () => {
+    vi.useFakeTimers()
+    try {
+      setNavigatorLocks(undefined)
+      const sharedStore: TokenPair = {
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+      }
+      const usedRefreshTokens = new Set<string>()
+
+      const performRefresh = vi.fn(
+        async (rt: string) =>
+          await new Promise<{ accessToken: string; refreshToken: string }>((resolve, reject) => {
+            setTimeout(() => {
+              if (usedRefreshTokens.has(rt)) {
+                reject({ response: { status: 401 } })
+                return
+              }
+              usedRefreshTokens.add(rt)
+              resolve({ accessToken: 'access-2', refreshToken: 'refresh-2' })
+            }, 180)
+          })
+      )
+
+      const makeOptions = () => ({
+        lockName: 'glean-long-refresh',
+        failedAccessToken: 'access-1',
+        readTokens: async () => ({ ...sharedStore }),
+        writeTokens: async (next: { accessToken: string; refreshToken: string }) => {
+          sharedStore.accessToken = next.accessToken
+          sharedStore.refreshToken = next.refreshToken
+        },
+        performRefresh,
+        lockOptions: { leaseMs: 60, waitTimeoutMs: 500 },
+      })
+
+      const tabA = coordinateTokenRefresh(makeOptions())
+      await vi.advanceTimersByTimeAsync(90)
+
+      // Tab B arrives after the initial 60ms lease would have expired; heartbeat renewal keeps Tab A's lock active.
+      const tabB = coordinateTokenRefresh(makeOptions())
+      await vi.advanceTimersByTimeAsync(150)
+
+      const [tokenA, tokenB] = await Promise.all([tabA, tabB])
+      expect(tokenA).toBe('access-2')
+      expect(tokenB).toBe('access-2')
+      expect(performRefresh).toHaveBeenCalledTimes(1)
+      expect(localStorage.getItem('glean_auth_refresh_lock:glean-long-refresh')).toBeNull()
+
+      // Verify heartbeat interval was cleared and never recreates the lock after release.
+      await vi.advanceTimersByTimeAsync(80)
+      expect(localStorage.getItem('glean_auth_refresh_lock:glean-long-refresh')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('throws CrossTabLockTimeoutError and skips fn when wait deadline expires without ownership', async () => {
+    vi.useFakeTimers()
+    try {
+      setNavigatorLocks(undefined)
+      const lockKey = 'glean_auth_refresh_lock:glean-timeout-test'
+      const activeLock = JSON.stringify({ owner: 'other-tab', expiresAt: Date.now() + 5000 })
+      localStorage.setItem(lockKey, activeLock)
+
+      const fn = vi.fn(async () => 'should-not-run')
+      const caughtPromise = withCrossTabLock('glean-timeout-test', fn, {
+        leaseMs: 200,
+        waitTimeoutMs: 60,
+      }).catch((error: unknown) => error)
+
+      await vi.advanceTimersByTimeAsync(100)
+      const caught = await caughtPromise
+
+      expect(caught).toBeInstanceOf(CrossTabLockTimeoutError)
+      expect(fn).not.toHaveBeenCalled()
+      expect(localStorage.getItem(lockKey)).toBe(activeLock)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not submit a duplicate refresh or recommend clearing tokens when waiting times out', async () => {
+    vi.useFakeTimers()
+    try {
+      setNavigatorLocks(undefined)
+      const sharedStore: TokenPair = {
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+      }
+      const performRefresh = vi.fn(
+        async () =>
+          await new Promise<{ accessToken: string; refreshToken: string }>((resolve) => {
+            setTimeout(() => {
+              resolve({ accessToken: 'access-2', refreshToken: 'refresh-2' })
+            }, 220)
+          })
+      )
+
+      const makeOptions = (waitTimeoutMs: number) => ({
+        lockName: 'glean-wait-timeout',
+        failedAccessToken: 'access-1',
+        readTokens: async () => ({ ...sharedStore }),
+        writeTokens: async (next: { accessToken: string; refreshToken: string }) => {
+          sharedStore.accessToken = next.accessToken
+          sharedStore.refreshToken = next.refreshToken
+        },
+        performRefresh,
+        lockOptions: { leaseMs: 60, waitTimeoutMs },
+      })
+
+      const tabA = coordinateTokenRefresh(makeOptions(500))
+      await Promise.resolve()
+      await Promise.resolve()
+
+      const tabBCaughtPromise = coordinateTokenRefresh(makeOptions(80)).catch(
+        (error: unknown) => error
+      )
+
+      await vi.advanceTimersByTimeAsync(100)
+      const tabBCaught = await tabBCaughtPromise
+      expect(tabBCaught).toBeInstanceOf(CrossTabLockTimeoutError)
+      expect(performRefresh).toHaveBeenCalledTimes(1)
+      expect(
+        shouldClearTokensAfterRefreshFailure(sharedStore, 'access-1', 'refresh-1', tabBCaught)
+      ).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(150)
+      expect(await tabA).toBe('access-2')
+      expect(performRefresh).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not overwrite or remove another owner lock during renewal or release', async () => {
+    vi.useFakeTimers()
+    try {
+      setNavigatorLocks(undefined)
+      const lockKey = 'glean_auth_refresh_lock:glean-stolen-test'
+      const newOwnerLock = JSON.stringify({ owner: 'new-owner', expiresAt: Date.now() + 5000 })
+
+      const resultPromise = withCrossTabLock(
+        'glean-stolen-test',
+        async () => {
+          localStorage.setItem(lockKey, newOwnerLock)
+          await new Promise((resolve) => setTimeout(resolve, 90))
+          return 'done'
+        },
+        { leaseMs: 60, waitTimeoutMs: 500 }
+      )
+
+      await vi.advanceTimersByTimeAsync(100)
+      expect(await resultPromise).toBe('done')
+      expect(localStorage.getItem(lockKey)).toBe(newOwnerLock)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

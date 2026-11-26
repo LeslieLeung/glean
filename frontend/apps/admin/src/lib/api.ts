@@ -3,6 +3,7 @@ import { logger } from '@glean/logger'
 import {
   coordinateTokenRefresh,
   extractBearerToken,
+  hasUpdatedAccessToken,
   shouldClearTokensAfterRefreshFailure,
   type RefreshResult,
   type TokenPair,
@@ -110,19 +111,26 @@ async function refreshAdminAccessToken(
   } catch (refreshError) {
     const currentTokens = readAdminTokens()
     if (
-      !shouldClearTokensAfterRefreshFailure(
-        currentTokens,
-        failedAccessToken,
-        attemptedRefreshToken
-      ) &&
+      hasUpdatedAccessToken(currentTokens, failedAccessToken, attemptedRefreshToken) &&
       currentTokens.accessToken
     ) {
       syncAdminAuthStore(currentTokens.accessToken)
       return currentTokens.accessToken
     }
 
-    logger.error('Token refresh failed', refreshError)
-    clearAdminTokensAndRedirect()
+    if (
+      shouldClearTokensAfterRefreshFailure(
+        currentTokens,
+        failedAccessToken,
+        attemptedRefreshToken,
+        refreshError
+      )
+    ) {
+      logger.error('Token refresh failed', refreshError)
+      clearAdminTokensAndRedirect()
+    } else {
+      logger.warn('Token refresh aborted without clearing shared session', refreshError)
+    }
     throw refreshError
   }
 }

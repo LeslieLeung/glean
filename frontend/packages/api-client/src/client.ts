@@ -7,6 +7,7 @@ import { tokenStorage } from './tokenStorage'
 import {
   coordinateTokenRefresh,
   extractBearerToken,
+  hasUpdatedAccessToken,
   shouldClearTokensAfterRefreshFailure,
 } from './refreshCoordinator'
 import { logger } from '@glean/logger'
@@ -291,19 +292,30 @@ export class ApiClient {
         tokenStorage.getAccessToken(),
         tokenStorage.getRefreshToken(),
       ])
+      const currentTokens = {
+        accessToken: currentAccessToken,
+        refreshToken: currentRefreshToken,
+      }
       if (
-        !shouldClearTokensAfterRefreshFailure(
-          { accessToken: currentAccessToken, refreshToken: currentRefreshToken },
-          failedAccessToken,
-          attemptedRefreshToken
-        ) &&
+        hasUpdatedAccessToken(currentTokens, failedAccessToken, attemptedRefreshToken) &&
         currentAccessToken
       ) {
         return currentAccessToken
       }
 
-      logger.error('Token refresh failed', refreshError)
-      await this.clearTokensAndRedirect()
+      if (
+        shouldClearTokensAfterRefreshFailure(
+          currentTokens,
+          failedAccessToken,
+          attemptedRefreshToken,
+          refreshError
+        )
+      ) {
+        logger.error('Token refresh failed', refreshError)
+        await this.clearTokensAndRedirect()
+      } else {
+        logger.warn('Token refresh aborted without clearing shared session', refreshError)
+      }
       throw refreshError
     }
   }
