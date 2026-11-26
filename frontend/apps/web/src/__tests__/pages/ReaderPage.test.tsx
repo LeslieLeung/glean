@@ -269,9 +269,18 @@ describe('ReaderPage pagination', () => {
 
   it('updates Smart feed cards in place without opening the reader', async () => {
     const entry = createMockEntry({ title: 'Smart article', url: 'https://example.com/article' })
+    const sameUrl = createMockEntry({ id: 'same-url', feed_id: 'another-feed', url: entry.url })
+    const other = createMockEntry({ id: 'second', title: 'Another article' })
     const saved = createMockBookmark({ entry_id: entry.id })
+    const alternateList = entryKeys.list({ feed_id: sameUrl.feed_id })
+    queryClient.setQueryData(entryKeys.detail(sameUrl.id), sameUrl)
+    queryClient.setQueryData(entryKeys.detail(other.id), other)
+    queryClient.setQueryData(alternateList, {
+      pages: [{ items: [other, sameUrl] }],
+      pageParams: [1],
+    })
     vi.mocked(entryService.getEntries).mockResolvedValueOnce({
-      items: [entry, createMockEntry({ id: 'second', title: 'Another article' })],
+      items: [entry, other],
       page: 1,
       per_page: 20,
       total: 2,
@@ -328,11 +337,22 @@ describe('ReaderPage pagination', () => {
     fireEvent.click(action('savedForLater'))
     await card.findByRole('button', { name: 'actions.readLater' })
 
+    const expectSharedBookmark = (bookmarkId: string | null) => {
+      const expected = { is_bookmarked: bookmarkId !== null, bookmark_id: bookmarkId }
+      expect(queryClient.getQueryData(entryKeys.detail(sameUrl.id))).toMatchObject(expected)
+      expect(queryClient.getQueryData(entryKeys.detail(other.id))).toEqual(other)
+      expect(queryClient.getQueryData(alternateList)).toEqual({
+        pages: [{ items: [other, { ...sameUrl, ...expected }] }],
+        pageParams: [1],
+      })
+    }
     fireEvent.click(action('archive'))
     await card.findByRole('button', { name: 'actions.archived' })
+    expectSharedBookmark(saved.id)
     await waitFor(() => expect(action('archived').hasAttribute('disabled')).toBe(false))
     fireEvent.click(action('archived'))
     await card.findByRole('button', { name: 'actions.archive' })
+    expectSharedBookmark(null)
 
     expect(vi.mocked(entryService.updateEntryState).mock.calls).toEqual([
       [entry.id, { is_read: true }],

@@ -5,16 +5,17 @@ import { showBookmarkNotice } from '../stores/bookmarkNoticeStore'
 import { useBookmarkStore } from '../stores/bookmarkStore'
 import { useFolderStore } from '../stores/folderStore'
 import { useTagStore } from '../stores/tagStore'
-import { updateCachedEntry } from './useEntries'
+import { updateCachedEntries } from './useEntries'
 
 export function useToggleEntryBookmark(entry: EntryWithState, onBookmarkChange?: () => void) {
   const queryClient = useQueryClient()
+  const bookmarkToRemove = entry.is_bookmarked ? entry.bookmark_id : null
 
   return useMutation({
     mutationFn: async () => {
-      if (entry.is_bookmarked && entry.bookmark_id) {
-        await bookmarkService.deleteBookmark(entry.bookmark_id)
-        showBookmarkNotice('removed', entry.bookmark_id)
+      if (bookmarkToRemove) {
+        await bookmarkService.deleteBookmark(bookmarkToRemove)
+        showBookmarkNotice('removed', bookmarkToRemove)
         return null
       }
 
@@ -23,11 +24,22 @@ export function useToggleEntryBookmark(entry: EntryWithState, onBookmarkChange?:
       return saved.id
     },
     onSuccess: async (bookmarkId) => {
-      updateCachedEntry(queryClient, entry.id, (cached) => ({
-        ...cached,
-        is_bookmarked: bookmarkId !== null,
-        bookmark_id: bookmarkId,
-      }))
+      updateCachedEntries(
+        queryClient,
+        (cached) => {
+          if (bookmarkToRemove) return cached.bookmark_id === bookmarkToRemove
+          // The API looks up bookmarks by entry ID or by an exact, nonempty URL.
+          return (
+            !cached.bookmark_id &&
+            (cached.id === entry.id || (!!entry.url && cached.url === entry.url))
+          )
+        },
+        (cached) => ({
+          ...cached,
+          is_bookmarked: bookmarkId !== null,
+          bookmark_id: bookmarkId,
+        })
+      )
       onBookmarkChange?.()
       await Promise.all([
         useBookmarkStore.getState().fetchBookmarks(),

@@ -10,7 +10,8 @@ export const entryKeys = {
   all: ['entries'] as const,
   lists: () => [...entryKeys.all, 'list'] as const,
   list: (filters: EntryFilters) => [...entryKeys.lists(), filters] as const,
-  detail: (id: string) => [...entryKeys.all, 'detail', id] as const,
+  details: () => [...entryKeys.all, 'detail'] as const,
+  detail: (id: string) => [...entryKeys.details(), id] as const,
 }
 
 /**
@@ -94,28 +95,31 @@ export function useEntry(entryId: string) {
 type EntryPage = { items: EntryWithState[] }
 
 /** Patch cached entries in place to preserve the current Smart ranking and scroll position. */
-export function updateCachedEntry(
+export function updateCachedEntries(
   queryClient: ReturnType<typeof useQueryClient>,
-  entryId: string,
-  update: (entry: EntryWithState) => EntryWithState,
-  fallback?: EntryWithState
+  matches: (entry: EntryWithState) => boolean,
+  update: (entry: EntryWithState) => EntryWithState
 ) {
-  queryClient.setQueryData<EntryWithState>(entryKeys.detail(entryId), (cached) => {
-    const entry = cached ?? fallback
-    return entry && update(entry)
-  })
+  queryClient.setQueriesData<EntryWithState>({ queryKey: entryKeys.details() }, (entry) =>
+    entry && matches(entry) ? update(entry) : undefined
+  )
 
-  const updatePage = <T extends EntryPage>(page: T): T => ({
-    ...page,
-    items: page.items.map((entry) => (entry.id === entryId ? update(entry) : entry)),
-  })
+  const updatePage = <T extends EntryPage>(page: T): T =>
+    page.items.some(matches)
+      ? { ...page, items: page.items.map((entry) => (matches(entry) ? update(entry) : entry)) }
+      : page
   queryClient.setQueriesData<EntryPage | { pages: EntryPage[] }>(
     { queryKey: entryKeys.lists() },
     (cached) => {
-      if (!cached) return cached
-      return 'pages' in cached
-        ? { ...cached, pages: cached.pages.map(updatePage) }
-        : updatePage(cached)
+      if (!cached) return undefined
+      if ('pages' in cached) {
+        const pages = cached.pages.map(updatePage)
+        return pages.some((page, index) => page !== cached.pages[index])
+          ? { ...cached, pages }
+          : undefined
+      }
+      const page = updatePage(cached)
+      return page !== cached ? page : undefined
     }
   )
 }
@@ -129,9 +133,9 @@ export function useUpdateEntryState(scopeEntryId?: string) {
     mutationFn: ({ entryId, data }: { entryId: string; data: UpdateEntryStateRequest }) =>
       entryService.updateEntryState(entryId, data),
     onSuccess: (updated, { entryId, data }) => {
-      updateCachedEntry(
+      updateCachedEntries(
         queryClient,
-        entryId,
+        (entry) => entry.id === entryId,
         (entry) => ({
           ...entry,
           ...(data.is_read !== undefined && { is_read: updated.is_read, read_at: updated.read_at }),
@@ -143,9 +147,11 @@ export function useUpdateEntryState(scopeEntryId?: string) {
           // Single-entry responses generally omit ranking, so keep the list's score and reason.
           preference_score: updated.preference_score ?? entry.preference_score,
           recommendation_reason: updated.recommendation_reason ?? entry.recommendation_reason,
-        }),
-        updated
+        })
       )
+      if (!queryClient.getQueryData(entryKeys.detail(entryId))) {
+        queryClient.setQueryData(entryKeys.detail(entryId), updated)
+      }
 
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all })
     },
