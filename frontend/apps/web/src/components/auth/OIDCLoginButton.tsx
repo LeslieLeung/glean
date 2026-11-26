@@ -42,7 +42,7 @@ export function OIDCLoginButton() {
       setLoading(true)
       setErrorMessage('')
 
-      const { authorization_url, state } = await authService.getOIDCAuthUrl()
+      const { authorization_url, state, state_binding } = await authService.getOIDCAuthUrl()
       const safeUrl = toSafeExternalUrl(authorization_url)
       if (!safeUrl) {
         throw new Error('Invalid OIDC authorization URL')
@@ -55,6 +55,7 @@ export function OIDCLoginButton() {
         const callbackResult = await window.electronAPI.authenticateOIDC(safeUrl)
         const expectedState = sessionStorage.getItem('oidc_state')
         sessionStorage.removeItem('oidc_state')
+        sessionStorage.removeItem('oidc_state_binding')
 
         if (callbackResult.cancelled) {
           setLoading(false)
@@ -72,7 +73,8 @@ export function OIDCLoginButton() {
 
         const { user, tokens } = await authService.handleOIDCCallback(
           callbackResult.code,
-          callbackResult.state
+          callbackResult.state,
+          state_binding
         )
         await authService.saveTokens(tokens)
         setUser(user)
@@ -80,9 +82,13 @@ export function OIDCLoginButton() {
         return
       }
 
+      if (state_binding) {
+        sessionStorage.setItem('oidc_state_binding', state_binding)
+      }
       window.location.href = safeUrl
     } catch (error) {
       sessionStorage.removeItem('oidc_state')
+      sessionStorage.removeItem('oidc_state_binding')
       logger.error('Failed to initiate OIDC login', { error })
       setErrorMessage(apiErrorMessage(error) || t('errors.networkError'))
       setLoading(false)

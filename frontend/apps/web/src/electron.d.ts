@@ -4,6 +4,12 @@ declare global {
     electronAPI?: {
       getApiUrl: () => Promise<string>
       setApiUrl: (url: string) => Promise<boolean>
+      testApiConnection?: (url: string) => Promise<{
+        ok: boolean
+        status?: number
+        version?: string
+        errorCode?: 'invalid_url' | 'invalid_response' | 'http_error' | 'network_error'
+      }>
       getPlatform: () => Promise<{
         platform: string
         arch: string

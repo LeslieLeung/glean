@@ -42,13 +42,15 @@ export default function AuthCallbackPage() {
         }
 
         const expectedState = sessionStorage.getItem('oidc_state')
+        const stateBinding = sessionStorage.getItem('oidc_state_binding') ?? undefined
         sessionStorage.removeItem('oidc_state')
+        sessionStorage.removeItem('oidc_state_binding')
         if (!expectedState || expectedState !== state) {
           throw new Error('Invalid or missing OIDC session state')
         }
 
         // Exchange code for tokens
-        const { user, tokens } = await authService.handleOIDCCallback(code, state)
+        const { user, tokens } = await authService.handleOIDCCallback(code, state, stateBinding)
 
         // Save tokens
         await authService.saveTokens(tokens)

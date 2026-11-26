@@ -19,6 +19,13 @@ export interface OidcCallbackResult {
   cancelled?: boolean
 }
 
+export interface ApiConnectionTestResult {
+  ok: boolean
+  status?: number
+  version?: string
+  errorCode?: 'invalid_url' | 'invalid_response' | 'http_error' | 'network_error'
+}
+
 export function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.has(hostname.toLowerCase())
 }
@@ -181,4 +188,23 @@ export function extractOidcCallbackParams(
  */
 export function isAllowedOidcWindowNavigation(url: string): boolean {
   return isSafeExternalUrl(url)
+}
+
+/**
+ * Validate a candidate API base URL and build its `/api/health` endpoint URL.
+ */
+export function buildHealthCheckUrl(candidateUrl: string): string | null {
+  if (!isAllowedApiUrl(candidateUrl)) {
+    return null
+  }
+  try {
+    const parsed = new URL(candidateUrl.trim())
+    if (parsed.search || parsed.hash) {
+      return null
+    }
+    const basePath = parsed.pathname.replace(/\/+$/, '')
+    return `${parsed.origin}${basePath}/api/health`
+  } catch {
+    return null
+  }
 }

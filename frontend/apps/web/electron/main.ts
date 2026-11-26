@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  net,
   shell,
   Menu,
   dialog,
@@ -14,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
 import {
+  buildHealthCheckUrl,
   buildProductionCsp,
   extractOidcCallbackParams,
   isAllowedApiUrl,
@@ -22,6 +24,7 @@ import {
   isSafeExternalUrl,
   isTrustedIpcSender,
   parseOidcAuthRequest,
+  type ApiConnectionTestResult,
   type OidcCallbackResult,
 } from './security'
 
@@ -426,9 +429,76 @@ ipcMain.handle('set-api-url', (event, url: string) => {
     return false
   }
 
-  store.set('apiUrl', url)
+  store.set('apiUrl', url.trim().replace(/\/+$/, ''))
   return true
 })
+
+// IPC handler: probe candidate API server health from main process (bypasses saved-origin renderer CSP)
+ipcMain.handle(
+  'test-api-connection',
+  async (event, candidateUrl: string): Promise<ApiConnectionTestResult> => {
+    assertTrustedSender(event)
+
+    const healthUrl = buildHealthCheckUrl(candidateUrl)
+    if (!healthUrl) {
+      return { ok: false, errorCode: 'invalid_url' }
+    }
+
+    try {
+      let targetUrl = healthUrl
+      let response: Response | null = null
+
+      for (let redirects = 0; redirects <= 2; redirects += 1) {
+        response = await net.fetch(targetUrl, {
+          method: 'GET',
+          credentials: 'omit',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location')
+          if (!location || redirects === 2) {
+            return { ok: false, status: response.status, errorCode: 'http_error' }
+          }
+          const nextUrl = new URL(location, targetUrl).href
+          if (!isAllowedApiUrl(nextUrl)) {
+            return { ok: false, status: response.status, errorCode: 'http_error' }
+          }
+          targetUrl = nextUrl
+          continue
+        }
+        break
+      }
+
+      if (!response) {
+        return { ok: false, errorCode: 'network_error' }
+      }
+      if (!response.ok) {
+        return { ok: false, status: response.status, errorCode: 'http_error' }
+      }
+
+      let data: { status?: unknown; version?: unknown } | null = null
+      try {
+        data = (await response.json()) as { status?: unknown; version?: unknown }
+      } catch {
+        return { ok: false, errorCode: 'invalid_response' }
+      }
+
+      if (!data || typeof data.status !== 'string') {
+        return { ok: false, errorCode: 'invalid_response' }
+      }
+
+      return {
+        ok: true,
+        status: response.status,
+        version: typeof data.version === 'string' ? data.version : undefined,
+      }
+    } catch {
+      return { ok: false, errorCode: 'network_error' }
+    }
+  }
+)
 
 // IPC handler: get platform information
 ipcMain.handle('get-platform', (event) => {

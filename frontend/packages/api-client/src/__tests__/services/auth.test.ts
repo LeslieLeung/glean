@@ -136,4 +136,23 @@ describe('AuthService', () => {
     const result = await service.isAuthenticated()
     expect(result).toBe(false)
   })
+
+  it('should forward state_binding only when provided in handleOIDCCallback', async () => {
+    const authResponse = { user: { id: '1' }, tokens: { access_token: 'at', refresh_token: 'rt' } }
+    vi.mocked(mockClient.post).mockResolvedValue(authResponse)
+
+    await service.handleOIDCCallback('code-1', 'state-1', 'binding-secret-1')
+    expect(mockClient.post).toHaveBeenCalledWith('/auth/oauth/oidc/callback', {
+      code: 'code-1',
+      state: 'state-1',
+      state_binding: 'binding-secret-1',
+    })
+
+    vi.mocked(mockClient.post).mockClear()
+    await service.handleOIDCCallback('code-2', 'state-2')
+    expect(mockClient.post).toHaveBeenCalledWith('/auth/oauth/oidc/callback', {
+      code: 'code-2',
+      state: 'state-2',
+    })
+  })
 })

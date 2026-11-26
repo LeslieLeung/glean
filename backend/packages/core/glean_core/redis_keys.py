@@ -30,6 +30,16 @@ class RedisKeys:
         """
         return f"oidc_state:{state}"
 
+    # OIDC state binding hash for desktop/cross-site CSRF binding
+    # Format: oidc_state_binding:{state}
+    # TTL: 5 minutes (300 seconds) - same as state
+    OIDC_STATE_BINDING_TTL = 300
+
+    @staticmethod
+    def oidc_state_binding(state: str) -> str:
+        """Get OIDC state binding hash key for desktop/cross-site CSRF binding."""
+        return f"oidc_state_binding:{state}"
+
     # OIDC nonce for replay attack prevention
     # Format: oidc_nonce:{state}
     # TTL: 5 minutes (300 seconds) - same as state

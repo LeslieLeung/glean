@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设置后端 API URL
   setApiUrl: (url: string) => ipcRenderer.invoke('set-api-url', url),
 
+  // 测试后端 API 连接
+  testApiConnection: (url: string) => ipcRenderer.invoke('test-api-connection', url),
+
   // 获取平台信息
   getPlatform: () => ipcRenderer.invoke('get-platform'),
 
@@ -87,9 +90,17 @@ export interface OidcCallbackResult {
   cancelled?: boolean
 }
 
+export interface ApiConnectionTestResult {
+  ok: boolean
+  status?: number
+  version?: string
+  errorCode?: 'invalid_url' | 'invalid_response' | 'http_error' | 'network_error'
+}
+
 export interface ElectronAPI {
   getApiUrl: () => Promise<string>
   setApiUrl: (url: string) => Promise<boolean>
+  testApiConnection: (url: string) => Promise<ApiConnectionTestResult>
   getPlatform: () => Promise<{
     platform: string
     arch: string

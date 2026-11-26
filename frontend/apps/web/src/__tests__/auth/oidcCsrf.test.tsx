@@ -116,6 +116,7 @@ describe('OIDC client CSRF & redirect validation', () => {
       authorization_url:
         'https://idp.example.com/authorize?state=state-electron&redirect_uri=https%3A%2F%2Fglean.example.com%2Fauth%2Fcallback',
       state: 'state-electron',
+      state_binding: 'desktop-binding-secret',
     })
     const fakeUser = { id: 'user-1', email: 'oidc@example.com' }
     const fakeTokens = { access_token: 'acc-1', refresh_token: 'ref-1' }
@@ -131,12 +132,68 @@ describe('OIDC client CSRF & redirect validation', () => {
       expect(authenticateOIDCMock).toHaveBeenCalledWith(
         'https://idp.example.com/authorize?state=state-electron&redirect_uri=https%3A%2F%2Fglean.example.com%2Fauth%2Fcallback'
       )
-      expect(authService.handleOIDCCallback).toHaveBeenCalledWith('auth-code-123', 'state-electron')
+      expect(authService.handleOIDCCallback).toHaveBeenCalledWith(
+        'auth-code-123',
+        'state-electron',
+        'desktop-binding-secret'
+      )
       expect(authService.saveTokens).toHaveBeenCalledWith(fakeTokens)
       expect(setUserMock).toHaveBeenCalledWith(fakeUser)
     })
     expect(locationMock.href).toBe('file:///app/dist/index.html#/login')
     expect(sessionStorage.getItem('oidc_state')).toBeNull()
+    expect(sessionStorage.getItem('oidc_state_binding')).toBeNull()
+  })
+
+  it('stores and clears oidc_state_binding across web redirect and callback', async () => {
+    const locationMock = { href: 'http://localhost/login' }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: locationMock,
+    })
+
+    vi.mocked(authService.getOIDCAuthUrl).mockResolvedValueOnce({
+      authorization_url: 'https://idp.example.com/authorize?state=state-web',
+      state: 'state-web',
+      state_binding: 'web-binding-secret',
+    })
+
+    const { unmount } = render(<OIDCLoginButton />)
+    fireEvent.click(await screen.findByRole('button'))
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem('oidc_state')).toBe('state-web')
+      expect(sessionStorage.getItem('oidc_state_binding')).toBe('web-binding-secret')
+      expect(locationMock.href).toBe('https://idp.example.com/authorize?state=state-web')
+    })
+    unmount()
+
+    const fakeUser = { id: 'user-web', email: 'web@example.com' }
+    const fakeTokens = { access_token: 'acc-web', refresh_token: 'ref-web' }
+    vi.mocked(authService.handleOIDCCallback).mockResolvedValueOnce({
+      user: fakeUser as never,
+      tokens: fakeTokens as never,
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/auth/callback?code=web-code&state=state-web']}>
+        <Routes>
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/" element={<div>Home</div>} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(authService.handleOIDCCallback).toHaveBeenCalledWith(
+        'web-code',
+        'state-web',
+        'web-binding-secret'
+      )
+      expect(screen.getByText('Home')).toBeInTheDocument()
+    })
+    expect(sessionStorage.getItem('oidc_state')).toBeNull()
+    expect(sessionStorage.getItem('oidc_state_binding')).toBeNull()
   })
 
   it('resets loading without showing an error when Electron OIDC window is cancelled', async () => {

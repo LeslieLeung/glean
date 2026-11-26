@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildHealthCheckUrl,
   buildProductionCsp,
   extractOidcCallbackParams,
   isAllowedApiUrl,
@@ -145,5 +146,23 @@ describe('Electron security policies', () => {
     expect(isAllowedOidcWindowNavigation('file:///app/dist/index.html')).toBe(false)
     expect(isAllowedOidcWindowNavigation('javascript:alert(1)')).toBe(false)
     expect(isAllowedOidcWindowNavigation('smb://attacker/share')).toBe(false)
+  })
+
+  it('builds validated /api/health URLs for Electron main-process connection probes', () => {
+    expect(buildHealthCheckUrl('https://glean.example.com')).toBe(
+      'https://glean.example.com/api/health'
+    )
+    expect(buildHealthCheckUrl('https://glean.example.com/')).toBe(
+      'https://glean.example.com/api/health'
+    )
+    expect(buildHealthCheckUrl('https://glean.example.com/glean/')).toBe(
+      'https://glean.example.com/glean/api/health'
+    )
+    expect(buildHealthCheckUrl('http://localhost:8000')).toBe('http://localhost:8000/api/health')
+
+    expect(buildHealthCheckUrl('http://remote.example.com:8000')).toBeNull()
+    expect(buildHealthCheckUrl('https://user:pass@glean.example.com')).toBeNull()
+    expect(buildHealthCheckUrl('https://glean.example.com?foo=bar')).toBeNull()
+    expect(buildHealthCheckUrl('https://glean.example.com#frag')).toBeNull()
   })
 })

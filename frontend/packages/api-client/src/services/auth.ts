@@ -67,6 +67,7 @@ export class AuthService {
       // Clear OIDC state to prevent stale data on next login
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('oidc_state')
+        sessionStorage.removeItem('oidc_state_binding')
         localStorage.removeItem('oidc_state')
       }
     }
@@ -120,10 +121,16 @@ export class AuthService {
     return this.client.get<{ oidc_enabled: boolean }>('/auth/providers')
   }
 
-  async getOIDCAuthUrl(): Promise<{ authorization_url: string; state: string }> {
-    return this.client.get<{ authorization_url: string; state: string }>(
-      '/auth/oauth/oidc/authorize'
-    )
+  async getOIDCAuthUrl(): Promise<{
+    authorization_url: string
+    state: string
+    state_binding?: string
+  }> {
+    return this.client.get<{
+      authorization_url: string
+      state: string
+      state_binding?: string
+    }>('/auth/oauth/oidc/authorize')
   }
 
   /**
@@ -131,7 +138,15 @@ export class AuthService {
    *
    * Exchanges authorization code for user profile and tokens.
    */
-  async handleOIDCCallback(code: string, state: string): Promise<AuthResponse> {
-    return this.client.post<AuthResponse>('/auth/oauth/oidc/callback', { code, state })
+  async handleOIDCCallback(
+    code: string,
+    state: string,
+    stateBinding?: string
+  ): Promise<AuthResponse> {
+    return this.client.post<AuthResponse>('/auth/oauth/oidc/callback', {
+      code,
+      state,
+      ...(stateBinding ? { state_binding: stateBinding } : {}),
+    })
   }
 }

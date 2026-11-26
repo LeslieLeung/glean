@@ -4,6 +4,7 @@ Authentication router.
 Provides endpoints for user registration, login, token refresh, and user profile.
 """
 
+import hashlib
 import hmac
 import ipaddress
 from datetime import UTC, datetime
@@ -152,9 +153,14 @@ def _get_client_identifier(request: Request) -> str:
     return str(direct_addr)
 
 
+def _hash_oidc_state_binding(state_binding: str) -> str:
+    """Return SHA-256 hex digest of an OIDC state binding secret."""
+    return hashlib.sha256(state_binding.encode("utf-8")).hexdigest()
+
+
 async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, str]:
     """
-    Validate state and atomically consume state+nonce+PKCE verifier in Redis.
+    Validate state and atomically consume state+nonce+PKCE verifier+binding in Redis.
 
     Returns:
         Tuple of (nonce, code_verifier).
@@ -162,6 +168,7 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     state_key = RedisKeys.oidc_state(state)
     nonce_key = RedisKeys.oidc_nonce(state)
     code_verifier_key = RedisKeys.oidc_pkce_verifier(state)
+    state_binding_key = RedisKeys.oidc_state_binding(state)
 
     pipe = redis.pipeline(transaction=True)
     pipe.exists(state_key)
@@ -170,7 +177,8 @@ async def _consume_oidc_auth_context(redis: ArqRedis, state: str) -> tuple[str, 
     pipe.delete(state_key)
     pipe.delete(nonce_key)
     pipe.delete(code_verifier_key)
-    state_valid, nonce, code_verifier, _, _, _ = await pipe.execute()
+    pipe.delete(state_binding_key)
+    state_valid, nonce, code_verifier, _, _, _, _ = await pipe.execute()
 
     if not state_valid:
         raise HTTPException(
@@ -534,9 +542,10 @@ async def oidc_authorize(
         # Load OIDC discovery config before generating authorization URL.
         await oidc_provider.prepare()
 
-        # Generate CSRF state, nonce, and PKCE verifier/challenge
+        # Generate CSRF state, nonce, PKCE verifier/challenge, and cross-site state binding secret
         state = token_urlsafe(32)
         nonce = token_urlsafe(32)
+        state_binding = token_urlsafe(32)
         code_verifier, code_challenge = oidc_provider.generate_pkce_pair()
 
         # Store state in Redis with 5-minute TTL for verification in callback
@@ -544,6 +553,13 @@ async def oidc_authorize(
             RedisKeys.oidc_state(state),
             RedisKeys.OIDC_STATE_TTL,
             "1",
+        )
+
+        # Store hashed binding secret for desktop/cross-site clients without SameSite=Lax cookies
+        await redis.setex(
+            RedisKeys.oidc_state_binding(state),
+            RedisKeys.OIDC_STATE_BINDING_TTL,
+            _hash_oidc_state_binding(state_binding),
         )
 
         # Store nonce in Redis for verification during token validation
@@ -572,11 +588,12 @@ async def oidc_authorize(
                 detail="Failed to generate authorization URL",
             )
 
-        # Return response with no-cache headers and cookie-bound OIDC state
+        # Return response with no-cache headers and cookie-bound + token-bound OIDC state
         response = JSONResponse(
             content={
                 "authorization_url": auth_url,
                 "state": state,
+                "state_binding": state_binding,
             },
             headers=_oidc_no_cache_headers(),
         )
@@ -605,6 +622,7 @@ class OIDCCallbackRequest(BaseModel):
 
     code: str
     state: str
+    state_binding: str | None = None
 
 
 @router.post("/oauth/oidc/callback")
@@ -642,7 +660,23 @@ async def oidc_callback(
     )
 
     cookie_state = request.cookies.get(_OIDC_STATE_COOKIE_NAME)
-    if not cookie_state or not hmac.compare_digest(cookie_state, data.state):
+    cookie_valid = bool(cookie_state and hmac.compare_digest(cookie_state, data.state))
+
+    if data.state_binding is not None:
+        binding_valid = False
+        if data.state_binding:
+            stored_binding = await redis.get(RedisKeys.oidc_state_binding(data.state))
+            if isinstance(stored_binding, bytes):
+                stored_binding = stored_binding.decode("utf-8")
+            if isinstance(stored_binding, str) and stored_binding:
+                binding_valid = hmac.compare_digest(
+                    stored_binding, _hash_oidc_state_binding(data.state_binding)
+                )
+        is_bound = binding_valid
+    else:
+        is_bound = cookie_valid
+
+    if not is_bound:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or missing OIDC state binding",

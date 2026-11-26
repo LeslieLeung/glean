@@ -102,11 +102,16 @@ async def test_oidc_authorize_success(
     payload = response.json()
     assert "authorization_url" in payload
     assert payload["state"]
+    assert payload["state_binding"]
+    assert payload["state_binding"] != payload["state"]
+    assert payload["state_binding"] not in payload["authorization_url"]
     assert response.headers["cache-control"].startswith("no-store")
 
     state = payload["state"]
     assert response.cookies.get("glean_oidc_state") == state
     assert test_mock_redis.has_key(f"oidc_state:{state}")
+    assert test_mock_redis.has_key(f"oidc_state_binding:{state}")
+    assert (await test_mock_redis.get(f"oidc_state_binding:{state}")) != payload["state_binding"]
     assert test_mock_redis.has_key(f"oidc_nonce:{state}")
     assert test_mock_redis.has_key(f"oidc_pkce_verifier:{state}")
 
@@ -171,6 +176,82 @@ async def test_oidc_callback_rejects_missing_or_mismatched_state_cookie(
     assert "Invalid or missing OIDC state binding" in mismatch_cookie.text
     # Ensure Redis state was NOT consumed when cookie binding failed
     assert test_mock_redis.has_key("oidc_state:state-cookie")
+
+
+@pytest.mark.asyncio
+async def test_oidc_callback_accepts_valid_state_binding_without_cookie(
+    client: AsyncClient, test_mock_redis, monkeypatch: pytest.MonkeyPatch, _enable_oidc
+) -> None:
+    from glean_core.auth.providers import auth_factory
+
+    app.dependency_overrides[get_auth_service] = lambda: _FakeAuthService()
+    monkeypatch.setattr(
+        auth_factory.AuthProviderFactory, "create", lambda *_args, **_kwargs: _FakeOIDCProvider()
+    )
+
+    auth_response = await client.get("/api/auth/oauth/oidc/authorize")
+    assert auth_response.status_code == 200
+    auth_payload = auth_response.json()
+
+    # Packaged Electron file:// renderer sends cross-site POST with no SameSite=Lax cookie.
+    client.cookies.clear()
+    response = await client.post(
+        "/api/auth/oauth/oidc/callback",
+        json={
+            "code": "auth-code",
+            "state": auth_payload["state"],
+            "state_binding": auth_payload["state_binding"],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user"]["email"] == "oidc@example.com"
+    assert payload["tokens"]["access_token"] == "access-token"
+    assert not test_mock_redis.has_key(f"oidc_state:{auth_payload['state']}")
+    assert not test_mock_redis.has_key(f"oidc_state_binding:{auth_payload['state']}")
+
+    # State binding cannot be replayed after consumption.
+    replay = await client.post(
+        "/api/auth/oauth/oidc/callback",
+        json={
+            "code": "auth-code",
+            "state": auth_payload["state"],
+            "state_binding": auth_payload["state_binding"],
+        },
+    )
+    assert replay.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_oidc_callback_rejects_invalid_state_binding_even_with_valid_cookie(
+    client: AsyncClient, test_mock_redis, _enable_oidc
+) -> None:
+    import hashlib
+
+    app.dependency_overrides[get_auth_service] = lambda: _FakeAuthService()
+    test_mock_redis.seed("oidc_state:state-bind-check", "1")
+    test_mock_redis.seed("oidc_nonce:state-bind-check", "nonce-bind")
+    test_mock_redis.seed("oidc_pkce_verifier:state-bind-check", "code-verifier")
+    test_mock_redis.seed(
+        "oidc_state_binding:state-bind-check",
+        hashlib.sha256(b"real-binding-secret").hexdigest(),
+    )
+
+    response = await client.post(
+        "/api/auth/oauth/oidc/callback",
+        json={
+            "code": "auth-code",
+            "state": "state-bind-check",
+            "state_binding": "forged-binding-secret",
+        },
+        cookies={"glean_oidc_state": "state-bind-check"},
+    )
+
+    assert response.status_code == 400
+    assert "Invalid or missing OIDC state binding" in response.text
+    assert test_mock_redis.has_key("oidc_state:state-bind-check")
+    assert test_mock_redis.has_key("oidc_state_binding:state-bind-check")
 
 
 @pytest.mark.asyncio
