@@ -4,13 +4,11 @@
  * Records article feedback for recommendation scoring.
  */
 
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { entryService } from '@glean/api-client'
 import type { EntryWithState } from '@glean/types'
 import { ThumbsDown, Heart } from 'lucide-react'
-import { Button } from '@glean/ui'
+import { Button, cn } from '@glean/ui'
 import { useTranslation } from '@glean/i18n'
+import { useUpdateEntryState } from '../../hooks/useEntries'
 
 interface PreferenceButtonsProps {
   entry: EntryWithState
@@ -24,80 +22,21 @@ export function PreferenceButtons({
   mobileStyle = false,
 }: PreferenceButtonsProps) {
   const { t } = useTranslation('reader')
-  const queryClient = useQueryClient()
-  const [isLiked, setIsLiked] = useState<boolean | null>(entry.is_liked)
+  const reaction = useUpdateEntryState(entry.id)
+  const isPending = reaction.isPending
+  const isLiked = isPending ? reaction.variables.data.is_liked : entry.is_liked
 
-  // Like mutation
-  const likeMutation = useMutation({
-    mutationFn: () => entryService.likeEntry(entry.id),
-    onMutate: async () => {
-      // Optimistic update
-      setIsLiked(true)
-    },
-    onSuccess: () => {
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['entries'] })
-    },
-    onError: () => {
-      // Revert on error
-      setIsLiked(entry.is_liked)
-    },
-  })
-
-  // Dislike mutation
-  const dislikeMutation = useMutation({
-    mutationFn: () => entryService.dislikeEntry(entry.id),
-    onMutate: async () => {
-      setIsLiked(false)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['entries'] })
-    },
-    onError: () => {
-      setIsLiked(entry.is_liked)
-    },
-  })
-
-  // Remove reaction mutation
-  const removeMutation = useMutation({
-    mutationFn: () => entryService.removeReaction(entry.id),
-    onMutate: async () => {
-      setIsLiked(null)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['entries'] })
-    },
-    onError: () => {
-      setIsLiked(entry.is_liked)
-    },
-  })
-
-  const handleLike = () => {
-    if (isLiked === true) {
-      // Already liked, remove it
-      removeMutation.mutate()
-    } else {
-      likeMutation.mutate()
-    }
+  const toggleReaction = (liked: boolean) => {
+    reaction.mutate({ entryId: entry.id, data: { is_liked: isLiked === liked ? null : liked } })
   }
-
-  const handleDislike = () => {
-    if (isLiked === false) {
-      // Already disliked, remove it
-      removeMutation.mutate()
-    } else {
-      dislikeMutation.mutate()
-    }
-  }
-
-  const isPending = likeMutation.isPending || dislikeMutation.isPending || removeMutation.isPending
 
   if (mobileStyle) {
     // Mobile style with vertical layout (icon above text)
     return (
       <>
         <button
-          onClick={handleLike}
+          onClick={() => toggleReaction(true)}
+          aria-pressed={isLiked === true}
           disabled={isPending}
           className={`action-btn action-btn-mobile transition-colors ${
             isLiked === true ? 'text-red-500' : 'text-muted-foreground'
@@ -108,7 +47,8 @@ export function PreferenceButtons({
         </button>
 
         <button
-          onClick={handleDislike}
+          onClick={() => toggleReaction(false)}
+          aria-pressed={isLiked === false}
           disabled={isPending}
           className={`action-btn action-btn-mobile transition-colors ${
             isLiked === false ? 'text-foreground' : 'text-muted-foreground'
@@ -126,10 +66,17 @@ export function PreferenceButtons({
     <>
       <Button
         variant="ghost"
-        size="sm"
-        onClick={handleLike}
+        size={showLabels ? 'sm' : 'icon'}
+        onClick={() => toggleReaction(true)}
+        aria-pressed={isLiked === true}
         disabled={isPending}
-        className={`action-btn ${isLiked === true ? 'text-red-500' : 'text-muted-foreground'}`}
+        className={cn(
+          'action-btn',
+          !showLabels && 'pointer-coarse:size-11',
+          isLiked === true ? 'text-red-500' : 'text-muted-foreground'
+        )}
+        title={showLabels ? undefined : t('actions.like')}
+        aria-label={showLabels ? undefined : t('actions.like')}
       >
         <Heart className={`h-4 w-4 ${isLiked === true ? 'fill-current' : ''}`} />
         {showLabels && <span>{isLiked === true ? t('actions.liked') : t('actions.like')}</span>}
@@ -137,10 +84,17 @@ export function PreferenceButtons({
 
       <Button
         variant="ghost"
-        size="sm"
-        onClick={handleDislike}
+        size={showLabels ? 'sm' : 'icon'}
+        onClick={() => toggleReaction(false)}
+        aria-pressed={isLiked === false}
         disabled={isPending}
-        className={`action-btn ${isLiked === false ? 'text-foreground' : 'text-muted-foreground'}`}
+        className={cn(
+          'action-btn',
+          !showLabels && 'pointer-coarse:size-11',
+          isLiked === false ? 'text-foreground' : 'text-muted-foreground'
+        )}
+        title={showLabels ? undefined : t('actions.dislike')}
+        aria-label={showLabels ? undefined : t('actions.dislike')}
       >
         <ThumbsDown className={`h-4 w-4 ${isLiked === false ? 'fill-current' : ''}`} />
         {showLabels && (
