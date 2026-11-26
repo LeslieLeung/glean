@@ -135,7 +135,7 @@ export function useUpdateEntryState(scopeEntryId?: string) {
     onSuccess: (updated, { entryId, data }) => {
       updateCachedEntries(
         queryClient,
-        (entry) => entry.id === entryId,
+        (entry) => entry.id === entryId || (!!updated.url && entry.url === updated.url),
         (entry) => ({
           ...entry,
           ...(data.is_read !== undefined && { is_read: updated.is_read, read_at: updated.read_at }),
@@ -144,9 +144,11 @@ export function useUpdateEntryState(scopeEntryId?: string) {
             read_later: updated.read_later,
             read_later_until: updated.read_later_until,
           }),
-          // Single-entry responses generally omit ranking, so keep the list's score and reason.
-          preference_score: updated.preference_score ?? entry.preference_score,
-          recommendation_reason: updated.recommendation_reason ?? entry.recommendation_reason,
+          // Ranking belongs to the individual entry; single-entry responses usually omit it.
+          ...(entry.id === entryId && {
+            preference_score: updated.preference_score ?? entry.preference_score,
+            recommendation_reason: updated.recommendation_reason ?? entry.recommendation_reason,
+          }),
         })
       )
       if (!queryClient.getQueryData(entryKeys.detail(entryId))) {

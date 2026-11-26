@@ -314,45 +314,54 @@ describe('ReaderPage pagination', () => {
     original.addEventListener('click', (event) => event.preventDefault(), { once: true })
     fireEvent.click(original)
 
+    const expectSharedState = (state: Partial<typeof sameUrl>) => {
+      expect(queryClient.getQueryData(entryKeys.detail(sameUrl.id))).toMatchObject(state)
+      expect(queryClient.getQueryData(alternateList)).toMatchObject({
+        pages: [{ items: [other, { id: sameUrl.id, ...state }] }],
+      })
+      expect(queryClient.getQueryData(entryKeys.detail(other.id))).toEqual(other)
+    }
+
     fireEvent.click(action('markRead'))
     await card.findByRole('button', { name: 'actions.markUnread' })
+    expectSharedState({ is_read: true })
     fireEvent.click(action('markUnread'))
     await card.findByRole('button', { name: 'actions.markRead' })
+    expectSharedState({ is_read: false })
 
     fireEvent.click(action('like'))
     await waitFor(() => {
       expect(action('like').getAttribute('aria-pressed')).toBe('true')
       expect(action('like').hasAttribute('disabled')).toBe(false)
     })
+    expectSharedState({ is_liked: true })
     fireEvent.click(action('dislike'))
     await waitFor(() => {
       expect(action('dislike').getAttribute('aria-pressed')).toBe('true')
       expect(action('dislike').hasAttribute('disabled')).toBe(false)
     })
+    expectSharedState({ is_liked: false })
     fireEvent.click(action('dislike'))
-    await waitFor(() => expect(action('dislike').getAttribute('aria-pressed')).toBe('false'))
+    await waitFor(() => {
+      expect(action('dislike').getAttribute('aria-pressed')).toBe('false')
+      expect(action('dislike').hasAttribute('disabled')).toBe(false)
+    })
+    expectSharedState({ is_liked: null })
 
     fireEvent.click(action('readLater'))
     await card.findByRole('button', { name: 'actions.savedForLater' })
+    expectSharedState({ read_later: true })
     fireEvent.click(action('savedForLater'))
     await card.findByRole('button', { name: 'actions.readLater' })
+    expectSharedState({ read_later: false })
 
-    const expectSharedBookmark = (bookmarkId: string | null) => {
-      const expected = { is_bookmarked: bookmarkId !== null, bookmark_id: bookmarkId }
-      expect(queryClient.getQueryData(entryKeys.detail(sameUrl.id))).toMatchObject(expected)
-      expect(queryClient.getQueryData(entryKeys.detail(other.id))).toEqual(other)
-      expect(queryClient.getQueryData(alternateList)).toEqual({
-        pages: [{ items: [other, { ...sameUrl, ...expected }] }],
-        pageParams: [1],
-      })
-    }
     fireEvent.click(action('archive'))
     await card.findByRole('button', { name: 'actions.archived' })
-    expectSharedBookmark(saved.id)
+    expectSharedState({ is_bookmarked: true, bookmark_id: saved.id })
     await waitFor(() => expect(action('archived').hasAttribute('disabled')).toBe(false))
     fireEvent.click(action('archived'))
     await card.findByRole('button', { name: 'actions.archive' })
-    expectSharedBookmark(null)
+    expectSharedState({ is_bookmarked: false, bookmark_id: null })
 
     expect(vi.mocked(entryService.updateEntryState).mock.calls).toEqual([
       [entry.id, { is_read: true }],
