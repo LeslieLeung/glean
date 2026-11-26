@@ -1,7 +1,8 @@
 import { MOBILE_LAYOUT_QUERY, useMediaQuery } from '@/hooks/useMediaQuery'
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, useId } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
+  useContentCategories,
   useInfiniteEntries,
   useEntry,
   useUpdateEntryState,
@@ -15,6 +16,7 @@ import { SmartFeedEntry, SmartFeedEntrySkeleton } from '../components/SmartFeedE
 import { useAuthStore } from '../stores/authStore'
 import { useUIStore, type SmartLayout } from '../stores/uiStore'
 import { useTranslation } from '@glean/i18n'
+import type { ContentCategoryOption } from '@glean/api-client'
 import type { EntryWithState } from '@glean/types'
 import {
   Heart,
@@ -31,6 +33,8 @@ import {
   ArrowLeft,
   LayoutList,
   List,
+  Filter,
+  Info,
 } from 'lucide-react'
 import { formatDistanceToNow, isPast } from 'date-fns'
 import { stripFeedMetadataHtml, stripHtmlTags } from '../lib/html'
@@ -53,7 +57,9 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   ToggleGroup,
   ToggleGroupItem,
 } from '@glean/ui'
@@ -105,6 +111,13 @@ export default function ReaderPage() {
 
   const isGlobalSmart = isSmartView && !selectedFeedId && !selectedFolderId
   const isSmartFeed = isGlobalSmart && smartLayout === 'feed'
+  const { data: contentCategories, refetch: refreshContentCategories } =
+    useContentCategories(isGlobalSmart)
+  const categoryFilterUnavailable = contentCategories?.length === 0
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[] | null>(null)
+  const categoryIds = contentCategories?.map(({ id }) => id) ?? []
+  const checkedCategoryIds = categoryIds.filter((id) => selectedCategoryIds?.includes(id) ?? true)
+  const isCategoryFiltered = isGlobalSmart && checkedCategoryIds.length < categoryIds.length
 
   // Initialize filterType from URL parameter or default to 'unread'
   const [filterType, setFilterType] = useState<FilterType>(() => {
@@ -186,6 +199,7 @@ export default function ReaderPage() {
     ...getFilterParams(),
     view: usesSmartSorting ? 'smart' : 'timeline',
     ...(isGlobalSmart ? { global_smart: true } : {}),
+    ...(isCategoryFiltered ? { content_category_ids: checkedCategoryIds.join(',') } : {}),
     ...(showPreferenceScore && !usesSmartSorting && filterType !== 'read-later'
       ? { include_score: true }
       : {}),
@@ -485,6 +499,14 @@ export default function ReaderPage() {
     if (entryListRef.current) entryListRef.current.scrollTop = 0
   }
 
+  const handleContentCategoriesChange = (ids: string[] | null) => {
+    clearSelectedEntry(true)
+    feedReturnRef.current = null
+    setIsFullscreen(false)
+    setSelectedCategoryIds(ids?.length === categoryIds.length ? null : ids)
+    if (entryListRef.current) entryListRef.current.scrollTop = 0
+  }
+
   useLayoutEffect(() => {
     if (isSmartFeedReading || !feedReturnRef.current) return
     const saved = feedReturnRef.current
@@ -745,7 +767,14 @@ export default function ReaderPage() {
                 <SmartHeader
                   layout={smartLayout}
                   onLayoutChange={handleSmartLayoutChange}
-                  onRefresh={restart}
+                  onRefresh={() => {
+                    void restart()
+                    void refreshContentCategories()
+                  }}
+                  categories={contentCategories ?? []}
+                  categoryFilterUnavailable={categoryFilterUnavailable}
+                  checkedCategoryIds={checkedCategoryIds}
+                  onCategoriesChange={handleContentCategoriesChange}
                 />
               ) : isMobile ? (
                 <div className="flex items-center gap-2">
@@ -843,7 +872,13 @@ export default function ReaderPage() {
                     </div>
                     <p className="text-muted-foreground">{t('entries.noEntries')}</p>
                     <p className="text-muted-foreground/60 mt-1 text-xs">
-                      {t(isGlobalSmart ? 'smart.empty' : 'empty.tryChangingFilter')}
+                      {t(
+                        isCategoryFiltered
+                          ? 'smart.noMatchingCategories'
+                          : isGlobalSmart
+                            ? 'smart.empty'
+                            : 'empty.tryChangingFilter'
+                      )}
                     </p>
                   </div>
                 )}
@@ -1307,12 +1342,22 @@ function SmartHeader({
   layout,
   onLayoutChange,
   onRefresh,
+  categories,
+  categoryFilterUnavailable,
+  checkedCategoryIds,
+  onCategoriesChange,
 }: {
   layout: SmartLayout
   onLayoutChange: (layout: SmartLayout) => void
   onRefresh: () => void
+  categories: ContentCategoryOption[]
+  categoryFilterUnavailable: boolean
+  checkedCategoryIds: string[]
+  onCategoriesChange: (ids: string[] | null) => void
 }) {
   const { t } = useTranslation('reader')
+  const categoryHintId = useId()
+  const allChecked = checkedCategoryIds.length === categories.length
 
   return (
     <div
@@ -1346,6 +1391,59 @@ function SmartHeader({
           <span className="hidden text-xs @[24rem]:inline">{t('smart.listView')}</span>
         </ToggleGroupItem>
       </ToggleGroup>
+      {(categories.length > 0 || categoryFilterUnavailable) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant={allChecked ? 'ghost' : 'secondary'} size="icon-sm" />}
+            aria-label={t('smart.contentCategories')}
+            title={t('smart.contentCategories')}
+          >
+            <Filter />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            aria-label={t('smart.contentCategories')}
+            aria-describedby={categoryFilterUnavailable ? categoryHintId : undefined}
+          >
+            {categoryFilterUnavailable ? (
+              <p
+                id={categoryHintId}
+                className="text-muted-foreground flex w-64 max-w-[calc(100vw-2rem)] items-start gap-2 px-2.5 py-2 text-sm"
+              >
+                <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                {t('smart.enableContentClassification')}
+              </p>
+            ) : (
+              <>
+                <DropdownMenuCheckboxItem
+                  checked={allChecked}
+                  closeOnClick={false}
+                  onCheckedChange={(checked) => onCategoriesChange(checked ? null : [])}
+                >
+                  {t('smart.allCategories')}
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {categories.map(({ id, label }) => (
+                  <DropdownMenuCheckboxItem
+                    key={id}
+                    checked={checkedCategoryIds.includes(id)}
+                    closeOnClick={false}
+                    onCheckedChange={(checked) =>
+                      onCategoriesChange(
+                        checked
+                          ? [...checkedCategoryIds, id]
+                          : checkedCategoryIds.filter((item) => item !== id)
+                      )
+                    }
+                  >
+                    {label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <Button
         variant="ghost"
         size="icon-sm"

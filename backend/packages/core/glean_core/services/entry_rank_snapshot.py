@@ -72,5 +72,9 @@ def smart_scope(
     is_liked: bool | None,
     read_later: bool | None,
     global_smart: bool,
+    content_category_ids: list[str] | None = None,
 ) -> str:
-    return json.dumps([user_id, feed_id, folder_id, is_read, is_liked, read_later, global_smart])
+    scope = [user_id, feed_id, folder_id, is_read, is_liked, read_later, global_smart]
+    if content_category_ids is not None:
+        return json.dumps([*scope, content_category_ids])
+    return json.dumps(scope)

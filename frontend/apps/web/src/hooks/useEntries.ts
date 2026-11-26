@@ -27,6 +27,16 @@ export interface EntryFilters {
   view?: 'timeline' | 'smart'
   include_score?: boolean
   global_smart?: boolean
+  content_category_ids?: string
+}
+
+export function useContentCategories(enabled: boolean) {
+  return useQuery({
+    queryKey: [...entryKeys.all, 'content-categories'],
+    queryFn: () => entryService.getContentCategories(),
+    enabled,
+    staleTime: 0,
+  })
 }
 
 /**

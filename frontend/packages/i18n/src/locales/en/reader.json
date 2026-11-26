@@ -51,6 +51,10 @@
     "unknownFeed": "Unknown feed",
     "score": "Recommendation score: {{score}}",
     "refresh": "Refresh Smart",
+    "contentCategories": "Filter by content category",
+    "enableContentClassification": "Enable content classification with a System One model to filter by content category.",
+    "allCategories": "Select all",
+    "noMatchingCategories": "Choose different content categories to see more articles.",
     "empty": "Older articles are available in the timeline.",
     "expired": "This Smart list has expired. Refresh to continue.",
     "reasons": {
