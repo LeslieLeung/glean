@@ -31,6 +31,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAccessToken: (token: string | null) => ipcRenderer.invoke('set-access-token', token),
   setRefreshToken: (token: string | null) => ipcRenderer.invoke('set-refresh-token', token),
   clearTokens: () => ipcRenderer.invoke('clear-tokens'),
+  authenticateOIDC: (authorizationUrl: string) =>
+    ipcRenderer.invoke('authenticate-oidc', authorizationUrl),
 
   // Auto-update methods
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -77,6 +79,14 @@ export interface UpdateStatus {
   currentVersion: string
 }
 
+export interface OidcCallbackResult {
+  code?: string
+  state?: string
+  error?: string
+  errorDescription?: string
+  cancelled?: boolean
+}
+
 export interface ElectronAPI {
   getApiUrl: () => Promise<string>
   setApiUrl: (url: string) => Promise<boolean>
@@ -91,6 +101,7 @@ export interface ElectronAPI {
   setAccessToken: (token: string | null) => Promise<boolean>
   setRefreshToken: (token: string | null) => Promise<boolean>
   clearTokens: () => Promise<boolean>
+  authenticateOIDC: (authorizationUrl: string) => Promise<OidcCallbackResult>
 
   // Auto-update methods
   checkForUpdates: () => Promise<{

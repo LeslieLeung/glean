@@ -15,10 +15,14 @@ import Store from 'electron-store'
 import { autoUpdater } from 'electron-updater'
 import {
   buildProductionCsp,
+  extractOidcCallbackParams,
   isAllowedApiUrl,
   isAllowedNavigation,
+  isAllowedOidcWindowNavigation,
   isSafeExternalUrl,
   isTrustedIpcSender,
+  parseOidcAuthRequest,
+  type OidcCallbackResult,
 } from './security'
 
 // __dirname polyfill for ES modules
@@ -64,6 +68,7 @@ const store = new Store<StoreType>({
 })
 
 let mainWindow: BrowserWindow | null = null
+let activeOidcAuthWindow: BrowserWindow | null = null
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 const navigationPolicy = {
@@ -477,6 +482,106 @@ ipcMain.handle('clear-tokens', (event) => {
   store.delete('refreshToken')
   return true
 })
+
+// IPC handler: perform OIDC login in an isolated, preload-free window
+ipcMain.handle(
+  'authenticate-oidc',
+  (event, authorizationUrl: string): Promise<OidcCallbackResult> => {
+    assertTrustedSender(event)
+
+    const authRequest = parseOidcAuthRequest(authorizationUrl)
+    if (!authRequest) {
+      throw new Error('Invalid OIDC authorization URL')
+    }
+
+    if (activeOidcAuthWindow && !activeOidcAuthWindow.isDestroyed()) {
+      activeOidcAuthWindow.close()
+    }
+
+    return new Promise((resolve) => {
+      const authWindow = new BrowserWindow({
+        width: 520,
+        height: 700,
+        parent: mainWindow ?? undefined,
+        modal: Boolean(mainWindow),
+        title: 'Sign in',
+        autoHideMenuBar: true,
+        backgroundColor: '#1a1a1a',
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+          webSecurity: true,
+          partition: `oidc-auth-${Date.now()}`,
+        },
+      })
+
+      activeOidcAuthWindow = authWindow
+      let settled = false
+
+      const finish = (result: OidcCallbackResult, shouldClose: boolean) => {
+        if (settled) {
+          return
+        }
+        settled = true
+        if (activeOidcAuthWindow === authWindow) {
+          activeOidcAuthWindow = null
+        }
+        resolve(result)
+        if (shouldClose && !authWindow.isDestroyed()) {
+          authWindow.close()
+        }
+      }
+
+      authWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (isSafeExternalUrl(url)) {
+          void shell.openExternal(url)
+        }
+        return { action: 'deny' }
+      })
+
+      const handleNavigation = (navEvent: { preventDefault: () => void }, targetUrl: string) => {
+        const callback = extractOidcCallbackParams(targetUrl, authRequest.redirectUri)
+        if (callback) {
+          navEvent.preventDefault()
+          finish(callback, true)
+          return
+        }
+        if (!isAllowedOidcWindowNavigation(targetUrl)) {
+          navEvent.preventDefault()
+        }
+      }
+
+      authWindow.webContents.on('will-redirect', handleNavigation)
+      authWindow.webContents.on('will-navigate', handleNavigation)
+      authWindow.webContents.on('will-frame-navigate', (details) => {
+        if (!isAllowedOidcWindowNavigation(details.url)) {
+          details.preventDefault()
+        }
+      })
+      authWindow.webContents.on(
+        'did-fail-load',
+        (_loadEvent, errorCode, errorDescription, _validatedURL, isMainFrame) => {
+          if (!isMainFrame || errorCode === -3) {
+            return
+          }
+          finish({ error: errorDescription || 'Failed to load authentication page' }, true)
+        }
+      )
+
+      authWindow.on('closed', () => {
+        finish({ cancelled: true }, false)
+      })
+
+      authWindow.loadURL(authRequest.authorizationUrl).catch((err: unknown) => {
+        finish(
+          { error: err instanceof Error ? err.message : 'Failed to open authentication window' },
+          true
+        )
+      })
+    })
+  }
+)
 
 // IPC handler: check for updates
 ipcMain.handle('check-for-updates', async (event) => {

@@ -7,13 +7,13 @@ import {
   type RefreshResult,
   type TokenPair,
 } from '@glean/api-client'
+import { ADMIN_AUTH_STORAGE_KEY, useAuthStore } from '../stores/authStore'
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
   _skipAuthRefresh?: boolean
 }
 
-const ADMIN_AUTH_STORAGE_KEY = 'glean-admin-auth'
 const ADMIN_AUTH_REFRESH_LOCK = 'glean-admin-auth'
 
 const api = axios.create({
@@ -42,6 +42,11 @@ function readAdminTokens(): TokenPair {
   }
 }
 
+function syncAdminAuthStore(accessToken: string): void {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+  void useAuthStore.persist.rehydrate()
+}
+
 function writeAdminTokens(tokens: RefreshResult): void {
   const storedAuth = localStorage.getItem(ADMIN_AUTH_STORAGE_KEY)
   if (!storedAuth) {
@@ -57,6 +62,7 @@ function writeAdminTokens(tokens: RefreshResult): void {
     authData.state.token = tokens.accessToken
     authData.state.refreshToken = tokens.refreshToken
     localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, JSON.stringify(authData))
+    syncAdminAuthStore(tokens.accessToken)
   } catch (error) {
     logger.error('Failed to update stored auth:', error)
   }
@@ -64,6 +70,7 @@ function writeAdminTokens(tokens: RefreshResult): void {
 
 function clearAdminTokensAndRedirect(): void {
   localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY)
+  delete axios.defaults.headers.common['Authorization']
   if (!window.location.pathname.includes('/login')) {
     window.location.href = '/login'
   }
@@ -110,6 +117,7 @@ async function refreshAdminAccessToken(
       ) &&
       currentTokens.accessToken
     ) {
+      syncAdminAuthStore(currentTokens.accessToken)
       return currentTokens.accessToken
     }
 
@@ -162,6 +170,7 @@ api.interceptors.response.use(
     const { accessToken, refreshToken } = readAdminTokens()
 
     if (accessToken && failedAccessToken && accessToken !== failedAccessToken) {
+      syncAdminAuthStore(accessToken)
       originalRequest._retry = true
       originalRequest.headers = originalRequest.headers || {}
       originalRequest.headers.Authorization = `Bearer ${accessToken}`

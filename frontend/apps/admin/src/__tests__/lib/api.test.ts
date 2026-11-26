@@ -1,8 +1,7 @@
 import axios, { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import api from '../../lib/api'
-
-const ADMIN_AUTH_STORAGE_KEY = 'glean-admin-auth'
+import { ADMIN_AUTH_STORAGE_KEY, useAuthStore } from '../../stores/authStore'
 
 function seedAdminAuth(token: string, refreshToken: string): void {
   localStorage.setItem(
@@ -53,6 +52,13 @@ describe('admin api cross-tab refresh coordination', () => {
 
   afterEach(() => {
     api.defaults.adapter = originalAdapter
+    useAuthStore.setState({
+      token: null,
+      refreshToken: null,
+      admin: null,
+      isAuthenticated: false,
+    })
+    delete axios.defaults.headers.common['Authorization']
     localStorage.clear()
     vi.restoreAllMocks()
   })
@@ -148,5 +154,87 @@ describe('admin api cross-tab refresh coordination', () => {
 
     await expect(api.get('/stats')).rejects.toBe(refreshError)
     expect(localStorage.getItem(ADMIN_AUTH_STORAGE_KEY)).toBeNull()
+  })
+
+  it('synchronizes Zustand auth store on token rotation and revokes the latest token on logout', async () => {
+    useAuthStore.getState().setToken('admin-access-1', 'admin-refresh-1', {
+      id: 'admin-1',
+      username: 'admin',
+      role: 'super_admin',
+      is_active: true,
+      last_login_at: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+
+    api.defaults.adapter = async (config) => {
+      const authHeader =
+        typeof config.headers?.get === 'function'
+          ? String(config.headers.get('Authorization') ?? '')
+          : String((config.headers as Record<string, unknown>)?.Authorization ?? '')
+
+      if (authHeader === 'Bearer admin-access-1') {
+        throw make401Error(config)
+      }
+      return {
+        status: 200,
+        statusText: 'OK',
+        headers: new AxiosHeaders(),
+        config,
+        data: { ok: true },
+      }
+    }
+
+    const postSpy = vi.spyOn(axios, 'post').mockImplementation(async (url) => {
+      if (url === '/api/admin/auth/refresh') {
+        return {
+          data: {
+            access_token: 'admin-access-2',
+            refresh_token: 'admin-refresh-2',
+          },
+        }
+      }
+      if (url === '/api/admin/auth/logout') {
+        return { data: { message: 'Logged out successfully' } }
+      }
+      throw new Error(`Unexpected POST ${String(url)}`)
+    })
+
+    const res = await api.get('/stats')
+    expect(res.data).toEqual({ ok: true })
+    expect(useAuthStore.getState().token).toBe('admin-access-2')
+    expect(useAuthStore.getState().refreshToken).toBe('admin-refresh-2')
+
+    useAuthStore.getState().logout()
+    expect(postSpy).toHaveBeenCalledWith('/api/admin/auth/logout', {
+      refresh_token: 'admin-refresh-2',
+    })
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
+    expect(useAuthStore.getState().refreshToken).toBeNull()
+  })
+
+  it('revokes the latest persisted refresh token on logout even when rotated by another tab', () => {
+    useAuthStore.getState().setToken('admin-access-1', 'admin-refresh-1', {
+      id: 'admin-1',
+      username: 'admin',
+      role: 'super_admin',
+      is_active: true,
+      last_login_at: null,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+
+    // Simulate another tab writing rotated tokens without triggering a storage event yet
+    seedAdminAuth('admin-access-3', 'admin-refresh-3')
+    expect(useAuthStore.getState().refreshToken).toBe('admin-refresh-1')
+
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ data: { message: 'Logged out successfully' } })
+
+    useAuthStore.getState().logout()
+    expect(postSpy).toHaveBeenCalledWith('/api/admin/auth/logout', {
+      refresh_token: 'admin-refresh-3',
+    })
   })
 })

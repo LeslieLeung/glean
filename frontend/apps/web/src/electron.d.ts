@@ -15,6 +15,13 @@ declare global {
       setAccessToken: (token: string | null) => Promise<boolean>
       setRefreshToken: (token: string | null) => Promise<boolean>
       clearTokens: () => Promise<boolean>
+      authenticateOIDC?: (authorizationUrl: string) => Promise<{
+        code?: string
+        state?: string
+        error?: string
+        errorDescription?: string
+        cancelled?: boolean
+      }>
       isElectron: boolean
     }
   }

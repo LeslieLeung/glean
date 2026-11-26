@@ -6,6 +6,19 @@ export interface ElectronNavigationPolicy {
   allowedFilePrefix?: string
 }
 
+export interface OidcAuthRequest {
+  authorizationUrl: string
+  redirectUri: string
+}
+
+export interface OidcCallbackResult {
+  code?: string
+  state?: string
+  error?: string
+  errorDescription?: string
+  cancelled?: boolean
+}
+
 export function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.has(hostname.toLowerCase())
 }
@@ -101,4 +114,71 @@ export function buildProductionCsp(apiUrl: string): string {
     "form-action 'self'",
     "frame-ancestors 'none'",
   ].join('; ')
+}
+
+/**
+ * Validate an OIDC authorization URL and extract its expected redirect_uri.
+ */
+export function parseOidcAuthRequest(authorizationUrl: string): OidcAuthRequest | null {
+  if (!isAllowedApiUrl(authorizationUrl)) {
+    return null
+  }
+  try {
+    const parsed = new URL(authorizationUrl.trim())
+    const rawRedirectUri = parsed.searchParams.get('redirect_uri')
+    if (!rawRedirectUri) {
+      return null
+    }
+    const parsedRedirect = new URL(rawRedirectUri.trim())
+    if (parsedRedirect.username || parsedRedirect.password) {
+      return null
+    }
+    if (parsedRedirect.protocol !== 'https:' && parsedRedirect.protocol !== 'http:') {
+      return null
+    }
+    return {
+      authorizationUrl: parsed.href,
+      redirectUri: parsedRedirect.href,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Extract OAuth/OIDC callback query parameters when a navigation matches expectedRedirectUri.
+ */
+export function extractOidcCallbackParams(
+  targetUrl: string,
+  expectedRedirectUri: string
+): OidcCallbackResult | null {
+  if (!targetUrl || !expectedRedirectUri) {
+    return null
+  }
+  try {
+    const target = new URL(targetUrl)
+    const expected = new URL(expectedRedirectUri)
+    const normalizePath = (pathname: string) => pathname.replace(/\/+$/, '') || '/'
+    if (
+      target.origin !== expected.origin ||
+      normalizePath(target.pathname) !== normalizePath(expected.pathname)
+    ) {
+      return null
+    }
+    return {
+      code: target.searchParams.get('code') ?? undefined,
+      state: target.searchParams.get('state') ?? undefined,
+      error: target.searchParams.get('error') ?? undefined,
+      errorDescription: target.searchParams.get('error_description') ?? undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Restrict isolated Electron OIDC auth window navigations to http(s) URLs.
+ */
+export function isAllowedOidcWindowNavigation(url: string): boolean {
+  return isSafeExternalUrl(url)
 }
