@@ -218,6 +218,10 @@ jobs:
 
       - name: Build Electron app
         working-directory: frontend/apps/web
+        # windows-latest defaults to PowerShell, which does not expand
+        # ${TARGET_PLATFORM}. Bash is required so --publish never reaches
+        # electron-builder and a tag push does not try to publish.
+        shell: bash
         env:
           TARGET_PLATFORM: ${{ matrix.platform }}
         run: pnpm build:electron --"${TARGET_PLATFORM}" --publish never
