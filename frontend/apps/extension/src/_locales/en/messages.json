@@ -1,0 +1,86 @@
+{
+  "extensionDescription": {
+    "message": "Subscribe to feeds and bookmark articles in your Glean instance."
+  },
+  "settings": {
+    "message": "Glean Settings"
+  },
+  "instance": {
+    "message": "Glean instance URL"
+  },
+  "apiKey": {
+    "message": "API Key"
+  },
+  "keyHelp": {
+    "message": "Create a key in Glean under Settings → API Tokens."
+  },
+  "connect": {
+    "message": "Connect and save"
+  },
+  "disconnect": {
+    "message": "Disconnect"
+  },
+  "connecting": {
+    "message": "Checking connection…"
+  },
+  "connected": {
+    "message": "Connected to Glean."
+  },
+  "disconnected": {
+    "message": "Disconnected from Glean."
+  },
+  "invalidInstance": {
+    "message": "Enter the full HTTP or HTTPS address of your Glean instance."
+  },
+  "invalidKey": {
+    "message": "The API Key is invalid, expired, or revoked. Check your Glean settings."
+  },
+  "permissionNeeded": {
+    "message": "Allow access to your Glean instance in the extension settings."
+  },
+  "connectionFailed": {
+    "message": "Could not reach Glean. Check the instance address and your connection."
+  },
+  "unsupportedInstance": {
+    "message": "Check the Glean address and upgrade to a version with browser extension support."
+  },
+  "requestFailed": {
+    "message": "Glean could not complete the request. Try again later."
+  },
+  "alreadySubscribed": {
+    "message": "You already subscribe to this feed."
+  },
+  "feedNotFound": {
+    "message": "Could not find a feed. Try entering the RSS or Atom URL directly."
+  },
+  "invalidPage": {
+    "message": "Enter a valid HTTP or HTTPS page or feed URL (up to 2,048 characters)."
+  },
+  "bookmark": {
+    "message": "Bookmark this page"
+  },
+  "feedUrl": {
+    "message": "Website or feed URL"
+  },
+  "subscribe": {
+    "message": "Add subscription"
+  },
+  "setupNeeded": {
+    "message": "Open settings to connect your Glean instance."
+  },
+  "noPage": {
+    "message": "Open a web page to bookmark it, or enter a feed URL below."
+  },
+  "discovering": {
+    "message": "Looking for a feed…"
+  },
+  "subscribed": {
+    "message": "Subscription added."
+  },
+  "saving": {
+    "message": "Saving bookmark…"
+  },
+  "bookmarked": {
+    "message": "Bookmark saved."
+  }
+}

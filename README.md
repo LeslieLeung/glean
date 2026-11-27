@@ -25,13 +25,13 @@ A self-hosted RSS reader and personal knowledge management tool.
 - 🔒 **Self-hosted** - Full data ownership with Docker deployment
 - 🎨 **Modern UI** - Beautiful, responsive warm dark theme interface
 - 👨‍💼 **Admin Dashboard** - User management and system monitoring
+- 🔌 **Browser Extension** - Subscribe to feeds and bookmark pages in Chrome or Firefox. [Build and install](./frontend/apps/extension/README.md)
 
 ### Planned Features (WIP)
 - 🧠 **Smart Recommendations** - AI-powered preference learning and article scoring
 - ⚙️ **Rule Engine** - Automated processing with Jinja2-style conditions
 - 🤖 **AI Features** - Summary generation, auto-tagging, keyword extraction (BYOK)
 - 📄 **Full Content Fetch** - Fetch complete article content for RSS summaries
-- 🔌 **Chrome Extension** - One-click bookmarking from browser
 - 📱 **Mobile PWA** - Progressive Web App for mobile devices
 
 ## Quick Start

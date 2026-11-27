@@ -147,12 +147,12 @@
   },
   "apiTokens": {
     "title": "API 令牌",
-    "desc": "为 MCP 服务器访问创建长期有效的 API 令牌",
-    "description": "生成令牌以通过 MCP 服务器进行身份验证，用于 AI 助手和其他集成。",
+    "desc": "为浏览器扩展和 MCP 客户端创建 API 令牌",
+    "description": "使用 API 令牌连接 Glean 浏览器扩展或 MCP 客户端。",
     "createToken": "创建令牌",
-    "createDescription": "创建新的 API 令牌用于 MCP 身份验证。",
+    "createDescription": "为浏览器扩展或 MCP 客户端创建 API 令牌。",
     "tokenName": "令牌名称",
-    "tokenNamePlaceholder": "我的 Claude Desktop 令牌",
+    "tokenNamePlaceholder": "Glean 浏览器扩展",
     "expiresIn": "过期时间",
     "expiration": {
       "never": "永不过期",
