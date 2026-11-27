@@ -6,6 +6,7 @@ import { ChevronLeft, Menu as MenuIcon, X } from 'lucide-react'
 import { useTranslation } from '@glean/i18n'
 import {
   buttonVariants,
+  cn,
   AlertDialog,
   AlertDialogPopup,
   AlertDialogHeader,
@@ -443,14 +444,18 @@ export function Layout() {
       >
         {/* Logo */}
         <div
-          className={`border-border flex items-center justify-between border-b p-2 md:p-4 ${
-            isMacElectron ? 'md:pt-12' : ''
-          }`}
+          className={cn(
+            'border-border flex items-center justify-between border-b p-2',
+            isSidebarOpen
+              ? 'md:gap-2 md:p-4'
+              : 'md:flex-col md:justify-center md:gap-2 md:px-2 md:py-3',
+            isMacElectron && 'md:pt-12'
+          )}
         >
           <Link
             to="/"
             aria-label="Glean"
-            className="flex items-center gap-2 overflow-hidden md:gap-3"
+            className="flex min-w-0 items-center gap-2 overflow-hidden md:gap-3"
           >
             <img
               src={`${import.meta.env.BASE_URL}glean-logo.png`}
@@ -458,13 +463,25 @@ export function Layout() {
               className="size-7 shrink-0 md:size-9"
             />
             {(isSidebarOpen || isMobileSidebarOpen) && (
-              <span className="font-display text-foreground text-base font-bold md:text-xl">
+              <span className="font-display text-foreground truncate text-base font-bold md:text-xl">
                 Glean
               </span>
             )}
           </Link>
+          {/* Toggle button - desktop only */}
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="touch-target-none border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground hidden h-6 w-6 shrink-0 items-center justify-center rounded-full border shadow-sm transition-colors md:flex"
+            aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            <ChevronLeft
+              className={`h-4 w-4 transition-transform ${isSidebarOpen ? '' : 'rotate-180'}`}
+            />
+          </button>
           {/* Mobile close button */}
           <button
+            type="button"
             onClick={() => setIsMobileSidebarOpen(false)}
             className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-7 w-7 items-center justify-center rounded-lg transition-colors md:hidden"
             aria-label="Close sidebar"
@@ -472,17 +489,6 @@ export function Layout() {
             <X className="h-4 w-4" />
           </button>
         </div>
-
-        {/* Toggle button - desktop only */}
-        <button
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground absolute top-5 right-2 z-10 hidden h-6 w-6 items-center justify-center rounded-full border shadow-sm transition-colors md:flex"
-          aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-        >
-          <ChevronLeft
-            className={`h-4 w-4 transition-transform ${isSidebarOpen ? '' : 'rotate-180'}`}
-          />
-        </button>
 
         {/* Resize handle - desktop only, when sidebar is expanded */}
         {isSidebarOpen && (

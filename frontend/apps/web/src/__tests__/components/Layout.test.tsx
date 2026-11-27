@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { feedService } from '@glean/api-client'
 import { Layout } from '@/components/Layout'
@@ -86,5 +86,38 @@ describe('Sidebar Add Feed folder context', () => {
         folder_id: expectedFolder,
       })
     )
+  })
+})
+
+describe('Sidebar collapse toggle layout', () => {
+  it('stacks the toggle button below the logo in the header when collapsed', () => {
+    const { wrapper } = createQueryWrapper()
+    render(
+      <MemoryRouter initialEntries={['/reader']}>
+        <Layout />
+      </MemoryRouter>,
+      { wrapper }
+    )
+
+    const sidebar = screen.getByRole('complementary')
+    const logoLink = within(sidebar).getByRole('link', { name: 'Glean' })
+    const header = logoLink.parentElement
+    const toggleButton = within(sidebar).getByRole('button', { name: 'Collapse sidebar' })
+
+    expect(header).toContainElement(toggleButton)
+    expect(toggleButton).not.toHaveClass('absolute')
+    expect(header).not.toHaveClass('md:flex-col')
+
+    fireEvent.click(toggleButton)
+
+    const expandButton = within(sidebar).getByRole('button', { name: 'Expand sidebar' })
+    expect(header).toContainElement(expandButton)
+    expect(expandButton).not.toHaveClass('absolute')
+    expect(header).toHaveClass('md:flex-col')
+
+    fireEvent.click(expandButton)
+
+    expect(within(sidebar).getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
+    expect(header).not.toHaveClass('md:flex-col')
   })
 })
