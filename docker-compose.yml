@@ -219,7 +219,7 @@ services:
     restart: unless-stopped
 
   milvus:
-    image: milvusdb/milvus:v3.0.6
+    image: milvusdb/milvus:v3.0.7
     container_name: glean-milvus
     command: ["milvus", "run", "standalone"]
     environment:
